@@ -1,110 +1,217 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { Route } from '../types';
+import { Route, RouteConcept, FeedbackData, POI } from '../types';
 
-const SUPABASE_URL = 'https://tkkzbfexmjfbkkgvhobr.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_qJQf0zgADD7L23nmnfdWNQ_kxPh8aiF'; 
+const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_vXT_oUjgSllGs8upeDQwLw_2lYYU3t9'; 
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-export const isSupabaseConfigured = () => {
-  const key = SUPABASE_ANON_KEY as string;
-  return key.startsWith('sb_') && key.length > 20;
-};
+const ADMIN_EMAIL = "admin@urbanito.com"; 
 
-const normalizeCityName = (name: string) => name.trim().toLowerCase();
+const normalize = (s: string) => s ? s.trim().toLowerCase() : "";
 
-export const findCachedRoute = async (city: string): Promise<Route | null> => {
-  if (!isSupabaseConfigured()) return null;
-  const normalized = normalizeCityName(city);
-  
-  // Timeout wrapper to prevent hanging
-  const fetchPromise = new Promise<Route | null>(async (resolve) => {
-    try {
-      const { data, error } = await supabase
-        .from('public_routes')
-        .select('route_data')
-        .or(`city.eq."${city}",city.eq."${normalized}"`)
-        .limit(1)
-        .maybeSingle();
-
-      if (error || !data) resolve(null);
-      else resolve(data.route_data);
-    } catch (e) {
-      resolve(null);
-    }
-  });
-
-  const timeoutPromise = new Promise<Route | null>((resolve) => 
-    setTimeout(() => resolve(null), 3000) // 3 second max wait
-  );
-
-  return Promise.race([fetchPromise, timeoutPromise]);
-};
-
-export const cacheRoute = async (route: Route) => {
-  if (!isSupabaseConfigured()) return;
+export const getUniqueUserCount = async (): Promise<number> => {
   try {
-    const normalized = normalizeCityName(route.city);
+    const { data, error } = await supabase
+      .from('usage_logs')
+      .select('user_id');
     
-    // Check existance
-    const { data: existingData } = await supabase
-      .from('public_routes')
-      .select('id')
-      .eq('city', normalized)
-      .maybeSingle();
+    if (error) return 0;
+    const uniqueIds = new Set(data.map(item => item.user_id).filter(id => id !== null));
+    return uniqueIds.size;
+  } catch (e) {
+    return 0;
+  }
+};
 
-    if (existingData) {
+export const checkUsageLimit = async (userId: string | null): Promise<{ allowed: boolean, remaining: number, limit: number }> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user?.email === ADMIN_EMAIL) {
+    return { allowed: true, remaining: 999, limit: 999 };
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const { count } = await supabase
+    .from('usage_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', today);
+
+  const limit = userId ? 5 : 3; 
+  const currentCount = count || 0;
+  return { allowed: currentCount < limit, remaining: Math.max(0, limit - currentCount), limit };
+};
+
+export const logUsage = async (userId: string | null, city: string) => {
+  try {
+    await supabase.from('usage_logs').insert([{
+      user_id: userId,
+      city: normalize(city)
+    }]);
+  } catch (e) {
+    console.error("Failed to log usage:", e);
+  }
+};
+
+export const submitFeedback = async (userId: string | null, feedback: FeedbackData, language: string) => {
+  try {
+    await supabase.from('app_feedback').insert([{
+      user_id: userId,
+      sentiment: feedback.sentiment,
+      planning_rating: feedback.features.planning.isSelected ? feedback.features.planning.rating : null,
+      planning_comment: feedback.features.planning.comment,
+      editing_rating: feedback.features.editing.isSelected ? feedback.features.editing.rating : null,
+      editing_comment: feedback.features.editing.comment,
+      saving_rating: feedback.features.saving.isSelected ? feedback.features.saving.rating : null,
+      saving_comment: feedback.features.saving.comment,
+      content_rating: feedback.features.content.isSelected ? feedback.features.content.rating : null,
+      content_comment: feedback.features.content.comment,
+      audio_rating: feedback.features.audio.isSelected ? feedback.features.audio.rating : null,
+      audio_comment: feedback.features.audio.comment,
+      additional_comments: feedback.additionalComments,
+      language: language
+    }]);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const getCachedLibrary = async (city: string): Promise<RouteConcept[] | null> => {
+  try {
+    const { data } = await supabase.from('city_library').select('concepts').eq('city', normalize(city)).maybeSingle();
+    return data ? (data.concepts as RouteConcept[]) : null;
+  } catch (e) { return null; }
+};
+
+export const saveLibraryToDb = async (city: string, concepts: RouteConcept[]) => {
+  try {
+    await supabase.from('city_library').upsert({ city: normalize(city), concepts: concepts });
+  } catch (e) {}
+};
+
+export const findCuratedRoute = async (city: string, theme: string): Promise<Route | null> => {
+  try {
+    const { data } = await supabase.from('curated_routes').select('route_data').eq('city', normalize(city)).eq('theme', normalize(theme)).maybeSingle();
+    return data ? (data.route_data as Route) : null;
+  } catch (e) { return null; }
+};
+
+export const getRecentCuratedRoutes = async (limit: number = 10): Promise<Route[]> => {
+  try {
+    const { data } = await supabase.from('curated_routes').select('route_data').order('created_at', { ascending: false }).limit(limit);
+    return (data || []).map(d => d.route_data as Route);
+  } catch (e) { return []; }
+};
+
+export const cacheCuratedRoute = async (city: string, theme: string, route: Route) => {
+  try {
+    await supabase.from('curated_routes').upsert({
+      city: normalize(city),
+      theme: normalize(theme),
+      route_data: route
+    });
+  } catch (e) {}
+};
+
+export const saveRouteToSupabase = async (userId: string, route: Route) => {
+  try {
+    const { data, error } = await supabase.from('saved_routes').insert([{
+      user_id: userId,
+      route_data: route,
+      city: normalize(route.city)
+    }]).select();
+    return data ? data[0] : null;
+  } catch (e) { return null; }
+};
+
+export const updateSavedRoute = async (userId: string, route: Route) => {
+  try {
+    // Find the entry that has this specific route ID inside its JSON route_data
+    const { data } = await supabase
+      .from('saved_routes')
+      .select('id, route_data')
+      .eq('user_id', userId);
+    
+    const entry = data?.find(d => (d.route_data as any).id === route.id);
+    if (entry) {
       await supabase
-        .from('public_routes')
+        .from('saved_routes')
         .update({ route_data: route })
-        .eq('id', existingData.id);
-    } else {
-      await supabase
-        .from('public_routes')
-        .insert([{ city: normalized, route_data: route }]);
+        .eq('id', entry.id);
     }
-  } catch (e: any) {
-    console.warn("Supabase cache fail", e);
+  } catch (e) {
+    console.error("Failed to update route:", e);
   }
 };
 
-export const saveRouteToSupabase = async (route: Route, userId: string): Promise<string | null> => {
-  if (!isSupabaseConfigured()) return null;
+export const getSavedRoutesFromSupabase = async (userId: string) => {
   try {
-    const { data, error } = await supabase
-      .from('saved_routes')
-      .insert([{ route_data: route }])
-      .select();
-
-    if (error) throw error;
-    return data?.[0]?.id || null;
-  } catch (e: any) {
-    return null;
-  }
-};
-
-export const getSavedRoutesFromSupabase = async (userId: string): Promise<Route[]> => {
-  if (!isSupabaseConfigured()) return [];
-  try {
-    const { data, error } = await supabase
-      .from('saved_routes')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) return [];
-    return (data || []).map(item => ({
-      ...item.route_data,
-      id: item.id
-    }));
-  } catch (e: any) {
-    return [];
-  }
+    const { data } = await supabase.from('saved_routes').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    return data || [];
+  } catch (e) { return []; }
 };
 
 export const deleteRouteFromSupabase = async (id: string, userId: string) => {
-  if (!isSupabaseConfigured()) return;
   try {
-    await supabase.from('saved_routes').delete().eq('id', id);
+    await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId);
   } catch (e) {}
+};
+
+export const getCachedPoiDetails = async (poiName: string, city: string) => {
+  try {
+    const { data } = await supabase.from('poi_cache').select('data').eq('poi_name', normalize(poiName)).eq('city', normalize(city)).maybeSingle();
+    return data ? data.data : null;
+  } catch (e) { return null; }
+};
+
+export const cachePoiDetails = async (poiName: string, city: string, data: any) => {
+  try {
+    await supabase.from('poi_cache').upsert({
+      poi_name: normalize(poiName),
+      city: normalize(city),
+      data: data
+    });
+  } catch (e) {}
+};
+
+// --- SAVED POIs FUNCTIONS ---
+
+export const savePoiToSupabase = async (userId: string, poi: POI, city: string) => {
+  try {
+    const { data } = await supabase.from('saved_pois').insert([{
+      user_id: userId,
+      poi_data: poi,
+      city: normalize(city),
+      poi_name: poi.name
+    }]).select();
+    return data ? data[0] : null;
+  } catch (e) { return null; }
+};
+
+export const getSavedPoisFromSupabase = async (userId: string) => {
+  try {
+    const { data } = await supabase.from('saved_pois').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    return data || [];
+  } catch (e) { return []; }
+};
+
+export const deletePoiFromSupabase = async (id: string, userId: string) => {
+  try {
+    await supabase.from('saved_pois').delete().eq('id', id).eq('user_id', userId);
+  } catch (e) {}
+};
+
+export const signInWithGoogle = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin
+    }
+  });
+};
+
+export const signOut = async () => {
+  await supabase.auth.signOut();
 };

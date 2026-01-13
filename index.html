@@ -4,9 +4,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Urban Explorer</title>
+    <title>Urbanito - Your Urban Guide</title>
+    
+    <!-- Favicon Configuration -->
+    <link rel="icon" type="image/png" href="https://ibb.co/GB4KBcw" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="https://ibb.co/GB4KBcw" />
+    <link rel="shortcut icon" href="https://ibb.co/GB4KBcw" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://ibb.co/GB4KBcw" />
+    <link rel="manifest" href="./site.webmanifest" />
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB1pUclRDHzLEaPnI_Qnm6xGEj2VrnQvT4&libraries=geometry&v=weekly"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC2ahib99SUIKcyVICTQmN7bwL2gcAoKMg&libraries=geometry,places&v=weekly"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@200;300;400;500;600&display=swap" rel="stylesheet">
@@ -22,7 +30,6 @@
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       
-      /* Typography Reset - Removing aggressive bolds */
       h1, h2, h3, h4, h5, h6 { font-weight: 500; letter-spacing: -0.01em; }
       p { line-height: 1.6; font-weight: 300; }
       
@@ -31,6 +38,14 @@
         50% { opacity: 0.7; transform: scale(0.95); }
       }
       .animate-soft { animation: soft-pulse 3s infinite ease-in-out; }
+
+      .custom-marker-arrival {
+        animation: marker-bounce 1s infinite alternate cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes marker-bounce {
+        from { transform: translateY(0); }
+        to { transform: translateY(-5px); }
+      }
     </style>
     <script type="importmap">
 {

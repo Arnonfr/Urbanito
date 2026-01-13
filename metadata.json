@@ -1,5 +1,5 @@
 {
-  "name": "Urbanisto - Your urban guide ",
+  "name": "Urbanito - Your urban guide ",
   "description": "Discover famous cities through AI-powered historical and architectural walking tours, featuring hidden gems and historical reconstructions.",
   "requestFramePermissions": [
     "geolocation"
