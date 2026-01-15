@@ -36,7 +36,7 @@ export interface POISection {
 
 export interface POISource {
   title: string;
-  url?: string;
+  url: string;
 }
 
 export interface POI {
@@ -46,8 +46,12 @@ export interface POI {
   lng: number;
   category?: POICategoryType;
   description: string;
-  historicalContext: string;
-  architecturalStyle: string;
+  // Made optional as POIs are often initialized with basic data and then enriched later
+  historicalContext?: string;
+  architecturalStyle?: string;
+  // Fields returned by the enrichment service in geminiService.ts
+  historicalAnalysis?: string;
+  architecturalAnalysis?: string;
   tourScript?: string;
   imageUrl?: string;
   additionalImages?: string[];
@@ -70,6 +74,8 @@ export interface Route {
   durationMinutes: number;
   creator: string;
   isOffline?: boolean;
+  isAlternative?: boolean;
+  style?: 'street' | 'area';
 }
 
 export interface AudioState {

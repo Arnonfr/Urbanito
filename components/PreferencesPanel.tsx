@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { UserPreferences, Route, POI } from '../types';
-import { User, Globe, Heart, BookOpen, Navigation, Trash2, LogOut, MessageSquareHeart, Coffee, Download, Users, Zap, Share2, MapPin, X, HelpCircle, ChevronLeft, ChevronRight, BookMarked } from 'lucide-react';
+import { User, Globe, Heart, BookOpen, Navigation, Trash2, LogOut, MessageSquareHeart, Coffee, Download, Users, Zap, Share2, MapPin, X, HelpCircle, ChevronLeft, ChevronRight, BookMarked, CloudOff, Key, Sparkles, CheckCircle } from 'lucide-react';
 
 interface Props {
   preferences: UserPreferences;
@@ -10,6 +10,7 @@ interface Props {
   savedPois: any[];
   offlineRouteIds: string[];
   onLoadOfflineRoute: (id: string) => void;
+  onRemoveOffline?: (id: string) => void;
   user: any;
   onLogin: () => void;
   onLogout: () => void;
@@ -20,6 +21,8 @@ interface Props {
   onOpenGuide: () => void;
   uniqueUserCount: number;
   remainingGens: number;
+  onVerifyInvite?: (code: string) => boolean;
+  hasFullAccess?: boolean;
 }
 
 const LOGO_URL = "https://drive.google.com/uc?id=1YITDQ6V-4bjfWKnamvgVGm0uLuHcgXdP";
@@ -27,18 +30,29 @@ const INTERESTS_HE = ['היסטוריה', 'ארכיטקטורה', 'מוזיקה'
 const INTERESTS_EN = ['History', 'Architecture', 'Music', 'Food', 'Art', 'Photography', 'Local Cuisine', 'Street Art', 'Nightlife'];
 
 export const PreferencesPanel: React.FC<Props> = ({ 
-  preferences, setPreferences, savedRoutes, savedPois, offlineRouteIds, onLoadOfflineRoute, 
+  preferences, setPreferences, savedRoutes, savedPois, offlineRouteIds, onLoadOfflineRoute, onRemoveOffline,
   user, onLogin, onLogout, onLoadRoute, onDeleteRoute, onDeletePoi, onOpenFeedback, onOpenGuide,
-  uniqueUserCount, remainingGens 
+  uniqueUserCount, remainingGens, onVerifyInvite, hasFullAccess
 }) => {
   const isHe = preferences.language === 'he';
   const interests = isHe ? INTERESTS_HE : INTERESTS_EN;
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteError, setInviteError] = useState(false);
 
   const toggleInterest = (interest: string) => {
     const newInterests = preferences.interests.includes(interest)
       ? preferences.interests.filter(i => i !== interest)
       : [...preferences.interests, interest];
     setPreferences({ ...preferences, interests: newInterests });
+  };
+
+  const handleInviteSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = onVerifyInvite?.(inviteCode);
+    if (!ok) {
+      setInviteError(true);
+      setTimeout(() => setInviteError(false), 2000);
+    }
   };
 
   const handleShareInvite = () => {
@@ -95,7 +109,40 @@ export const PreferencesPanel: React.FC<Props> = ({
       </div>
 
       <div className="space-y-6">
-        {/* User Guide Entry */}
+        {/* Full Access / Invite Code Logic */}
+        {!hasFullAccess ? (
+          <section className="bg-indigo-50/50 p-5 rounded-[1.5rem] border border-indigo-100 space-y-4">
+            <div className="flex items-center gap-3">
+              <Key size={18} className="text-indigo-600" />
+              <h3 className="text-xs font-black uppercase tracking-widest">{isHe ? 'הכנסת קוד הזמנה' : 'Enter Invite Code'}</h3>
+            </div>
+            <p className="text-[10px] text-slate-500 font-light">{isHe ? 'הכנס קוד גישה כדי לפתוח את כל יכולות המערכת' : 'Enter a code to unlock full AI capabilities'}</p>
+            <form onSubmit={handleInviteSubmit} className="flex gap-2">
+               <input 
+                 type="text" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)}
+                 placeholder={isHe ? 'קוד כאן...' : 'Code here...'}
+                 className={`flex-1 bg-white border ${inviteError ? 'border-red-300' : 'border-slate-200'} rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-2 ring-indigo-500/20`}
+               />
+               <button type="submit" className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all">
+                 {isHe ? 'אישור' : 'Verify'}
+               </button>
+            </form>
+          </section>
+        ) : (
+          <section className="bg-emerald-500 text-white p-5 rounded-[1.5rem] shadow-lg shadow-emerald-100 flex items-center justify-between">
+             <div className="flex items-center gap-3">
+               <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
+                 <Sparkles size={20} />
+               </div>
+               <div>
+                 <h3 className="text-xs font-black uppercase tracking-widest">{isHe ? 'גישה מלאה פתוחה' : 'Full Access Active'}</h3>
+                 <p className="text-[9px] opacity-80">{isHe ? 'כל יכולות ה-AI זמינות עבורך' : 'All AI features unlocked'}</p>
+               </div>
+             </div>
+             <CheckCircle size={20} />
+          </section>
+        )}
+
         <section>
           <button 
             onClick={onOpenGuide}
@@ -116,7 +163,7 @@ export const PreferencesPanel: React.FC<Props> = ({
           </button>
         </section>
 
-        {!user && (
+        {!user && !hasFullAccess && (
           <section className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-50 flex items-center gap-3.5">
              <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center text-emerald-500 shadow-sm shrink-0">
                <Zap size={18} />
@@ -214,24 +261,42 @@ export const PreferencesPanel: React.FC<Props> = ({
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {savedRoutes.map((row) => (
-                <div key={row.id} className="bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm flex items-center justify-between group">
-                  <div className="flex-1 text-right min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[7px] font-bold text-emerald-400 uppercase tracking-widest block mb-0.5">{row.route_data?.city}</span>
-                      {offlineRouteIds.includes(row.route_data.id) && (
-                        <div className="text-emerald-500"><Download size={9} /></div>
-                      )}
+            <div className="space-y-3">
+              {savedRoutes.map((row) => {
+                const isOffline = offlineRouteIds.includes(row.route_data.id);
+                return (
+                  <div key={row.id} className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm flex flex-col gap-3 group">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 text-right min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">{row.route_data?.city}</span>
+                          {isOffline && (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500 text-white text-[7px] font-black rounded uppercase tracking-tighter shadow-sm">
+                              <Download size={8} />
+                              {isHe ? 'אופליין' : 'Offline'}
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="text-xs font-bold text-slate-900 truncate mt-0.5">{row.route_data?.name}</h3>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button 
+                          onClick={() => onLoadRoute(row.route_data.city, row.route_data)} 
+                          className="w-10 h-10 bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-emerald-500 transition-all active:scale-95 shadow-md"
+                        >
+                          <Navigation size={16} fill="currentColor" />
+                        </button>
+                        <button 
+                          onClick={() => onDeleteRoute(row.id)} 
+                          className="w-10 h-10 bg-slate-50 text-slate-300 hover:text-red-500 rounded-lg flex items-center justify-center transition-all active:scale-95"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <h3 className="text-xs font-medium text-slate-800 truncate">{row.route_data?.name}</h3>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => onDeleteRoute(row.id)} className="p-1.5 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={12} /></button>
-                    <button onClick={() => onLoadRoute(row.route_data.city, row.route_data)} className="p-1.5 bg-slate-900 text-white rounded-lg hover:bg-emerald-500 transition-all"><Navigation size={12} fill="currentColor" /></button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -285,19 +350,11 @@ export const PreferencesPanel: React.FC<Props> = ({
            <div className="flex items-center justify-center gap-5 text-[9px] font-bold uppercase tracking-widest text-slate-400">
               <div className="flex items-center gap-1.5">
                 <Users size={10} />
-                <span>{isHe ? `קיבולת: ${uniqueUserCount} / 30` : `Capacity: ${uniqueUserCount} / 30`}</span>
+                <span>Urbanito v2.9</span>
               </div>
-              <div className="w-px h-2.5 bg-slate-200" />
-              <p>Urbanito v2.8</p>
            </div>
            
            <div className="text-center space-y-3">
-              <p className="text-[10px] text-slate-500 font-medium leading-relaxed max-w-[240px] mx-auto">
-                {isHe 
-                  ? "אחד מתוך 30 הנסיינים הראשונים, רוצה להזמין חברים לפני שיגמרו המקומות?" 
-                  : "You are one of our first 30 testers! Want to invite a friend before spots run out?"}
-              </p>
-              
               <button 
                 onClick={handleShareInvite}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-50 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all active:scale-95 shadow-sm"

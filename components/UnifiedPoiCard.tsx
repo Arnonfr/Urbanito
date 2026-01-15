@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { POI, UserPreferences, Route, AudioState } from '../types';
-import { fetchExtendedPoiDetails, fetchNearbySuggestions } from '../services/geminiService';
+import { fetchExtendedPoiDetails } from '../services/geminiService';
 import { 
-  Loader2, X, Building2, ScrollText, History, Footprints, ExternalLink, ShieldCheck, MapPin, Plus, Gem, Minus, Sparkles, Heart, Library, Trash2, Navigation
+  Loader2, ScrollText, Heart, Trash2, ChevronRight, ChevronLeft, Plus, ArrowRight, ArrowLeft, X, Sparkles
 } from 'lucide-react';
 import { CATEGORY_ICONS, CATEGORY_LABELS_HE } from './RouteOverview';
-import { getCityImage } from '../App';
+import { GoogleImage } from './GoogleImage';
+import { getCityImage } from '../utils';
 
 declare var google: any;
 
@@ -29,238 +30,194 @@ interface Props {
   isSaved?: boolean;
   onToggleSave?: () => void;
   onEnrichPoi?: (poiId: string, data: Partial<POI>) => void;
+  onAddPoi?: (poi: POI) => void;
+  isScanned?: boolean;
 }
 
 const translations = {
   he: { 
-    archOverview: "אדריכלות ועיצוב", 
-    extendedInfo: "פרקי העשרה", 
-    overview: "סיפור המקום", 
-    historicalDepth: "רקע היסטורי", 
-    expDiscovery: "חווית גילוי", 
-    loadingInfo: "דולה מידע היסטורי עמוק...", 
-    next: "תחנה הבאה", 
-    prev: "תחנה קודמת", 
-    verified: "מידע מאומת", 
-    nearbyTitle: "פנינים בסביבה", 
-    sourcesTitle: "מקורות וסימוכין",
-    openMaps: "ניווט ב-Google Maps",
-    removeStation: "הסר מהמסלול",
-    loadingNearby: "מחפש מקומות קרובים..." 
+    overview: "סיפור המקום (עומק היסטורי)", 
+    expDiscovery: "חווית גילוי עירונית", 
+    loadingInfo: "דולה מידע היסטורי מבלוגים וארכיונים...", 
+    next: "התחנה הבאה", 
+    prev: "התחנה הקודמת", 
+    backToRoute: "חזרה למסלול",
+    addToRoute: "הוספה למסלול שלי"
   },
   en: { 
-    archOverview: "Architecture & Design", 
-    extendedInfo: "Extra Chapters", 
-    overview: "Place Story", 
-    historicalDepth: "Historical Background", 
-    expDiscovery: "EXPERIENCE DISCOVERY", 
-    loadingInfo: "Deep diving into history...", 
-    next: "Next Station", 
-    prev: "Previous Station", 
-    verified: "Verified", 
-    nearbyTitle: "Nearby Gems", 
-    sourcesTitle: "References & Sources",
-    openMaps: "Open in Google Maps",
-    removeStation: "Remove Station",
-    loadingNearby: "Finding nearby spots..."
+    overview: "Historical Deep-Dive", 
+    expDiscovery: "URBAN DISCOVERY EXPERIENCE", 
+    loadingInfo: "Fetching verified historical data...", 
+    next: "Next Stop", 
+    prev: "Previous Stop", 
+    backToRoute: "Back to Route",
+    addToRoute: "Add to my Route"
   }
 };
 
-export const UnifiedPoiCard: React.FC<Props> = ({ poi, route, onClose, currentIndex, totalCount, preferences, onNext, onPrev, onAddToRoute, onRemove, onGoToPoi, isSaved, onToggleSave, onEnrichPoi }) => {
+/**
+ * Splits a string into Hebrew and English components.
+ * Assumes English text might be in parentheses or follow Hebrew text.
+ */
+const splitName = (name: string) => {
+  const englishRegex = /([a-zA-Z].+)/;
+  const match = name.match(englishRegex);
+  
+  if (match) {
+    const en = match[0].replace(/[()]/g, '').trim();
+    const he = name.replace(match[0], '').replace(/[()]/g, '').trim();
+    return { he: he || en, en: he ? en : undefined };
+  }
+  return { he: name, en: undefined };
+};
+
+export const UnifiedPoiCard: React.FC<Props> = ({ 
+  poi, route, onClose, currentIndex, totalCount, preferences, onNext, onPrev, isSaved, onToggleSave, onEnrichPoi, onRemove, onAddPoi, isScanned 
+}) => {
   const isHe = preferences.language === 'he';
   const t = translations[preferences.language];
   const [extendedData, setExtendedData] = useState<any>(poi.isFullyLoaded ? poi : null);
-  const [nearbySpots, setNearbySpots] = useState<POI[]>([]);
-  const [isExpanding, setIsExpanding] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(!poi.isFullyLoaded);
-  const [isLoadingNearby, setIsLoadingNearby] = useState(true);
-  const [imgError, setImgError] = useState(false);
-  const [isImageLoading, setIsImageLoading] = useState(true);
-  const [googlePhotoUrl, setGooglePhotoUrl] = useState<string | null>(null);
-  
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Swipe Logic
+  const touchStart = useRef<number | null>(null);
+  const touchEnd = useRef<number | null>(null);
+  const minSwipeDistance = 60;
+
+  const onTouchStart = (e: React.TouchEvent) => { touchEnd.current = null; touchStart.current = e.targetTouches[0].clientY; };
+  const onTouchMove = (e: React.TouchEvent) => { touchEnd.current = e.targetTouches[0].clientY; };
+  const onTouchEnd = () => {
+    if (!touchStart.current || !touchEnd.current) return;
+    const distance = touchStart.current - touchEnd.current;
+    if (distance > minSwipeDistance && !isExpanded) setIsExpanded(true);
+    if (distance < -minSwipeDistance && isExpanded) setIsExpanded(false);
+  };
+
+  const handleHeaderClick = () => setIsExpanded(!isExpanded);
 
   useEffect(() => {
-    setIsImageLoading(true);
-    setGooglePhotoUrl(null);
-    onGoToPoi(poi);
-
-    if ((window as any).google?.maps?.places) {
-       const request = { textQuery: `${poi.name}, ${route.city}`, fields: ['photos'] };
-       google.maps.places.Place.searchByText(request).then((result: any) => {
-           if (result.places?.[0]?.photos?.[0]) {
-              setGooglePhotoUrl(result.places[0].photos[0].getURI({ maxWidth: 800 }));
-           }
-       }).catch(() => {});
-    }
-    
     if (!poi.isFullyLoaded) {
       setIsLoadingDetails(true);
       fetchExtendedPoiDetails(poi.name, route.city, preferences).then(data => {
-        if (data) {
-          setExtendedData(data);
-          onEnrichPoi?.(poi.id, data);
-        }
+        if (data) { setExtendedData(data); onEnrichPoi?.(poi.id, data); }
         setIsLoadingDetails(false);
-      });
+      }).catch(() => setIsLoadingDetails(false));
     } else {
       setExtendedData(poi);
       setIsLoadingDetails(false);
     }
+  }, [poi.id]);
 
-    fetchNearbySuggestions(poi, route.city, preferences.language).then(spots => {
-      setNearbySpots(spots);
-      setIsLoadingNearby(false);
-    });
-  }, [poi.id, preferences.language]);
-
-  const onTouchStart = (e: React.TouchEvent) => setTouchStart(e.touches[0].clientY);
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (!touchStart) return;
-    const currentY = e.touches[0].clientY;
-    const diff = touchStart - currentY;
-    if (diff > 50 && !isExpanding) setIsExpanding(true);
-    if (diff < -50 && isExpanding && scrollContainerRef.current?.scrollTop === 0) setIsExpanding(false);
-  };
-
-  const openGoogleMaps = () => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`;
-    window.open(url, '_blank');
-  };
-
-  const handleRemove = () => {
-    if (confirm(isHe ? "להסיר את התחנה מהמסלול?" : "Remove this station from the route?")) {
-      onRemove(poi.id);
-      onClose();
-    }
-  };
-
-  const cardHeightClass = isExpanding ? 'h-[92vh]' : 'h-[55vh]';
-  const displayImageUrl = googlePhotoUrl || (imgError ? getCityImage(route.city) : (extendedData?.officialImageUrl || poi.imageUrl || getCityImage(route.city)));
+  const cardHeightClass = isExpanded ? 'max-h-[92dvh] h-[92dvh]' : 'h-[38dvh]';
+  const { he, en } = splitName(poi.name);
 
   return (
     <div 
       dir={isHe ? 'rtl' : 'ltr'}
-      className={`fixed inset-x-0 bottom-0 bg-white/40 backdrop-blur-2xl z-[400] flex flex-col pointer-events-auto shadow-2xl border-t border-white/50 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${cardHeightClass} ${isExpanding ? 'rounded-t-2xl' : 'rounded-t-2xl'}`}
-      onTouchStart={onTouchStart} onTouchMove={onTouchMove}
+      className={`fixed inset-x-0 bottom-0 z-[3000] flex flex-col pointer-events-auto overflow-hidden glass-card shadow-[0_-20px_100px_rgba(0,0,0,0.3)] transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${cardHeightClass} animate-in slide-in-from-bottom`}
+      style={{ borderRadius: '2rem 2rem 0 0' }}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      <div className="absolute top-0 inset-x-0 h-10 flex items-center justify-center pointer-events-none z-[450]">
-         <div className="w-10 h-1 bg-slate-400/20 rounded-full pointer-events-auto cursor-pointer" onClick={() => setIsExpanding(!isExpanding)} />
-         <button onClick={onClose} className={`absolute top-4 ${isHe ? 'right-6' : 'left-6'} p-2 bg-white/60 backdrop-blur-md rounded-lg text-slate-400 shadow-sm pointer-events-auto active:scale-90 transition-all`}><X size={16} /></button>
-         
-         <button 
-           onClick={(e) => { e.stopPropagation(); onToggleSave?.(); }} 
-           className={`absolute top-4 ${isHe ? 'left-6' : 'right-6'} p-2 bg-white/60 backdrop-blur-md rounded-lg shadow-sm pointer-events-auto active:scale-90 transition-all ${isSaved ? 'text-pink-500' : 'text-slate-400 hover:text-pink-500'}`}
-         >
-           <Heart size={16} fill={isSaved ? "currentColor" : "none"} />
-         </button>
+      {/* Top Header Section */}
+      <div className="w-full h-14 shrink-0 flex items-center px-6 border-b border-white/20 relative z-20 bg-white/50 backdrop-blur-sm">
+        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="flex items-center gap-2 text-indigo-600 font-bold text-[11px] uppercase tracking-widest active:scale-95 transition-all">
+           {isHe ? <ArrowRight size={16} /> : <ArrowLeft size={16} />} <span>{t.backToRoute}</span>
+        </button>
+        <div onClick={handleHeaderClick} className="flex-1 flex justify-center h-full items-center cursor-pointer group">
+          <div className={`w-12 h-1.5 bg-slate-200 rounded-full transition-all ${isExpanded ? 'bg-slate-300' : 'group-hover:bg-indigo-500'}`} />
+        </div>
+        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="p-2 text-slate-400 hover:text-slate-900 active:scale-95 transition-all"><X size={20}/></button>
       </div>
-      
-      <div className="px-6 mt-12 relative shrink-0">
-          <div className="w-full h-36 rounded-xl overflow-hidden bg-slate-200/40 shadow-inner border border-white/50 relative">
-             <img src={displayImageUrl} className={`w-full h-full object-cover transition-opacity duration-500 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`} alt={poi.name} onLoad={() => setIsImageLoading(false)} onError={() => { setImgError(true); setIsImageLoading(false); }} />
-             <div className="absolute top-3 right-3 bg-white/80 backdrop-blur-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm border border-emerald-50">
-                <ShieldCheck size={10} className="text-emerald-500" /><span className="text-[8px] font-bold text-slate-900 uppercase tracking-widest">{t.verified}</span>
-             </div>
+
+      <div className="flex-1 overflow-y-auto px-8 pt-6 pb-40 space-y-8 no-scrollbar scroll-smooth">
+          {/* Main Visual */}
+          <div className={`w-full transition-all duration-700 overflow-hidden bg-slate-200 shadow-inner relative ${isExpanded ? 'aspect-video' : 'h-28'}`} style={{borderRadius: '1rem'}}>
+            <GoogleImage query={`${poi.name}, ${route.city}`} className="w-full h-full" fallbackUrl={poi.imageUrl} />
+          </div>
+
+          {/* Title & Category */}
+          <div className="text-right">
+              <span className="text-[9px] text-indigo-600 tracking-widest block uppercase mb-1 font-black">{t.expDiscovery}</span>
+              <h2 className={`text-slate-900 font-black leading-tight transition-all duration-500 ${isExpanded ? 'text-3xl' : 'text-xl'}`}>
+                {he}
+                {en && (
+                  <span className="block text-slate-400 text-sm font-medium mt-1.5 tracking-normal opacity-80">{en}</span>
+                )}
+              </h2>
+              <div className="flex items-center gap-2 mt-4">
+                <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 text-[10px] text-indigo-600 font-black uppercase tracking-widest" style={{borderRadius: '5px'}}>
+                  {poi.category && CATEGORY_ICONS[poi.category]}
+                  <span>{isHe ? CATEGORY_LABELS_HE[poi.category || 'history'] : poi.category}</span>
+                </div>
+              </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className={`space-y-6 transition-all duration-500 ${isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <div className="grid grid-cols-1 gap-3">
+                {isScanned && (
+                  <button onClick={() => onAddPoi?.(poi)} className="w-full h-14 bg-indigo-600 text-white font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all" style={{borderRadius: '5px'}}>
+                    <Plus size={16} />{t.addToRoute}
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex gap-4">
+                 <button onClick={onToggleSave} className={`flex-1 h-14 flex items-center justify-center border transition-all active:scale-95 ${isSaved ? 'text-pink-500 bg-pink-50 border-pink-100 shadow-inner' : 'text-slate-300 bg-white border-slate-100 shadow-sm'}`} style={{borderRadius: '5px'}}>
+                    <Heart size={20} fill={isSaved ? "currentColor" : "none"} />
+                 </button>
+                 {!isScanned && (
+                   <button onClick={() => { onRemove(poi.id); }} className="flex-1 h-14 flex items-center justify-center bg-white border border-slate-100 text-slate-300 hover:text-red-500 shadow-sm active:scale-95 transition-all" style={{borderRadius: '5px'}}>
+                      <Trash2 size={20} />
+                   </button>
+                 )}
+              </div>
+
+              {/* Rich Historical Content */}
+              <section className="text-right pb-10 border-t border-slate-100 pt-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <ScrollText size={20} className="text-indigo-500" />
+                  <h3 className="text-xl text-slate-900 font-black">{t.overview}</h3>
+                </div>
+                <div className="text-slate-700 text-[15px] leading-relaxed space-y-6 font-light">
+                  {isLoadingDetails ? (
+                    <div className="flex flex-col items-center gap-4 py-10 animate-pulse text-slate-300">
+                      <Loader2 size={32} className="animate-spin text-indigo-200" />
+                      <span className="text-xs font-bold tracking-widest uppercase">{t.loadingInfo}</span>
+                    </div>
+                  ) : (
+                    (extendedData?.historicalAnalysis || poi.description || "").split('\n').map((para: string, i: number) => (
+                      para.trim() && <p key={i} className="animate-in fade-in slide-in-from-bottom-2 duration-700" style={{ animationDelay: `${i * 150}ms` }}>{para}</p>
+                    ))
+                  )}
+                </div>
+              </section>
           </div>
       </div>
 
-      <div className="px-6 pt-5 pb-3 flex flex-col text-right shrink-0 relative">
-          <span className="text-[8px] font-black text-emerald-600 tracking-[0.2em] mb-1 block uppercase">{t.expDiscovery}</span>
-          <h2 className="font-bold text-slate-900 leading-tight mb-0.5 text-xl truncate">{poi.name}</h2>
-          <div className="flex flex-wrap items-center gap-2 justify-start mt-2">
-            <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm text-slate-600 px-2.5 py-1 rounded-lg text-[9px] font-bold border border-white/50">{poi.category && CATEGORY_ICONS[poi.category]}<span>{isHe ? CATEGORY_LABELS_HE[poi.category || 'history'] : poi.category}</span></div>
-          </div>
-      </div>
-
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 no-scrollbar scroll-smooth pt-4 space-y-8 pb-32">
-          {/* Quick Actions */}
-          <section className="flex gap-2">
-             <button onClick={openGoogleMaps} className="flex-1 flex items-center justify-center gap-2 bg-white/60 border border-slate-100 py-2.5 rounded-xl text-[10px] font-bold text-slate-700 hover:bg-emerald-50 transition-colors shadow-sm">
-                <Navigation size={14} className="text-emerald-500" />
-                {t.openMaps}
-             </button>
-             <button onClick={handleRemove} className="px-3 flex items-center justify-center gap-2 bg-white/60 border border-slate-100 py-2.5 rounded-xl text-[10px] font-bold text-red-400 hover:bg-red-50 transition-colors shadow-sm">
-                <Trash2 size={14} />
-             </button>
-          </section>
-
-          <section className="bg-white/20 backdrop-blur-md p-6 rounded-2xl border border-white/60 shadow-sm text-right">
-            <div className="flex items-center gap-2.5 mb-4"><div className="w-8 h-8 bg-emerald-600 text-white rounded-lg flex items-center justify-center"><ScrollText size={16} /></div><h3 className="text-base font-bold text-slate-900">{t.overview}</h3></div>
-            <p className="text-slate-800 text-sm leading-relaxed font-light whitespace-pre-wrap">{extendedData?.historicalAnalysis || poi.description}</p>
-          </section>
-          
-          {isLoadingDetails ? (
-            <div className="flex flex-col items-center py-8 text-slate-300 gap-3"><Loader2 className="animate-spin" size={24} /><p className="text-[9px] font-bold uppercase tracking-[0.2em]">{t.loadingInfo}</p></div>
-          ) : (
-            <div className="space-y-8">
-                {extendedData?.architecturalAnalysis && (
-                  <section className="text-right">
-                    <div className="flex items-center gap-2.5 mb-4"><div className="w-7 h-7 bg-violet-100 text-violet-600 rounded-lg flex items-center justify-center border border-white/50 shadow-sm"><Building2 size={14} /></div><h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{t.archOverview}</h4></div>
-                    <p className="text-slate-700 text-sm leading-relaxed font-light whitespace-pre-wrap">{extendedData.architecturalAnalysis}</p>
-                  </section>
-                )}
-                
-                {extendedData?.sections?.map((section: any, idx: number) => (
-                  <section key={idx} className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
-                    <h4 className="text-xs font-bold text-slate-800 mb-2.5">{section.title}</h4>
-                    <p className="text-slate-600 text-xs leading-relaxed font-light whitespace-pre-wrap">{section.content}</p>
-                  </section>
-                ))}
-
-                {/* Sources Section */}
-                {extendedData?.sources && extendedData.sources.length > 0 && (
-                  <section className="text-right">
-                    <div className="flex items-center gap-2.5 mb-4">
-                      <div className="w-7 h-7 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center border border-white/50 shadow-sm">
-                        <Library size={14} />
-                      </div>
-                      <h4 className="text-[10px] font-black uppercase text-slate-900 tracking-[0.2em]">{t.sourcesTitle}</h4>
-                    </div>
-                    <div className="space-y-2">
-                       {extendedData.sources.map((source: any, idx: number) => (
-                         <div key={idx} className="bg-white/40 p-2.5 rounded-xl border border-white/60 flex items-center justify-between">
-                            <span className="text-[10px] text-slate-600 font-medium truncate flex-1 ml-4">{source.title}</span>
-                            {source.url && source.url !== "#" && (
-                              <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-600">
-                                <ExternalLink size={10} />
-                              </a>
-                            )}
-                         </div>
-                       ))}
-                    </div>
-                  </section>
-                )}
-
-                <section className="pt-6 border-t border-white/30 text-right">
-                    <div className="flex items-center gap-2.5 mb-5"><div className="w-7 h-7 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center border border-white/50 shadow-sm"><Sparkles size={14} /></div><h4 className="text-[10px] font-black uppercase text-slate-900 tracking-[0.2em]">{t.nearbyTitle}</h4></div>
-                    {isLoadingNearby ? (
-                       <div className="flex items-center gap-2.5 py-4 text-slate-400 animate-pulse"><Loader2 size={10} className="animate-spin" /><span className="text-[9px] font-bold uppercase">{t.loadingNearby}</span></div>
-                    ) : (
-                      <div className="flex overflow-x-auto gap-3 pb-4 -mx-6 px-6 no-scrollbar snap-x snap-mandatory">
-                         {nearbySpots.map((spot, idx) => (
-                           <div key={idx} className="w-[160px] shrink-0 bg-white/40 backdrop-blur-sm border border-white/50 rounded-2xl p-3.5 snap-start shadow-sm flex flex-col justify-between">
-                                <h5 className="text-[11px] font-bold text-slate-900 truncate mb-1">{spot.name}</h5>
-                                <p className="text-[9px] text-slate-500 leading-tight line-clamp-2">{spot.description}</p>
-                                <div className="flex items-center justify-between mt-3">
-                                   <span className="text-[8px] font-black text-emerald-500 uppercase">{(spot as any).approxDistance}</span>
-                                </div>
-                           </div>
-                         ))}
-                      </div>
-                    )}
-                </section>
-            </div>
-          )}
-      </div>
-
-      <div className="absolute inset-x-0 bottom-0 p-4 pb-8 bg-gradient-to-t from-white/90 via-white/50 to-transparent z-[500] pointer-events-none">
-         <div className="flex items-center gap-3 pointer-events-auto max-w-sm mx-auto" dir={isHe ? 'rtl' : 'ltr'}>
-            <button onClick={onPrev} disabled={currentIndex === 0} className="flex-1 py-3.5 bg-emerald-50/80 border border-emerald-100 backdrop-blur-md rounded-xl text-emerald-700 text-[10px] font-bold disabled:opacity-30 active:scale-95 shadow-sm">{t.prev}</button>
-            <button onClick={onNext} disabled={currentIndex === totalCount - 1} className="flex-1 py-3.5 bg-emerald-100/80 text-emerald-900 border border-emerald-200 backdrop-blur-md rounded-xl text-[10px] font-bold disabled:opacity-30 active:scale-95 shadow-sm">{t.next}</button>
-         </div>
-      </div>
+      {/* Floating Navigation Bar */}
+      {!isScanned && currentIndex !== -1 && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[4000] bg-slate-900 text-white shadow-2xl p-1.5 flex gap-1 items-center w-[340px] transition-all duration-300 ${isExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`} style={{borderRadius: '5px'}}>
+           <button 
+             onClick={(e) => { e.stopPropagation(); onPrev(); }} 
+             disabled={currentIndex === 0} 
+             className={`flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${currentIndex === 0 ? 'text-slate-600' : 'text-white'}`}
+           >
+             {isHe ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+             {t.prev}
+           </button>
+           <div className="w-px h-8 bg-slate-700 shrink-0" />
+           <button 
+             onClick={(e) => { e.stopPropagation(); onNext(); }} 
+             disabled={currentIndex === totalCount - 1} 
+             className={`flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${currentIndex === totalCount - 1 ? 'text-slate-600' : 'text-white'}`}
+           >
+             {t.next}
+             {isHe ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+           </button>
+        </div>
+      )}
     </div>
   );
 };
