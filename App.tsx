@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Compass, Loader2, Route as RouteIcon, Library as LibraryIcon, User as UserIcon, X, Navigation, MapPin, Footprints, Plus, Heart, Target as TargetIcon, Trash2, Wand2, CheckCircle, MapPinned, Search, LocateFixed, Sparkles, ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, BookOpen, Key } from 'lucide-react';
+import { Compass, Loader2, Route as RouteIcon, Library as LibraryIcon, User as UserIcon, X, Navigation, MapPin, Footprints, Plus, Heart, Target as TargetIcon, Trash2, Wand2, CheckCircle, MapPinned, Search, LocateFixed, Sparkles, ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, BookOpen, Key, Eye, Check, AlertCircle, Crosshair, Bookmark, Globe, Settings2, Sliders, ChevronDown, ChevronUp, History } from 'lucide-react';
 import { UserPreferences, Route, POI } from './types';
 import { generateWalkingRoute, suggestNearbyGems, generateStreetWalkRoute, fetchExtendedPoiDetails } from './services/geminiService';
 import { PreferencesPanel } from './components/PreferencesPanel';
@@ -16,13 +16,18 @@ import {
   getSavedRoutesFromSupabase, 
   deleteRouteFromSupabase, 
   saveRouteToSupabase, 
-  savePoiToSupabase,
   signInWithGoogle, 
   signOut, 
   getSavedPoisFromSupabase,
   deletePoiFromSupabase,
   getRecentCuratedRoutes,
-  getRoutesByCityHub
+  getRoutesByCityHub,
+  normalize,
+  updateSavedRouteData,
+  generateStableId,
+  getCachedPoiDetails,
+  getUserPreferences,
+  saveUserPreferences
 } from './services/supabase';
 
 declare var google: any;
@@ -39,11 +44,17 @@ const POPULAR_CITIES = [
 const extractStandardCity = (results: any[]) => {
   const locality = results.find(r => r.types.includes('locality'));
   if (locality) return locality.address_components.find((c: any) => c.types.includes('locality'))?.long_name;
-  
   const adminArea = results.find(r => r.types.includes('administrative_area_level_1'));
   if (adminArea) return adminArea.address_components.find((c: any) => c.types.includes('administrative_area_level_1'))?.long_name;
-
   return results[0]?.address_components.find((c: any) => c.types.includes('locality') || c.types.includes('political'))?.long_name;
+};
+
+const extractStreetName = (results: any[]) => {
+  const route = results.find(r => r.types.includes('route'));
+  if (route) return route.address_components.find((c: any) => c.types.includes('route'))?.long_name;
+  const premise = results.find(r => r.types.includes('premise') || r.types.includes('point_of_interest'));
+  if (premise) return premise.address_components.find((c: any) => c.types.includes('route'))?.long_name || premise.formatted_address.split(',')[0];
+  return results[0]?.formatted_address.split(',')[0];
 };
 
 const App: React.FC = () => {
@@ -54,55 +65,75 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'navigation' | 'profile' | 'route' | 'library'>('navigation');
   const [currentRoute, setCurrentRoute] = useState<Route | null>(null);
   const [selectedPoi, setSelectedPoi] = useState<POI | null>(null);
-  const [scannedPois, setScannedPois] = useState<POI[]>([]);
-  const [basketPois, setBasketPois] = useState<POI[]>([]);
+  const [isPoiExpanded, setIsPoiExpanded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false); 
   const [isSearching, setIsSearching] = useState(false);
   const [savedRoutes, setSavedRoutes] = useState<any[]>([]);
   const [savedPois, setSavedPois] = useState<any[]>([]);
   const [recentGlobalRoutes, setRecentGlobalRoutes] = useState<Route[]>([]);
   const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
-  const [isPlacementMode, setIsPlacementMode] = useState(false);
+  const [isStreetSelectionMode, setIsStreetSelectionMode] = useState(false);
+  const [streetSearchQuery, setStreetSearchQuery] = useState('');
+  const [isGeocodingStreet, setIsGeocodingStreet] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
   const [viewingCity, setViewingCity] = useState<string | null>(null);
   const [citySpecificRoutes, setCitySpecificRoutes] = useState<Route[]>([]);
   const [isLoadingCityRoutes, setIsLoadingCityRoutes] = useState(false);
-
-  const [offlineRouteIds, setOfflineRouteIds] = useState<string[]>([]);
-  const [isOfflineLoading, setIsOfflineLoading] = useState(false);
-  const [offlineProgress, setOfflineProgress] = useState(0);
-
-  // Invite Code State
-  const [hasFullAccess, setHasFullAccess] = useState(localStorage.getItem('urban_full_access') === 'true');
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [isPrefsExpanded, setIsPrefsExpanded] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMap = useRef<any>(null);
   const markers = useRef<any[]>([]);
-  const scanMarkers = useRef<any[]>([]);
+  const userMarker = useRef<any>(null);
   const directionsRenderer = useRef<any>(null);
-  const userLocationMarker = useRef<any>(null);
+  const mapListenerRef = useRef<any>(null);
 
   const isHe = preferences.language === 'he';
 
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const clearMarkers = () => { markers.current.forEach(m => m && m.setMap(null)); markers.current = []; };
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) refreshSavedContent(session.user.id);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        refreshSavedContent(u.id);
+        const prefs = await getUserPreferences(u.id);
+        if (prefs) setPreferences(prefs);
+      }
     });
-    supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) refreshSavedContent(session.user.id);
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+        const u = session?.user ?? null;
+        setUser(u);
+        if (u) {
+          refreshSavedContent(u.id);
+          const prefs = await getUserPreferences(u.id);
+          if (prefs) setPreferences(prefs);
+        } else {
+          setSavedRoutes([]);
+          setSavedPois([]);
+        }
     });
     loadGlobalContent();
-    const stored = localStorage.getItem('urbanito_offline_list');
-    if (stored) try { setOfflineRouteIds(JSON.parse(stored)); } catch(e) { setOfflineRouteIds([]); }
   }, []);
 
   const loadGlobalContent = async () => {
-    const global = await getRecentCuratedRoutes(20);
+    const global = await getRecentCuratedRoutes(32);
     setRecentGlobalRoutes(global);
   };
+
+  useEffect(() => {
+    if (activeTab === 'library') {
+      loadGlobalContent();
+    }
+  }, [activeTab]);
 
   const refreshSavedContent = async (userId: string) => {
       const routes = await getSavedRoutesFromSupabase(userId);
@@ -114,579 +145,448 @@ const App: React.FC = () => {
   useEffect(() => {
     if (mapRef.current && !googleMap.current) {
       googleMap.current = new google.maps.Map(mapRef.current, {
-        center: { lat: 31.7767, lng: 35.2345 }, zoom: 15, gestureHandling: 'greedy', disableDefaultUI: true,
-        styles: [
-          { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
-          { "featureType": "transit", "stylers": [{ "visibility": "off" }] },
-          { "featureType": "road", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] }
-        ]
+        center: { lat: 48.8566, lng: 2.3522 }, zoom: 14, gestureHandling: 'greedy', disableDefaultUI: true,
+        styles: [{ "featureType": "poi", "stylers": [{ "visibility": "off" }] }, { "featureType": "transit", "stylers": [{ "visibility": "off" }] }, { "featureType": "road", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] }]
       });
       directionsRenderer.current = new google.maps.DirectionsRenderer({
-        map: googleMap.current,
-        suppressMarkers: true,
-        preserveViewport: true,
+        map: googleMap.current, suppressMarkers: true, preserveViewport: true,
         polylineOptions: { strokeColor: '#4f46e5', strokeWeight: 5, strokeOpacity: 0.8 }
       });
 
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition((pos) => {
           const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          if (userLocationMarker.current) {
-            userLocationMarker.current.setPosition(loc);
-          } else {
-            userLocationMarker.current = new google.maps.Marker({
-              position: loc,
-              map: googleMap.current,
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8,
-                fillColor: '#6366f1',
-                fillOpacity: 1,
-                strokeColor: '#ffffff',
-                strokeWeight: 2,
-              },
-              title: "My Location",
-              zIndex: 999
+          if (!userMarker.current) {
+            userMarker.current = new google.maps.Marker({
+              position: loc, map: googleMap.current,
+              icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#3b82f6', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+              zIndex: 9999
             });
-          }
-        }, () => {}, { enableHighAccuracy: true });
+          } else { userMarker.current.setPosition(loc); }
+        }, (err) => console.warn("Location error:", err), { enableHighAccuracy: true });
       }
     }
   }, []);
 
-  const handleCitySelect = async (city: any) => {
-    setIsSearching(true);
-    setViewingCity(city.nameEn);
-    setIsLoadingCityRoutes(true);
-    try {
-      const geocoder = new google.maps.Geocoder();
-      const res = await geocoder.geocode({ address: city.nameEn, language: 'en' });
-      const standardizedName = extractStandardCity(res.results) || city.nameEn;
-      if (res.results[0]) {
-        const location = res.results[0].geometry.location;
-        googleMap.current.panTo(location);
-        googleMap.current.setZoom(14);
-      }
-      const routes = await getRoutesByCityHub(standardizedName);
-      setCitySpecificRoutes(routes);
-    } catch (e) { console.error(e); } finally { 
-      setIsSearching(false); 
-      setIsLoadingCityRoutes(false);
-    }
-  };
-
   useEffect(() => {
-    if (selectedPoi && googleMap.current) {
-      googleMap.current.panTo({ lat: selectedPoi.lat, lng: selectedPoi.lng });
-      googleMap.current.setZoom(17);
+    if (!googleMap.current) return;
+    if (isStreetSelectionMode) {
+      const geocodeCurrentCenter = async () => {
+        setIsGeocodingStreet(true);
+        const center = googleMap.current.getCenter();
+        const geocoder = new google.maps.Geocoder();
+        try {
+          const res = await geocoder.geocode({ location: center, language: isHe ? 'he' : 'en' });
+          if (res.results && res.results.length > 0) {
+            const street = extractStreetName(res.results);
+            if (street) setStreetSearchQuery(street);
+          }
+        } catch (e) { console.warn("Geocoding failed:", e); } finally { setIsGeocodingStreet(false); }
+      };
+      mapListenerRef.current = googleMap.current.addListener('idle', geocodeCurrentCenter);
+      geocodeCurrentCenter();
+    } else {
+      if (mapListenerRef.current) { google.maps.event.removeListener(mapListenerRef.current); mapListenerRef.current = null; }
     }
-  }, [selectedPoi]);
+    return () => { if (mapListenerRef.current) google.maps.event.removeListener(mapListenerRef.current); };
+  }, [isStreetSelectionMode, isHe]);
 
-  const clearMarkers = () => { markers.current.forEach(m => m.setMap(null)); markers.current = []; };
-  const clearScanMarkers = () => { scanMarkers.current.forEach(m => m.setMap(null)); scanMarkers.current = []; };
-
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
       const geocoder = new google.maps.Geocoder();
-      const res = await geocoder.geocode({ address: searchQuery });
+      const res = await geocoder.geocode({ address: searchQuery, language: isHe ? 'he' : 'en' });
       if (res.results[0]) {
-        const location = res.results[0].geometry.location;
-        googleMap.current.panTo(location);
-        googleMap.current.setZoom(14);
-        setActiveTab('navigation');
-        setSearchQuery('');
-      }
-    } catch (e) { console.error(e); } finally { setIsSearching(false); }
-  };
-
-  const handleMyLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const loc = res.results[0].geometry.location;
         googleMap.current.panTo(loc);
-        googleMap.current.setZoom(16);
-      });
-    }
-  };
-
-  const handleSaveRoute = async () => {
-    if (!user || !currentRoute) { if (!user) signInWithGoogle(); return; }
-    const geocoder = new google.maps.Geocoder();
-    const res = await geocoder.geocode({ 
-      location: { lat: currentRoute.pois[0].lat, lng: currentRoute.pois[0].lng }, 
-      language: 'en' 
-    });
-    const standardizedCity = extractStandardCity(res.results) || currentRoute.city;
-    const alreadySaved = savedRoutes.find(r => r.route_data.id === currentRoute.id);
-    if (alreadySaved) { await deleteRouteFromSupabase(alreadySaved.id, user.id); } 
-    else { await saveRouteToSupabase(user.id, { ...currentRoute, city: standardizedCity }); }
-    refreshSavedContent(user.id);
-  };
-
-  const handleSaveOffline = async () => {
-    if (!currentRoute) return;
-    setIsOfflineLoading(true); setOfflineProgress(5);
-    try {
-      const updatedPois = [...currentRoute.pois];
-      for (let i = 0; i < updatedPois.length; i++) {
-        const poi = updatedPois[i];
-        const details = await fetchExtendedPoiDetails(poi.name, currentRoute.city, preferences);
-        updatedPois[i] = { ...poi, ...details, isFullyLoaded: true };
-        setOfflineProgress(Math.floor(10 + (i / updatedPois.length) * 85));
+        googleMap.current.setZoom(15);
       }
-      const offlineRoute = { ...currentRoute, pois: updatedPois, isOffline: true };
-      localStorage.setItem(`offline_route_${currentRoute.id}`, JSON.stringify(offlineRoute));
-      const newList = Array.from(new Set([...offlineRouteIds, currentRoute.id]));
-      setOfflineRouteIds(newList);
-      localStorage.setItem('urbanito_offline_list', JSON.stringify(newList));
-      setOfflineProgress(100);
-      setTimeout(() => setIsOfflineLoading(false), 500);
-    } catch (e) { setIsOfflineLoading(false); }
+    } catch (e) { showToast(isHe ? 'לא מצאנו את המקום' : 'Location not found', 'error'); } finally { setIsSearching(false); }
   };
 
-  const handleRemoveOffline = (id: string) => {
-    localStorage.removeItem(`offline_route_${id}`);
-    const newList = offlineRouteIds.filter(oid => oid !== id);
-    setOfflineRouteIds(newList);
-    localStorage.setItem('urbanito_offline_list', JSON.stringify(newList));
+  const handleActionCreateRoute = async (type: 'area' | 'street' | 'gems') => {
+    if (type === 'street') { setIsAiMenuOpen(false); setIsStreetSelectionMode(true); return; }
+    setIsAiMenuOpen(false);
+    setIsGenerating(true);
+    try {
+      const center = googleMap.current.getCenter();
+      const geocoder = new google.maps.Geocoder();
+      const res = await geocoder.geocode({ location: center });
+      const cityName = extractStandardCity(res.results) || "Unknown City";
+      
+      let route: Route | null = null;
+      if (type === 'area') {
+        route = await generateWalkingRoute(cityName, { lat: center.lat(), lng: center.lng() }, preferences, undefined, user?.id);
+      } else if (type === 'gems') {
+        const gems = await suggestNearbyGems({ city: cityName, lat: center.lat(), lng: center.lng() }, preferences.language);
+        renderScanMarkers(gems);
+        setIsGenerating(false);
+        return;
+      }
+      if (route) { setCurrentRoute(route); renderRouteMarkers(route); setActiveTab('route'); }
+    } catch (e: any) { 
+      console.error("Route gen error:", e);
+      showToast(isHe ? 'שגיאה ביצירת המסלול. בדוק את חיבור ה-API.' : 'Error generating route. Check API connection.', 'error'); 
+    } finally { setIsGenerating(false); }
   };
 
-  const handleToggleSavePoi = async (poi: POI) => {
-    if (!user) { signInWithGoogle(); return; }
-    const alreadySaved = savedPois.find(p => p.poi_name === poi.name);
-    if (alreadySaved) { await deletePoiFromSupabase(alreadySaved.id, user.id); } 
-    else { await savePoiToSupabase(user.id, poi, currentRoute?.city || viewingCity || "Unknown"); }
-    refreshSavedContent(user.id);
+  const confirmStreetWalk = async () => {
+    if (!streetSearchQuery.trim()) return;
+    setIsStreetSelectionMode(false);
+    setIsGenerating(true);
+    try {
+      const center = googleMap.current.getCenter();
+      const route = await generateStreetWalkRoute(streetSearchQuery, { lat: center.lat(), lng: center.lng() }, preferences, user?.id);
+      if (route) { setCurrentRoute(route); renderRouteMarkers(route); setActiveTab('route'); }
+    } catch (e) { showToast(isHe ? 'לא הצלחנו לייצר סיפור לרחוב הזה' : 'Failed to generate street story', 'error'); } finally { setIsGenerating(false); }
   };
 
-  const handleRemovePoiFromRoute = (poiId: string) => {
-    if (!currentRoute) return;
-    const updatedPois = currentRoute.pois.filter(p => p.id !== poiId);
-    if (updatedPois.length === 0) {
-      setCurrentRoute(null);
-      if (directionsRenderer.current) directionsRenderer.current.setDirections(null);
-      clearMarkers(); setSelectedPoi(null); setActiveTab('navigation');
-    } else {
-      const newRoute = { ...currentRoute, pois: updatedPois };
-      setCurrentRoute(newRoute);
-      renderRouteMarkers(newRoute);
-      setSelectedPoi(null);
-    }
-  };
-
-  const handleAddPoiToRoute = (poi: POI) => {
-    if (!currentRoute) return;
-    const updatedPois = [...currentRoute.pois, poi];
-    const newRoute = { ...currentRoute, pois: updatedPois };
-    setCurrentRoute(newRoute);
-    renderRouteMarkers(newRoute);
-  };
-
-  const renderRouteMarkers = (route: Route) => {
-    clearMarkers(); clearScanMarkers(); setScannedPois([]);
+  const renderScanMarkers = (pois: POI[]) => {
+    clearMarkers();
     const bounds = new google.maps.LatLngBounds();
-    route.pois.forEach((p, i) => {
+    pois.forEach((p) => {
       const marker = new google.maps.Marker({
-        position: { lat: p.lat, lng: p.lng },
-        map: googleMap.current,
-        label: { text: (i + 1).toString(), color: 'white', fontSize: '10px' },
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 14, fillColor: '#4f46e5', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
-        zIndex: 100
+        position: { lat: p.lat, lng: p.lng }, map: googleMap.current, zIndex: 200,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#6366f1', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
       });
       marker.addListener('click', () => setSelectedPoi(p));
       markers.current.push(marker);
       bounds.extend(marker.getPosition());
     });
-    if (route.pois.length > 0) googleMap.current.fitBounds(bounds);
-    calculateRoutePath(route.pois);
+    if (pois.length > 0) googleMap.current.fitBounds(bounds);
+    directionsRenderer.current.setDirections(null);
   };
 
-  const calculateRoutePath = (pois: POI[]) => {
-    if (pois.length < 2) {
-      if (directionsRenderer.current) directionsRenderer.current.setDirections(null);
-      return;
-    }
-    const directionsService = new google.maps.DirectionsService();
-    directionsService.route({
-      origin: { lat: pois[0].lat, lng: pois[0].lng },
-      destination: { lat: pois[pois.length - 1].lat, lng: pois[pois.length - 1].lng },
-      waypoints: pois.slice(1, -1).map(p => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })),
-      travelMode: google.maps.TravelMode.WALKING
-    }, (response: any, status: string) => {
-      if (status === 'OK') directionsRenderer.current.setDirections(response);
-    });
+  const handleUpdatePreferences = (p: UserPreferences) => {
+    setPreferences(p);
+    if (user) saveUserPreferences(user.id, p);
   };
 
-  const handleScanGems = async () => {
-    setIsGenerating(true); setIsAiMenuOpen(false); setScannedPois([]); setBasketPois([]); clearScanMarkers();
-    try {
-      const center = googleMap.current.getCenter();
-      const geocoder = new google.maps.Geocoder();
-      const res = await geocoder.geocode({ location: center, language: 'en' });
-      const city = extractStandardCity(res.results) || "Unknown";
-      const gems = await suggestNearbyGems({ city, lat: center.lat(), lng: center.lng() } as any, preferences.language);
-      const newPois = gems.map((g: any, i: number) => ({
-        id: `gem-${Date.now()}-${i}`, name: g.name, lat: g.lat, lng: g.lng, description: g.description, category: 'history', imageUrl: ""
-      }));
-      newPois.forEach((p: POI) => {
-        const marker = new google.maps.Marker({
-          position: { lat: p.lat, lng: p.lng }, map: googleMap.current,
-          icon: { path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z", fillColor: '#10b981', fillOpacity: 0.9, scale: 1.5, strokeColor: '#ffffff', strokeWeight: 2, anchor: new google.maps.Point(12, 24) }
-        });
-        marker.addListener('click', () => setSelectedPoi(p));
-        scanMarkers.current.push(marker);
+  const renderRouteMarkers = (route: Route, activeId?: string) => {
+    clearMarkers();
+    const bounds = new google.maps.LatLngBounds();
+    route.pois.forEach((p, i) => {
+      const isActive = p.id === activeId;
+      const marker = new google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng }, map: googleMap.current, zIndex: isActive ? 5000 : 100,
+        label: { text: (i + 1).toString(), color: 'white', fontSize: isActive ? '14px' : '10px', fontWeight: isActive ? '900' : '400' },
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: isActive ? 24 : 14, fillColor: isActive ? '#f43f5e' : '#4f46e5', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: isActive ? 4 : 2 }
       });
-      setScannedPois(newPois); setActiveTab('navigation');
-    } catch (e) {} finally { setIsGenerating(false); }
+      marker.addListener('click', () => setSelectedPoi(p));
+      markers.current.push(marker);
+      bounds.extend(marker.getPosition());
+    });
+    if (!activeId && route.pois.length > 0) googleMap.current.fitBounds(bounds);
+    calculatePath(route.pois);
   };
 
-  const handleGenerateFromBasket = () => {
-    if (basketPois.length === 0) return;
-    const route: Route = {
-      id: `basket-${Date.now()}`, name: isHe ? "המסלול המלוקט שלי" : "My Handpicked Tour", city: viewingCity || "Local Area", pois: basketPois,
-      description: isHe ? "מסלול שנבחר ידנית מתוך פנינים נסתרות." : "A tour manually picked from hidden gems.", durationMinutes: basketPois.length * 20, creator: "User Handpicked", style: 'area'
-    };
-    setCurrentRoute(route); renderRouteMarkers(route); setBasketPois([]); setScannedPois([]); clearScanMarkers(); setActiveTab('route');
+  const calculatePath = (pois: POI[]) => {
+    if (pois.length < 2) { directionsRenderer.current.setDirections(null); return; }
+    new google.maps.DirectionsService().route({
+      origin: { lat: pois[0].lat, lng: pois[0].lng }, destination: { lat: pois[pois.length - 1].lat, lng: pois[pois.length - 1].lng },
+      waypoints: pois.slice(1, -1).map(p => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })), travelMode: google.maps.TravelMode.WALKING
+    }, (res: any, status: string) => { if (status === 'OK') directionsRenderer.current.setDirections(res); });
   };
 
-  const handleConfirmStreetWalk = async () => {
-    const center = googleMap.current.getCenter();
-    setIsPlacementMode(false); // EXIT IMMEDIATELY FOR FEEDBACK
-    setIsGenerating(true);
+  const toggleTab = (tab: any) => { setActiveTab(tab); setIsAiMenuOpen(false); setSelectedPoi(null); setIsStreetSelectionMode(false); setIsPrefsExpanded(false); };
+
+  const handleLoadSavedRoute = async (cityName: string, route: Route) => {
+    setIsSearching(true);
+    try {
+      const enrichedPois = await Promise.all(route.pois.map(async (p) => {
+        if (p.isFullyLoaded) return p;
+        const cached = await getCachedPoiDetails(p.name, route.city, p.lat, p.lng);
+        if (cached) return { ...p, ...cached, isFullyLoaded: true };
+        return p;
+      }));
+      const enrichedRoute = { ...route, pois: enrichedPois };
+      setCurrentRoute(enrichedRoute); renderRouteMarkers(enrichedRoute); setActiveTab('route'); setIsAiMenuOpen(false);
+    } catch (e) {} finally { setIsSearching(false); }
+  };
+
+  const handleCitySelect = async (city: any) => {
+    setIsSearching(true); setViewingCity(city.name); setIsLoadingCityRoutes(true);
     try {
       const geocoder = new google.maps.Geocoder();
-      const results = await geocoder.geocode({ location: center, language: 'en' });
-      const standardizedCity = extractStandardCity(results.results) || "Unknown";
-      const streetName = results.results[0]?.address_components.find((c: any) => c.types.includes('route'))?.long_name || "this street";
-      const route = await generateStreetWalkRoute(streetName, center.toJSON(), preferences, user?.id);
-      setCurrentRoute({ ...route, city: standardizedCity }); 
-      renderRouteMarkers(route); 
-      setActiveTab('route');
-    } catch (e) {
-      console.error("Street Walk Generation Error:", e);
-    } finally { 
-      setIsGenerating(false); 
+      const res = await geocoder.geocode({ address: city.nameEn, language: 'en' });
+      if (res.results[0]) { googleMap.current.panTo(res.results[0].geometry.location); googleMap.current.setZoom(14); }
+      const routes = await getRoutesByCityHub(city.name, city.nameEn);
+      setCitySpecificRoutes(routes);
+    } catch (e) {} finally { setIsSearching(false); setIsLoadingCityRoutes(false); }
+  };
+
+  const centerOnUser = () => {
+    if (navigator.geolocation && googleMap.current) {
+      setIsLocating(true);
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        googleMap.current.panTo(loc);
+        googleMap.current.setZoom(16);
+        if (!userMarker.current) {
+          userMarker.current = new google.maps.Marker({
+            position: loc, map: googleMap.current,
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#3b82f6', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+            zIndex: 9999
+          });
+        } else {
+          userMarker.current.setPosition(loc);
+        }
+        setIsLocating(false);
+      }, (err) => {
+        console.warn("Location error:", err);
+        showToast(isHe ? 'לא ניתן לזהות מיקום. בדוק את הגדרות הפרטיות.' : 'Cannot detect location. Check privacy settings.', 'error');
+        setIsLocating(false);
+      }, { enableHighAccuracy: true, timeout: 8000 });
     }
-  };
-
-  const handleAutoTour = async () => {
-    const center = googleMap.current.getCenter();
-    setIsAiMenuOpen(false);
-    setIsGenerating(true);
-    try {
-      const geocoder = new google.maps.Geocoder();
-      const res = await geocoder.geocode({ location: center, language: 'en' });
-      const city = extractStandardCity(res.results) || "Local Area";
-      const route = await generateWalkingRoute(city, center.toJSON(), preferences, undefined, user?.id);
-      setCurrentRoute({ ...route, city: city }); 
-      renderRouteMarkers(route); 
-      setActiveTab('route');
-    } catch (e) {
-      console.error("Auto Tour Generation Error:", e);
-    } finally { 
-      setIsGenerating(false); 
-    }
-  };
-
-  const toggleTab = (tab: any) => { setActiveTab(tab); setIsAiMenuOpen(false); setIsPlacementMode(false); setSelectedPoi(null); };
-
-  const handleNextPoi = () => {
-    if (!currentRoute || !selectedPoi) return;
-    const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id);
-    if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]);
-  };
-
-  const handlePrevPoi = () => {
-    if (!currentRoute || !selectedPoi) return;
-    const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id);
-    if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]);
-  };
-
-  const handleVerifyInvite = (code: string) => {
-    if (code.toUpperCase() === 'URBAN30' || code.toUpperCase() === 'URBANITO') {
-      localStorage.setItem('urban_full_access', 'true');
-      setHasFullAccess(true);
-      return true;
-    }
-    return false;
   };
 
   return (
     <div className="h-full w-full flex flex-col relative bg-white overflow-hidden" dir={isHe ? 'rtl' : 'ltr'}>
       <main className="flex-1 relative h-full">
         <div ref={mapRef} className="w-full h-full" />
-
-        {/* Global Route Loading Status */}
-        {isGenerating && (
-          <div className="absolute top-24 inset-x-6 z-[2000] pointer-events-none flex justify-center animate-in fade-in slide-in-from-top duration-500">
-             <div className="bg-slate-900/90 backdrop-blur-md text-white px-6 py-3 shadow-2xl flex items-center gap-3 border border-white/10" style={{ borderRadius: '99px' }}>
-                <Loader2 size={18} className="animate-spin text-indigo-400" />
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em]">{isHe ? 'יוצר מסלול...' : 'Generating Tour...'}</span>
-                  <span className="text-[8px] text-slate-400 font-medium">{isHe ? 'הבינה המלאכותית מחברת את הנקודות' : 'AI is connecting the dots'}</span>
+        
+        {isStreetSelectionMode && (
+          <div className="absolute inset-0 z-[1000] pointer-events-none flex items-center justify-center">
+             <div className="relative">
+                <div className="w-16 h-16 border-[1px] border-indigo-500/30 rounded-full-force flex items-center justify-center animate-pulse">
+                   <div className="w-10 h-10 border-2 border-indigo-600 rounded-full-force flex items-center justify-center bg-indigo-600/10 backdrop-blur-[2px] shadow-[0_0_20px_rgba(79,70,229,0.3)]">
+                      <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full-force shadow-md" />
+                   </div>
                 </div>
              </div>
           </div>
         )}
 
-        {activeTab === 'navigation' && !selectedPoi && !isAiMenuOpen && !isPlacementMode && (
-          <div className="absolute top-6 inset-x-6 z-[1500] pointer-events-none animate-in slide-in-from-top duration-500">
-            <form onSubmit={handleSearch} className="glass-card w-full max-w-md mx-auto p-1.5 shadow-2xl flex items-center gap-2 pointer-events-auto border-white/50">
-               <div className="flex-1 flex items-center gap-3 px-3">
-                 <Search size={18} className="text-slate-400" />
-                 <input 
-                   type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                   placeholder={isHe ? 'חפשו עיר או כתובת...' : 'Search city or address...'}
-                   className="w-full bg-transparent outline-none text-slate-900 text-sm font-medium placeholder:text-slate-400"
-                 />
-               </div>
-               <button 
-                 type="submit" disabled={isSearching}
-                 className="bg-indigo-600 text-white px-5 py-2.5 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-2"
-               >
-                 {isSearching ? <Loader2 size={14} className="animate-spin" /> : isHe ? 'חפש' : 'Search'}
-               </button>
-            </form>
+        {toast && (
+          <div className={`fixed top-28 left-1/2 -translate-x-1/2 z-[5000] px-6 py-3 shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-slate-900 text-white'}`} style={{ borderRadius: '5px' }}>
+            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle size={18} className="text-emerald-400" />}
+            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
           </div>
         )}
 
-        {/* My Location Button - Positioned relative to the Fixed Navigation Menu Bar */}
-        {activeTab === 'navigation' && !selectedPoi && !isAiMenuOpen && !isPlacementMode && (
-          <button 
-            onClick={handleMyLocation}
-            className="absolute z-[1500] w-12 h-12 glass-card shadow-2xl flex items-center justify-center text-slate-900 active:scale-90 transition-all border-white/50"
-            style={{ 
-              bottom: 'calc(6rem + env(safe-area-inset-bottom))', 
-              left: '1.5rem',
-              borderRadius: '12px !important'
-            }}
-          >
-            <LocateFixed size={24} />
-          </button>
+        {activeTab === 'navigation' && !selectedPoi && !isAiMenuOpen && !isStreetSelectionMode && (
+          <>
+            <div className="absolute top-[max(1.5rem,env(safe-area-inset-top,1.5rem))] inset-x-6 z-[2000] flex flex-col items-center gap-3">
+               <form onSubmit={handleSearchSubmit} className="w-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.15)] flex items-center border border-slate-100 overflow-hidden" style={{ borderRadius: '5px' }}>
+                  <div className="w-14 h-14 flex items-center justify-center text-slate-400 shrink-0"><Search size={22} strokeWidth={1.5} /></div>
+                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={isHe ? 'לאן מטיילים היום?' : 'Where to next?'} className="flex-1 bg-transparent border-none outline-none text-[15px] font-medium py-4 text-slate-900" />
+               </form>
+            </div>
+            {/* My Location Button */}
+            <button 
+              onClick={centerOnUser}
+              className={`absolute bottom-32 right-6 z-[2000] w-12 h-12 bg-white shadow-2xl flex items-center justify-center text-slate-600 hover:text-indigo-600 active:scale-90 transition-all border border-slate-50 cursor-pointer pointer-events-auto ${isLocating ? 'animate-pulse' : ''}`}
+              style={{ borderRadius: '50%' }}
+              aria-label={isHe ? 'המיקום שלי' : 'My Location'}
+            >
+              {isLocating ? <Loader2 size={24} className="animate-spin text-indigo-500" /> : <LocateFixed size={24} />}
+            </button>
+          </>
         )}
 
-        {activeTab === 'navigation' && (scannedPois.length > 0 || basketPois.length > 0) && (
-          <div className="absolute inset-x-0 bottom-40 z-[1000] pointer-events-none px-6 flex flex-col gap-4 items-center">
-             {basketPois.length > 0 && (
-               <button onClick={handleGenerateFromBasket} className="bg-slate-900 text-white px-6 py-4 shadow-2xl animate-in slide-in-from-bottom pointer-events-auto border border-white/20 flex items-center gap-3 active:scale-95 transition-all" style={{borderRadius: '5px'}}>
-                  <div className="bg-emerald-500 w-8 h-8 flex items-center justify-center text-[11px] font-black">{basketPois.length}</div>
-                  <span className="text-[11px] font-black uppercase tracking-widest">{isHe ? 'צור מסלול מהפנינים שבחרת' : 'Build Route from Selections'}</span>
-                  <Wand2 size={16} />
-               </button>
-             )}
-             {scannedPois.length > 0 && (
-               <div className="flex gap-3 overflow-x-auto no-scrollbar py-2 pointer-events-auto w-full">
-                  {scannedPois.map(poi => (
-                    <div key={poi.id} className="min-w-[160px] bg-white/95 backdrop-blur-md border border-white/40 shadow-xl p-2 flex flex-col gap-1.5 animate-in fade-in zoom-in">
-                       <div className="h-20 bg-slate-100 overflow-hidden relative" style={{borderRadius: '5px'}}>
-                          <GoogleImage query={`${poi.name}, ${currentRoute?.city || viewingCity || 'City'}`} className="w-full h-full" />
-                          <button onClick={() => { setBasketPois([...basketPois, poi]); setScannedPois(scannedPois.filter(p => p.id !== poi.id)); }} className="absolute top-1 right-1 w-8 h-8 bg-emerald-500 text-white flex items-center justify-center shadow-lg active:scale-90"><Plus size={16} /></button>
-                       </div>
-                       <div className="px-1">
-                          <h4 className="text-[10px] font-black text-slate-900 truncate leading-tight">{poi.name}</h4>
-                          <button onClick={() => setSelectedPoi(poi)} className="text-[8px] text-indigo-500 font-bold uppercase tracking-widest mt-1">{isHe ? 'פרטים' : 'Details'}</button>
-                       </div>
-                    </div>
-                  ))}
-               </div>
-             )}
-          </div>
-        )}
-
-        {isPlacementMode && (
-          <div className="absolute inset-x-0 bottom-24 z-[2000] flex justify-center px-6 pb-[env(safe-area-inset-bottom)]">
-             <div className="glass-card w-full max-w-md p-6 shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col items-center gap-5 animate-in slide-in-from-bottom duration-500 border-white/50">
-                <div className="flex flex-col items-center gap-1.5">
-                   <span className="text-[10px] text-indigo-600 font-black uppercase tracking-[0.2em]">{isHe ? 'מצב בחירת רחוב' : 'Street Selection Mode'}</span>
-                   <p className="text-[13px] font-bold text-slate-900 text-center">{isHe ? 'מקם את הכוונת על הרחוב המבוקש' : 'Center the crosshair on the target street'}</p>
+        {isStreetSelectionMode && (
+          <div className="absolute bottom-[110px] inset-x-6 z-[4500] animate-in slide-in-from-bottom-10 duration-500">
+             <div className="bg-white/95 backdrop-blur-md shadow-[0_20px_80px_rgba(0,0,0,0.3)] border border-slate-100 p-5 flex flex-col gap-4" style={{ borderRadius: '12px' }}>
+                <div className="flex justify-between items-center">
+                   <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[12px] font-black uppercase tracking-[0.1em] text-indigo-600 flex items-center gap-2"><Footprints size={16}/> {isHe ? 'סמן רחוב על המפה' : 'Select Street on Map'}</h3>
+                   </div>
+                   <button onClick={() => setIsStreetSelectionMode(false)} className="p-2 bg-slate-100/50 text-slate-500 rounded-full"><X size={18}/></button>
                 </div>
-                <div className="flex gap-3 w-full">
-                   <button onClick={() => setIsPlacementMode(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all">{isHe ? 'ביטול' : 'Cancel'}</button>
-                   <button onClick={handleConfirmStreetWalk} className="flex-[1.5] py-4 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"><CheckCircle size={16} /> {isHe ? 'אישור והמשך' : 'Confirm & Build'}</button>
+                <div className="flex flex-col gap-3">
+                   <div className="relative group">
+                      <div className={`absolute inset-y-0 ${isHe ? 'right-4' : 'left-4'} flex items-center text-slate-300`}>
+                        {isGeocodingStreet ? <Loader2 size={18} className="animate-spin text-indigo-400" /> : <MapPin size={18} />}
+                      </div>
+                      <input type="text" readOnly value={streetSearchQuery} placeholder={isHe ? 'מזהה רחוב...' : 'Identifying street...'} className={`w-full bg-slate-50 border border-slate-200 ${isHe ? 'pr-12' : 'pl-12'} py-4 text-sm font-bold outline-none text-slate-900`} style={{ borderRadius: '8px' }} />
+                   </div>
+                   <button onClick={confirmStreetWalk} disabled={!streetSearchQuery.trim()} className={`w-full h-14 bg-slate-900 text-white font-black text-[13px] uppercase tracking-[0.1em] active:scale-95 transition-all shadow-xl hover:bg-slate-800 flex items-center justify-center gap-3 disabled:opacity-50`} style={{ borderRadius: '8px' }}>
+                     {isHe ? 'צור סיפור לרחוב הזה' : 'Create Street Story'}
+                   </button>
                 </div>
              </div>
           </div>
         )}
 
-        {isPlacementMode && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]">
-             <div className="w-12 h-12 border-2 border-indigo-600 flex items-center justify-center animate-pulse"><div className="w-1.5 h-1.5 bg-indigo-600 rounded-full-force"/></div>
+        {isAiMenuOpen && (
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md z-[2500] flex flex-col items-center justify-end pb-32 px-6 animate-in fade-in duration-300 overflow-y-auto no-scrollbar">
+             <div className="w-full max-w-[400px] space-y-4 mb-20">
+                <button onClick={() => handleActionCreateRoute('area')} className="w-full bg-white border border-slate-100 p-5 flex items-center gap-4 shadow-2xl active:scale-95 transition-all animate-stagger-1" style={{ borderRadius: '12px' }}>
+                   <div className="w-12 h-12 bg-indigo-50 text-indigo-600 flex items-center justify-center rounded-lg"><Navigation size={24}/></div>
+                   <div className="text-right flex-1"><h4 className="text-sm font-black text-slate-900">{isHe ? 'מסלול חכם באיזור' : 'Smart Area Tour'}</h4><p className="text-[10px] text-slate-500">{isHe ? 'סיור עומק באתרים המרכזיים' : 'Deep dive into main sites'}</p></div>
+                </button>
+                <button onClick={() => handleActionCreateRoute('street')} className="w-full bg-white border border-slate-100 p-5 flex items-center gap-4 shadow-2xl active:scale-95 transition-all animate-stagger-2" style={{ borderRadius: '12px' }}>
+                   <div className="w-12 h-12 bg-indigo-50 text-indigo-600 flex items-center justify-center rounded-lg"><Footprints size={24}/></div>
+                   <div className="text-right flex-1"><h4 className="text-sm font-black text-slate-900">{isHe ? 'סיפור של רחוב' : 'Street Story'}</h4><p className="text-[10px] text-slate-500">{isHe ? 'הליכה עמוקה ברחוב אחד' : 'Single street exploration'}</p></div>
+                </button>
+                <button onClick={() => handleActionCreateRoute('gems')} className="w-full bg-white border border-slate-100 p-5 flex items-center gap-4 shadow-2xl active:scale-95 transition-all animate-stagger-3" style={{ borderRadius: '12px' }}>
+                   <div className="w-12 h-12 bg-indigo-50 text-indigo-600 flex items-center justify-center rounded-lg"><Eye size={24}/></div>
+                   <div className="text-right flex-1"><h4 className="text-sm font-black text-slate-900">{isHe ? 'סריקת אוצרות בסביבה' : 'Scan Nearby Gems'}</h4><p className="text-[10px] text-slate-500">{isHe ? 'למצוא את המקומות שאף אחד לא מכיר' : 'Discover hidden local spots'}</p></div>
+                </button>
+
+                <div className={`bg-white border border-slate-100 shadow-2xl animate-stagger-4 overflow-hidden transition-all duration-300 ${isPrefsExpanded ? 'pb-5' : 'pb-0'}`} style={{ borderRadius: '12px' }}>
+                   <button 
+                     onClick={() => setIsPrefsExpanded(!isPrefsExpanded)}
+                     className="w-full p-5 flex items-center justify-between text-indigo-600 hover:bg-slate-50 transition-colors"
+                   >
+                      <div className="flex items-center gap-2">
+                        <Sliders size={18} />
+                        <h4 className="text-[11px] font-black uppercase tracking-widest">{isHe ? 'העדפות מסלול ליצירה הבאה' : 'Route Preferences'}</h4>
+                      </div>
+                      {isPrefsExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                   </button>
+                   
+                   {isPrefsExpanded && (
+                     <div className="px-5 pt-2 animate-in slide-in-from-top-2 duration-300">
+                       <QuickRouteSetup 
+                          preferences={preferences} 
+                          onUpdatePreferences={handleUpdatePreferences} 
+                          onGenerate={() => {}} 
+                          onCancel={() => {}} 
+                          isEmbedded={true}
+                          hideActionButton={true}
+                       />
+                     </div>
+                   )}
+                </div>
+             </div>
           </div>
         )}
 
         {selectedPoi && (
-          <UnifiedPoiCard 
-            poi={selectedPoi} route={currentRoute || { city: viewingCity || "Local" } as Route} currentIndex={currentRoute ? currentRoute.pois.findIndex(p => p.id === selectedPoi.id) : -1} totalCount={currentRoute?.pois.length || 0} preferences={preferences}
-            onClose={() => setSelectedPoi(null)} onNext={handleNextPoi} onPrev={handlePrevPoi} onRemove={handleRemovePoiFromRoute}
-            onToggleSave={() => handleToggleSavePoi(selectedPoi)} isSaved={savedPois.some(sp => sp.poi_name === selectedPoi.name)}
-            onAddPoi={(p) => setBasketPois([...basketPois, p])} onEnrichPoi={(id, data) => { if(currentRoute) setCurrentRoute({...currentRoute, pois: currentRoute.pois.map(p => p.id === id ? {...p, ...data, isFullyLoaded:true} : p)}); }}
-            onAddToRoute={() => {}} onSaveRoute={() => {}} setAudioState={() => {}} setIsAudioExpanded={() => {}} audioState={{isPlaying:false, currentPoiId:null, currentChapterIndex:0, playbackRate:1, chapters:[]}} onGoToPoi={() => {}}
-            isScanned={scannedPois.some(p => p.id === selectedPoi.id)}
-          />
+          <UnifiedPoiCard poi={selectedPoi} route={currentRoute || { city: viewingCity || "Local" } as Route} currentIndex={currentRoute ? currentRoute.pois.findIndex(p => p.id === selectedPoi.id) : -1} totalCount={currentRoute?.pois.length || 0} preferences={preferences} onClose={() => setSelectedPoi(null)} onNext={() => { const idx = currentRoute?.pois.findIndex(p => p.id === selectedPoi.id); if (idx !== undefined && idx < (currentRoute?.pois.length || 0) - 1) setSelectedPoi(currentRoute!.pois[idx + 1]); }} onPrev={() => { const idx = currentRoute?.pois.findIndex(p => p.id === selectedPoi.id); if (idx !== undefined && idx > 0) setSelectedPoi(currentRoute!.pois[idx - 1]); }} onUpdatePreferences={handleUpdatePreferences} isExpanded={isPoiExpanded} setIsExpanded={setIsPoiExpanded} />
         )}
 
         {activeTab === 'route' && currentRoute && !selectedPoi && (
-          <RouteOverview 
-            route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={handleRemovePoiFromRoute} onAddPoi={handleAddPoiToRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => setIsAiMenuOpen(true)} user={user} 
-            isSaved={savedRoutes.some(sr => sr.route_data.id === currentRoute.id)} onClose={() => setActiveTab('navigation')} onSave={handleSaveRoute}
-            onOffline={handleSaveOffline} onRemoveOffline={handleRemoveOffline} isOfflineLoading={isOfflineLoading} offlineProgress={offlineProgress}
-            isOfflineSaved={offlineRouteIds.includes(currentRoute.id)}
-          />
+          <RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => {}} onAddPoi={() => {}} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} onRequestRefine={() => {}} user={user} isSaved={savedRoutes.some(sr => sr.route_data.id === currentRoute.id)} onClose={() => setActiveTab('navigation')} isOfflineLoading={isGenerating} />
         )}
       </main>
 
-      {!isPlacementMode && !selectedPoi && (
-        <div className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[2500] bg-white/95 backdrop-blur-md border border-white/40 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] p-1.5 flex gap-1.5 items-center w-[calc(100vw-3rem)] max-w-[340px]">
-          <button onClick={() => toggleTab('navigation')} className={`flex-1 py-3 flex justify-center ${activeTab === 'navigation' && !isAiMenuOpen ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}><Compass size={22}/></button>
-          <button onClick={() => toggleTab('library')} className={`flex-1 py-3 flex justify-center ${activeTab === 'library' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}><LibraryIcon size={22}/></button>
-          <button onClick={() => { setIsAiMenuOpen(!isAiMenuOpen); setIsPlacementMode(false); }} className={`w-14 h-14 ${isAiMenuOpen ? 'bg-slate-900' : 'bg-indigo-600'} text-white shadow-lg flex items-center justify-center active:scale-90 transition-all rounded-full-force`}>
-            {isAiMenuOpen ? <X size={28} /> : (isGenerating || isSearching) ? <Loader2 size={28} className="animate-spin" /> : <Plus size={32} />}
-          </button>
-          <button onClick={() => { if(currentRoute) toggleTab('route'); else setIsAiMenuOpen(true); }} className={`flex-1 py-3 flex justify-center ${activeTab === 'route' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}><RouteIcon size={22}/></button>
-          <button onClick={() => toggleTab('profile')} className={`flex-1 py-3 flex justify-center ${activeTab === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}><UserIcon size={22}/></button>
-        </div>
-      )}
-
-      {isAiMenuOpen && (
-        <div className="absolute inset-0 z-[2000] bg-slate-900/40 backdrop-blur-sm flex flex-col justify-end" onClick={() => setIsAiMenuOpen(false)}>
-           <div 
-             className="bg-white p-6 space-y-6 shadow-2xl border-t border-slate-100 animate-in slide-in-from-bottom max-h-[85vh] overflow-y-auto no-scrollbar" 
-             style={{ 
-               borderRadius: '2rem 2rem 0 0',
-               paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))'
-             }} 
-             onClick={e => e.stopPropagation()}
-           >
-              <div className="grid grid-cols-3 gap-3">
-                 <button onClick={() => { setIsPlacementMode(true); setIsAiMenuOpen(false); }} className="p-4 bg-slate-50 flex flex-col items-center gap-2 border border-slate-100"><Footprints size={24} className="text-indigo-600" /><span className="text-[10px] font-black">{isHe ? 'רחוב' : 'Street'}</span></button>
-                 <button onClick={handleScanGems} className="p-4 bg-slate-50 flex flex-col items-center gap-2 border border-slate-100"><MapPin size={24} className="text-emerald-500" /><span className="text-[10px] font-black">{isHe ? 'פנינים' : 'Gems'}</span></button>
-                 <button onClick={handleAutoTour} className="p-4 bg-slate-50 flex flex-col items-center gap-2 border border-slate-100"><MapPinned size={24} className="text-slate-900" /><span className="text-[10px] font-black">{isHe ? 'מסלול כאן' : 'Route Here'}</span></button>
-              </div>
-              <QuickRouteSetup 
-                preferences={preferences} 
-                onUpdatePreferences={setPreferences} 
-                onGenerate={handleAutoTour} 
-                onCancel={() => setIsAiMenuOpen(false)} 
-                isEmbedded={true} 
-              />
-           </div>
+      {!selectedPoi && (
+        <div className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[4000] glass-card p-1.5 flex gap-1.5 items-center w-[calc(100vw-3rem)] max-w-[340px]">
+          <button onClick={() => toggleTab('navigation')} className={`flex-1 py-3 flex justify-center rounded-full-force ${activeTab === 'navigation' && !isAiMenuOpen ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><Compass size={22}/></button>
+          <button onClick={() => toggleTab('library')} className={`flex-1 py-3 flex justify-center rounded-full-force ${activeTab === 'library' && !isAiMenuOpen ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><LibraryIcon size={22}/></button>
+          <button onClick={() => setIsAiMenuOpen(!isAiMenuOpen)} className={`w-14 h-14 ${isAiMenuOpen ? 'bg-slate-900' : 'bg-indigo-600'} text-white shadow-lg flex items-center justify-center active:scale-90 transition-all rounded-full-force`}>{isAiMenuOpen ? <X size={28} /> : <Plus size={32} />}</button>
+          <div className="relative flex-1 flex justify-center group">
+            <button onClick={() => { if(currentRoute) toggleTab('route'); else setIsAiMenuOpen(true); }} className={`w-full py-3 flex justify-center transition-all duration-700 rounded-full-force ${activeTab === 'route' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>
+              {isGenerating ? (
+                <div className="relative flex items-center justify-center w-6 h-6">
+                  <RouteIcon size={22} className="text-slate-400" />
+                  <div className="absolute w-2.5 h-2.5 bg-white rounded-full-force animate-route-travel-s animate-dot-glow z-10" />
+                </div>
+              ) : (
+                <RouteIcon size={22}/>
+              )}
+            </button>
+          </div>
+          <button onClick={() => toggleTab('profile')} className={`flex-1 py-3 flex justify-center rounded-full-force ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><UserIcon size={22}/></button>
         </div>
       )}
 
       {activeTab === 'library' && (
-        <div className="absolute inset-0 bg-white z-[1500] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom">
+        <div className="absolute inset-0 bg-white/40 backdrop-blur-2xl z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom no-scrollbar">
            <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-3">
-                 {viewingCity && (
-                   <button onClick={() => setViewingCity(null)} className="p-2 bg-slate-100 rounded-full">{isHe ? <ArrowRight size={20}/> : <ArrowLeft size={20}/>}</button>
-                 )}
-                 <h2 className="text-2xl font-bold">{viewingCity || (isHe ? 'ספריה' : 'Library')}</h2>
+                 {viewingCity && <button onClick={() => setViewingCity(null)} className="p-2 bg-white/50 backdrop-blur rounded-full shadow-sm">{isHe ? <ArrowRight size={20}/> : <ArrowLeft size={20}/>}</button>}
+                 <h2 className="text-2xl font-black">{viewingCity || (isHe ? 'ספריה' : 'Library')}</h2>
               </div>
-              <button onClick={() => toggleTab('navigation')} className="p-2 bg-slate-100"><X size={20}/></button>
            </div>
            
            {!viewingCity ? (
-             <>
-               <section className="mb-10">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest">{isHe ? 'ערים מובילות' : 'Top Cities'}</h3>
-                  <div className="flex overflow-x-auto gap-3 no-scrollbar">
+             <div className="space-y-12">
+                {/* My Collection Section */}
+                {user && savedRoutes.length > 0 && (
+                  <section>
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-1 flex items-center gap-2"><Bookmark size={12} className="text-indigo-500" /> {isHe ? 'האוסף האישי שלי' : 'My Collection'}</h3>
+                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 snap-x">
+                      {savedRoutes.map(row => (
+                        <button key={row.id} onClick={() => handleLoadSavedRoute(row.route_data.city, row.route_data)} className="shrink-0 w-64 glass-card p-3 text-right hover:border-indigo-200 transition-all snap-start" style={{ borderRadius: '12px' }}>
+                           <div className="aspect-video bg-white/30 backdrop-blur overflow-hidden mb-3 shadow-inner" style={{ borderRadius: '8px' }}><GoogleImage query={`${row.route_data.city} iconic tourism`} className="w-full h-full" /></div>
+                           <span className="text-[8px] font-black text-indigo-500 uppercase tracking-widest block mb-0.5">{row.route_data.city}</span>
+                           <h4 className="text-[12px] font-black text-slate-900 truncate">{row.route_data.name}</h4>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* City Guides Section */}
+                <section>
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-1 flex items-center gap-2"><BookOpen size={12} className="text-indigo-500" /> {isHe ? 'מדריכי ערים' : 'City Guides'}</h3>
+                  <div className="grid grid-cols-3 gap-3">
                     {POPULAR_CITIES.map(city => (
-                      <div key={city.nameEn} onClick={() => handleCitySelect(city)} className="w-28 shrink-0 guide-book cursor-pointer">
-                        <div className="aspect-[3/4] overflow-hidden relative border-l-2 border-slate-900" style={{borderRadius: '5px'}}>
-                          <img src={city.img} className="w-full h-full object-cover grayscale-[0.2]" alt={city.name} />
-                          <span className="absolute bottom-2 inset-x-0 text-center text-white text-[10px] font-bold">{city.name}</span>
+                      <button key={city.nameEn} onClick={() => handleCitySelect(city)} className="group flex flex-col gap-2">
+                        <div className="relative aspect-[4/5] overflow-hidden shadow-lg guide-book" style={{ borderRadius: '4px 10px 10px 4px' }}>
+                          <img src={city.img} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2"><span className="text-white text-[9px] font-black uppercase tracking-widest w-full text-center leading-tight">{city.name}</span></div>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
-               </section>
+                </section>
 
-               <section className="mb-10">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest">{isHe ? 'מסלולים אחרונים בעולם' : 'Global Trending Tours'}</h3>
-                  <div className="grid grid-cols-1 gap-3">
-                     {recentGlobalRoutes.length === 0 ? (
-                       <div className="text-center py-10 text-slate-300 text-[10px] uppercase font-bold tracking-widest">{isHe ? 'טוען מסלולים...' : 'Loading global tours...'}</div>
-                     ) : recentGlobalRoutes.map(route => (
-                       <button key={route.id} onClick={() => { setCurrentRoute(route); renderRouteMarkers(route); toggleTab('route'); }} className="flex items-center gap-4 bg-slate-50 border border-slate-100 p-3 hover:border-indigo-100 transition-all text-right" style={{borderRadius: '5px'}}>
-                          <div className="w-14 h-14 bg-white overflow-hidden shrink-0" style={{borderRadius: '5px'}}>
-                             <GoogleImage query={`${route.city} landmark`} className="w-full h-full" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                             <div className="flex items-center justify-between">
-                                <span className="text-[8px] font-bold text-indigo-600 uppercase tracking-widest block mb-0.5">{route.city}</span>
-                                <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest ${route.style === 'street' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                  {isHe ? (route.style === 'street' ? 'רחוב' : 'סביבה') : (route.style === 'street' ? 'Street' : 'Area')}
-                                </span>
-                             </div>
-                             <h4 className="text-[12px] font-bold text-slate-900 truncate">{route.name}</h4>
-                          </div>
-                       </button>
-                     ))}
-                  </div>
-               </section>
-             </>
-           ) : (
-             <section className="animate-in fade-in slide-in-from-bottom duration-500">
-                <div className="mb-6 space-y-2">
-                   <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
-                      <BookOpen size={14} /> {isHe ? 'מסלולים מוצעים וקהילה' : 'Curated & Community Hub'}
-                   </h3>
-                   <p className="text-xs text-slate-400 font-light">{isHe ? `מגוון סיורי עומק ב${viewingCity}` : `Explore tours in ${viewingCity}`}</p>
-                </div>
-                {isLoadingCityRoutes ? (
-                   <div className="flex flex-col items-center py-20 gap-4">
-                      <Loader2 size={32} className="animate-spin text-indigo-200" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">{isHe ? 'דולה מסלולים מהארכיון...' : 'Fetching city routes...'}</span>
-                   </div>
-                ) : citySpecificRoutes.length === 0 ? (
-                   <div className="text-center py-20 border border-dashed border-slate-200 rounded-xl">
-                      <p className="text-xs text-slate-400">{isHe ? 'לא נמצאו מסלולים קיימים לעיר זו' : 'No routes found for this city'}</p>
-                   </div>
-                ) : (
-                   <div className="grid grid-cols-1 gap-3">
-                      {citySpecificRoutes.map(route => (
-                        <button key={route.id} onClick={() => { setCurrentRoute(route); renderRouteMarkers(route); toggleTab('route'); }} className="flex items-center gap-4 bg-white border border-slate-100 p-4 shadow-sm hover:border-indigo-200 transition-all text-right group" style={{borderRadius: '12px'}}>
-                           <div className="w-16 h-16 bg-slate-50 overflow-hidden shrink-0" style={{borderRadius: '8px'}}>
-                              <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full grayscale-[0.3] group-hover:grayscale-0" />
+                {/* Recent Global Routes Section */}
+                {recentGlobalRoutes.length > 0 && (
+                  <section>
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-1 flex items-center gap-2"><History size={12} className="text-indigo-500" /> {isHe ? 'מסלולים אחרונים שנוצרו' : 'Recently Created Routes'}</h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      {recentGlobalRoutes.map((route, idx) => (
+                        <button key={route.id || idx} onClick={() => handleLoadSavedRoute(route.city, route)} className="w-full flex items-center gap-4 glass-card p-4 text-right hover:border-indigo-200 transition-all" style={{ borderRadius: '12px' }}>
+                           <div className="w-20 h-20 bg-white shrink-0 shadow-inner overflow-hidden" style={{ borderRadius: '8px' }}>
+                              <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
                            </div>
                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest block">{route.city}</span>
-                                <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest ${route.style === 'street' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                  {isHe ? (route.style === 'street' ? 'רחוב' : 'סביבה') : (route.style === 'street' ? 'Street' : 'Area')}
-                                </span>
-                              </div>
-                              <h4 className="text-[14px] font-black text-slate-900 leading-tight">{route.name}</h4>
-                              <p className="text-[10px] text-slate-400 mt-1 truncate">{route.description}</p>
+                              <span className="text-[8px] font-black text-indigo-500 uppercase tracking-widest block mb-1">{route.city}</span>
+                              <h4 className="text-[14px] font-black text-slate-900 truncate">{route.name}</h4>
+                              <p className="text-[10px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{route.description}</p>
                            </div>
                         </button>
                       ))}
+                    </div>
+                  </section>
+                )}
+             </div>
+           ) : (
+             <div className="space-y-4">
+                <div className="bg-slate-900 text-white rounded-[20px] mb-6 overflow-hidden relative shadow-2xl h-32">
+                   <GoogleImage query={`${viewingCity} iconic landmarks landscape`} className="absolute inset-0 opacity-80" />
+                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                   <div className="absolute bottom-6 inset-x-6 z-10">
+                      <h3 className="text-3xl font-black tracking-tight">{isHe ? 'המדריך ל' : ''}{viewingCity}{!isHe ? ' Guide' : ''}</h3>
+                      <p className="text-[9px] uppercase tracking-[0.2em] font-black text-white/70 mt-1">{isHe ? 'ארכיון מסלולים והמלצות' : 'Route archive & recommendations'}</p>
+                   </div>
+                </div>
+                {citySpecificRoutes.length > 0 ? citySpecificRoutes.map(route => (
+                  <button key={route.id || route.name} onClick={() => handleLoadSavedRoute(route.city, route)} className="w-full flex items-center gap-3 glass-card p-4 text-right hover:border-indigo-200 transition-all mb-3" style={{ borderRadius: '12px' }}>
+                     <div className="w-16 h-16 bg-white shrink-0 shadow-inner overflow-hidden" style={{ borderRadius: '8px' }}><GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" /></div>
+                     <div className="flex-1 min-w-0">
+                        <span className="text-[8px] font-black text-indigo-500 uppercase tracking-widest block mb-0.5">{route.city}</span>
+                        <h4 className="text-[13px] font-black text-slate-900 truncate">{route.name}</h4>
+                        <p className="text-[9px] text-slate-400 truncate mt-1 opacity-70">{route.description}</p>
+                     </div>
+                  </button>
+                )) : (
+                   <div className="p-20 text-center">
+                      {isLoadingCityRoutes ? (
+                         <><Loader2 size={32} className="animate-spin text-indigo-200 mx-auto mb-4" /><p className="text-[10px] font-black uppercase tracking-widest text-slate-300">{isHe ? 'שואב מסלולים מהארכיון...' : 'Fetching archives...'}</p></>
+                      ) : (
+                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">{isHe ? 'אין עדיין מסלולים שמורים לעיר זו' : 'No routes saved for this city yet'}</p>
+                      )}
                    </div>
                 )}
-             </section>
+             </div>
            )}
         </div>
       )}
 
       {activeTab === 'profile' && (
-        <div className="absolute inset-0 bg-white z-[1500] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom no-scrollbar">
-           <div className="flex justify-between items-center mb-8"><h2 className="text-2xl font-bold">{isHe ? 'פרופיל' : 'Profile'}</h2><button onClick={() => toggleTab('navigation')} className="p-2 bg-slate-100"><X size={20}/></button></div>
-           <PreferencesPanel 
-             preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} 
-             user={user} onLogin={signInWithGoogle} onLogout={signOut} 
-             onLoadRoute={(c, r) => { setCurrentRoute(r); renderRouteMarkers(r); toggleTab('route'); }} 
-             onDeleteRoute={id => deleteRouteFromSupabase(id, user.id)} onDeletePoi={id => deletePoiFromSupabase(id, user.id)} 
-             onOpenFeedback={() => {}} onOpenGuide={() => {}} uniqueUserCount={0} remainingGens={hasFullAccess ? 999 : 3} 
-             offlineRouteIds={offlineRouteIds} onLoadOfflineRoute={() => {}} onRemoveOffline={handleRemoveOffline} 
-             onVerifyInvite={handleVerifyInvite} hasFullAccess={hasFullAccess}
-           />
+        <div className="absolute inset-0 bg-white/40 backdrop-blur-2xl z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom no-scrollbar">
+           <div className="flex justify-between items-center mb-8"><h2 className="text-2xl font-black">{isHe ? 'פרופיל' : 'Profile'}</h2></div>
+           <PreferencesPanel preferences={preferences} setPreferences={handleUpdatePreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={handleLoadSavedRoute} onDeleteRoute={id => { deleteRouteFromSupabase(id, user.id); refreshSavedContent(user.id); }} onDeletePoi={id => { deletePoiFromSupabase(id, user.id); refreshSavedContent(user.id); }} onOpenFeedback={() => {}} onOpenGuide={() => {}} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => {}} />
         </div>
       )}
     </div>
   );
 };
-
-export default App;

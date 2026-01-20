@@ -10,6 +10,7 @@ export interface UserPreferences {
   language: 'he' | 'en';
   routeStyle?: 'classic' | 'street';
   explanationStyle: 'simple' | 'standard' | 'deep';
+  fontSize?: number;
 }
 
 export interface POICategory {
@@ -46,10 +47,8 @@ export interface POI {
   lng: number;
   category?: POICategoryType;
   description: string;
-  // Made optional as POIs are often initialized with basic data and then enriched later
   historicalContext?: string;
   architecturalStyle?: string;
-  // Fields returned by the enrichment service in geminiService.ts
   historicalAnalysis?: string;
   architecturalAnalysis?: string;
   tourScript?: string;

@@ -5,7 +5,8 @@ import {
   Navigation, Building2, Utensils, Ship, Trees, ShoppingBag, Palette, 
   Landmark, Church, Heart, Plus, Download, X, Search, CheckCircle2, 
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, DownloadCloud, 
-  Loader2, Trash2, Check, Sliders, Edit3, GripVertical, MapPin 
+  Loader2, Trash2, Check, Sliders, Edit3, GripVertical, MapPin, BookOpen,
+  Settings2, Sparkles, Wand2
 } from 'lucide-react';
 import { GoogleImage } from './GoogleImage';
 import { QuickRouteSetup } from './QuickRouteSetup';
@@ -57,9 +58,6 @@ export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
   art: 'אמנות'
 };
 
-/**
- * Strips all English characters and their associated punctuation from a string.
- */
 const stripEnglish = (text: string) => {
   return text.replace(/[a-zA-Z]/g, '').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
 };
@@ -72,30 +70,22 @@ export const RouteOverview: React.FC<Props> = ({
   const [showPrefs, setShowPrefs] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   
-  // Add Station logic
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [suggestedPois, setSuggestedPois] = useState<POI[]>([]);
 
-  // Swipe Logic
   const touchStart = useRef<number | null>(null);
-  const touchEnd = useRef<number | null>(null);
-  const minSwipeDistance = 50;
 
   const onTouchStart = (e: React.TouchEvent) => {
-    touchEnd.current = null;
     touchStart.current = e.targetTouches[0].clientY;
   };
 
-  const onTouchMove = (e: React.TouchEvent) => {
-    touchEnd.current = e.targetTouches[0].clientY;
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart.current || !touchEnd.current) return;
-    const distance = touchStart.current - touchEnd.current;
-    if (distance > minSwipeDistance && !isExpanded) setIsExpanded(true);
-    if (distance < -minSwipeDistance && isExpanded) setIsExpanded(false);
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart.current) return;
+    const distance = touchStart.current - e.changedTouches[0].clientY;
+    if (distance > 60) setIsExpanded(true);
+    else if (distance < -60) setIsExpanded(false);
+    touchStart.current = null;
   };
 
   useEffect(() => {
@@ -121,28 +111,37 @@ export const RouteOverview: React.FC<Props> = ({
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
-      const service = new google.maps.places.PlacesService(document.createElement('div'));
-      service.findPlaceFromQuery({
-        query: `${searchQuery}, ${route.city}`,
-        fields: ['name', 'geometry', 'types', 'photos']
-      }, (results: any, status: any) => {
-        if (status === google.maps.places.ServiceStatus.OK && results?.[0]) {
-          const place = results[0];
-          const newPoi: POI = {
-            id: `added-${Date.now()}`,
-            name: place.name,
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-            description: '',
-            category: 'architecture',
-            isFullyLoaded: false
-          };
-          onAddPoi(newPoi);
-          setSearchQuery('');
-        }
-        setIsSearching(false);
-      });
-    } catch (e) { setIsSearching(false); }
+      // Using Places API (New)
+      const { Place } = await google.maps.importLibrary("places") as any;
+      
+      const request = {
+        textQuery: `${searchQuery}, ${route.city}`,
+        fields: ['displayName', 'location'], // COST OPTIMIZATION: Only essential fields
+        maxResultCount: 1,
+        language: isHe ? 'he' : 'en'
+      };
+
+      const { places } = await Place.searchByText(request);
+
+      if (places && places.length > 0) {
+        const place = places[0];
+        const newPoi: POI = {
+          id: `added-${Date.now()}`,
+          name: place.displayName,
+          lat: place.location.lat(),
+          lng: place.location.lng(),
+          description: '',
+          category: 'architecture',
+          isFullyLoaded: false
+        };
+        onAddPoi(newPoi);
+        setSearchQuery('');
+      }
+      setIsSearching(false);
+    } catch (e) { 
+      console.error("New Place search error:", e);
+      setIsSearching(false); 
+    }
   };
 
   const toggleExpanded = () => setIsExpanded(!isExpanded);
@@ -155,193 +154,175 @@ export const RouteOverview: React.FC<Props> = ({
       className={`fixed inset-x-0 bottom-0 z-[1200] flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${cardHeightClass} glass-card`}
       dir={isHe ? 'rtl' : 'ltr'}
       style={{ borderRadius: '2rem 2rem 0 0' }}
-      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
     >
-      <div onClick={toggleExpanded} className="w-full h-12 shrink-0 flex items-center justify-center cursor-pointer group relative">
+      {/* Handle */}
+      <div onClick={toggleExpanded} className="w-full h-10 shrink-0 flex items-center justify-center cursor-pointer group relative">
         <div className={`w-12 h-1.5 bg-slate-200 rounded-full transition-all ${isExpanded ? 'bg-slate-300' : 'group-hover:bg-indigo-500'}`} />
-        <button onClick={(e) => { e.stopPropagation(); onClose?.(); }} className={`absolute ${isHe ? 'right-4' : 'left-4'} top-2 p-2 bg-slate-100/50 text-slate-500 rounded-full`}>
+        <button onClick={(e) => { e.stopPropagation(); onClose?.(); }} className={`absolute ${isHe ? 'right-4' : 'left-4'} top-1.5 p-2 bg-slate-100/50 text-slate-500 rounded-full`}>
            <X size={18} />
         </button>
       </div>
 
-      <div className="px-6 pb-2 shrink-0">
+      <div className="px-6 pb-4 shrink-0">
           <div className={`w-full transition-all duration-700 overflow-hidden bg-slate-100 relative ${isExpanded ? 'h-40' : 'h-24'}`} style={{ borderRadius: '1rem' }}>
-             <GoogleImage query={`${route.city} landmark`} className="w-full h-full" />
+             <GoogleImage query={`${route.city} landmark landscape`} className="w-full h-full" />
              <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest" style={{ borderRadius: '5px' }}>
-                {route.pois.length} {isHe ? 'תחנות' : 'Stops'}
+                {route.pois.length} {isHe ? "תחנות" : "Stops"}
+             </div>
+             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-4">
+                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">{route.city}</span>
+                <h2 className="text-xl font-black text-white truncate">{cleanRouteName}</h2>
              </div>
           </div>
       </div>
 
-      {/* Header Info */}
-      <div className="px-6 pt-4 shrink-0">
-          <span className="text-[10px] text-indigo-600 font-black uppercase tracking-[0.2em] mb-1 block">{stripEnglish(route.city)}</span>
-          <h2 className={`text-slate-900 font-black leading-tight transition-all duration-500 ${isExpanded ? 'text-2xl' : 'text-lg'}`}>{cleanRouteName}</h2>
-      </div>
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto no-scrollbar px-6 space-y-6 pb-24">
+         {/* Action Bar */}
+         <div className="flex gap-2 shrink-0 overflow-x-auto no-scrollbar py-1">
+            <button 
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl border text-[11px] font-black uppercase tracking-widest transition-all ${isEditMode ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100'}`}
+            >
+              <Edit3 size={14} /> {isHe ? "עריכה" : "Edit"}
+            </button>
+            <button 
+              onClick={() => setShowPrefs(!showPrefs)}
+              className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl border text-[11px] font-black uppercase tracking-widest transition-all ${showPrefs ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-600 border-indigo-100'}`}
+            >
+              <Sliders size={14} /> {isHe ? "העדפות" : "Prefs"}
+            </button>
+            <button 
+              onClick={onSave}
+              className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl border text-[11px] font-black uppercase tracking-widest transition-all ${isSaved ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-600 border-slate-100'}`}
+            >
+              <Heart size={14} className={isSaved ? 'fill-current' : ''} /> {isSaved ? (isHe ? "שמור" : "Saved") : (isHe ? "שמור" : "Save")}
+            </button>
+         </div>
 
-      {/* Unified Action Bar - 4 Buttons Together */}
-      <div className="px-6 mt-4 shrink-0 grid grid-cols-4 gap-2">
-          {/* Edit Button */}
-          <button 
-            onClick={() => setIsEditMode(!isEditMode)} 
-            className={`h-14 flex flex-col items-center justify-center gap-1.5 border transition-all active:scale-90 ${isEditMode ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`} 
-            style={{ borderRadius: '12px' }}
-          >
-            <Edit3 size={18} />
-            <span className="text-[7px] font-black uppercase tracking-widest">{isHe ? 'עריכה' : 'Edit'}</span>
-          </button>
-
-          {/* Preferences Button */}
-          <button 
-            onClick={() => setShowPrefs(!showPrefs)} 
-            className={`h-14 flex flex-col items-center justify-center gap-1.5 border transition-all active:scale-90 ${showPrefs ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`} 
-            style={{ borderRadius: '12px' }}
-          >
-            <Sliders size={18} />
-            <span className="text-[7px] font-black uppercase tracking-widest">{isHe ? 'העדפות' : 'Prefs'}</span>
-          </button>
-
-          {/* Save Button */}
-          <button 
-            onClick={onSave} 
-            className={`h-14 flex flex-col items-center justify-center gap-1.5 border transition-all active:scale-90 ${isSaved ? 'text-pink-500 bg-pink-50 border-pink-100 shadow-inner' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`} 
-            style={{ borderRadius: '12px' }}
-          >
-            <Heart size={20} fill={isSaved ? "currentColor" : "none"} />
-            <span className="text-[7px] font-black uppercase tracking-widest">{isHe ? 'מועדפים' : 'Save'}</span>
-          </button>
-
-          {/* Offline Button */}
-          <button 
-            onClick={isOfflineSaved ? () => onRemoveOffline?.(route.id) : onOffline} 
-            disabled={isOfflineLoading}
-            className={`h-14 flex flex-col items-center justify-center gap-1.5 border transition-all active:scale-90 ${isOfflineSaved ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg' : isOfflineLoading ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`} 
-            style={{ borderRadius: '12px' }}
-          >
-            {isOfflineLoading ? <Loader2 size={18} className="animate-spin" /> : isOfflineSaved ? <Check size={18} /> : <DownloadCloud size={18} />}
-            <span className="text-[7px] font-black uppercase tracking-widest">{isHe ? 'אופליין' : 'Offline'}</span>
-          </button>
-      </div>
-
-      <div className={`flex-1 overflow-y-auto px-6 pt-6 no-scrollbar pb-40 space-y-8 transition-opacity duration-500 ${isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        {/* Offline Progress Overlay (Only when loading) */}
-        {isOfflineLoading && (
-          <div className="bg-indigo-50 p-6 space-y-4 shadow-inner animate-in fade-in" style={{ borderRadius: '1rem' }}>
-             <div className="flex justify-between text-[11px] font-black text-indigo-600 uppercase tracking-widest">
-                <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> {isHe ? 'מוריד חומרים...' : 'Downloading...'}</span>
-                <span>{offlineProgress}%</span>
-             </div>
-             <div className="w-full h-2 bg-slate-200 overflow-hidden" style={{ borderRadius: '99px' }}><div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${offlineProgress}%` }} /></div>
-          </div>
-        )}
-
-        {showPrefs && (
-          <section className="bg-slate-50 rounded-[1.5rem] p-6 border border-slate-100 animate-in slide-in-from-top-4 duration-300">
-             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">{isHe ? 'העדפות המסלול שלי' : 'My Route Preferences'}</h3>
-                <button onClick={() => setShowPrefs(false)} className="text-slate-400"><X size={14}/></button>
-             </div>
-             <QuickRouteSetup 
+         {showPrefs && (
+           <div className="animate-in slide-in-from-top-4 duration-500 bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-xl mb-4">
+              <div className="p-4 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
+                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isHe ? "העדפות מסלול" : "Route Preferences"}</h3>
+                 <button onClick={() => setShowPrefs(false)} className="text-slate-400"><X size={16}/></button>
+              </div>
+              <QuickRouteSetup 
                 preferences={preferences} 
                 onUpdatePreferences={onUpdatePreferences} 
                 onGenerate={() => { onRequestRefine(); setShowPrefs(false); }} 
-                onCancel={() => setShowPrefs(false)} 
+                onCancel={() => setShowPrefs(false)}
                 isEmbedded={true}
-             />
-          </section>
-        )}
+                isLoading={isOfflineLoading}
+              />
+           </div>
+         )}
 
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Navigation size={14} /> {isHe ? 'תחנות הטיול' : 'Route Stops'}</h3>
-            {isEditMode && <span className="text-[9px] font-black text-indigo-500 uppercase animate-pulse">{isHe ? 'מצב עריכה פעיל' : 'Edit mode active'}</span>}
-          </div>
-          <div className="space-y-3">
-            {route.pois.map((p, i) => (
-              <div key={p.id} className="relative">
-                <div className={`w-full flex items-center gap-4 p-4 bg-white border border-slate-100 text-right group hover:border-indigo-200 transition-all shadow-sm ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'}`} style={{ borderRadius: '12px' }} onClick={() => !isEditMode && onPoiClick(p)}>
-                  {isEditMode && <GripVertical size={16} className="text-slate-300 cursor-grab active:cursor-grabbing" />}
-                  <div className="w-8 h-8 bg-slate-900 text-white flex items-center justify-center shrink-0 text-[11px] font-black" style={{ borderRadius: '5px' }}>{i + 1}</div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-[13px] text-slate-900 font-bold truncate">{stripEnglish(p.name)}</h4>
-                    <div className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-black tracking-widest mt-0.5">{p.category && CATEGORY_ICONS[p.category]}<span>{isHe ? CATEGORY_LABELS_HE[p.category || 'history'] : p.category}</span></div>
-                  </div>
-                  {!isEditMode && <ChevronLeft size={16} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />}
-                </div>
-                
-                {isEditMode && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onRemovePoi(p.id); }}
-                    className="absolute -top-2 -left-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg animate-in zoom-in duration-300"
-                    style={{ borderRadius: '50% !important' }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Add Station Section in Edit Mode */}
-          {isEditMode && (
-            <div className="mt-8 space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-               <div className="flex items-center gap-2">
-                 <div className="h-px bg-slate-200 flex-1" />
-                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{isHe ? 'הוספת תחנה' : 'Add Station'}</span>
-                 <div className="h-px bg-slate-200 flex-1" />
-               </div>
-
-               {/* Free Search */}
-               <form onSubmit={handleSearchNewPoi} className="relative group">
-                 <input 
-                   type="text"
-                   value={searchQuery}
-                   onChange={(e) => setSearchQuery(e.target.value)}
-                   placeholder={isHe ? 'חיפוש מקום להוספה...' : 'Search place to add...'}
-                   className="w-full h-14 bg-white border border-slate-100 px-12 text-[13px] font-medium outline-none focus:border-indigo-500 transition-all shadow-sm"
-                   style={{ borderRadius: '12px' }}
-                 />
-                 <Search size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                 <button 
-                   type="submit"
-                   disabled={isSearching || !searchQuery.trim()}
-                   className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-slate-900 text-white flex items-center justify-center transition-all disabled:opacity-30"
-                   style={{ borderRadius: '5px' }}
-                 >
-                   {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
-                 </button>
-               </form>
-
-               {/* Suggestions Carousel */}
-               <div className="space-y-3">
-                 <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">{isHe ? 'הצעות בקרבת מקום' : 'Nearby Suggestions'}</h4>
-                 <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                   {suggestedPois.map((p) => (
-                     <button 
-                       key={p.id}
-                       onClick={() => onAddPoi(p)}
-                       className="flex-shrink-0 w-36 bg-white border border-slate-100 p-2 shadow-sm text-right group hover:border-indigo-200 transition-all"
-                       style={{ borderRadius: '10px' }}
-                     >
-                       <div className="aspect-square bg-slate-50 mb-2 relative overflow-hidden" style={{ borderRadius: '6px' }}>
-                          <GoogleImage query={`${p.name}, ${route.city}`} className="w-full h-full grayscale-[0.2] group-hover:grayscale-0" />
-                          <div className="absolute top-1 left-1 bg-white/80 p-1 rounded-sm"><Plus size={10} className="text-indigo-600" /></div>
-                       </div>
-                       <h5 className="text-[10px] font-bold text-slate-900 truncate">{stripEnglish(p.name)}</h5>
-                       <span className="text-[7px] text-slate-400 uppercase tracking-widest">{isHe ? CATEGORY_LABELS_HE[p.category || 'history'] : p.category}</span>
-                     </button>
-                   ))}
-                   {suggestedPois.length === 0 && (
-                     <div className="w-full flex items-center justify-center py-6 text-[10px] text-slate-300 uppercase font-black tracking-widest">
-                       {isHe ? 'מחפש הצעות...' : 'Scanning for gems...'}
-                     </div>
-                   )}
-                 </div>
-               </div>
+         {/* POI List */}
+         <div className="space-y-4">
+            <div className="flex items-center justify-between px-1">
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                 <Navigation size={14} className="text-indigo-500" /> {isHe ? "תחנות הסיור" : "Tour Stops"}
+               </h3>
+               {isEditMode && (
+                 <span className="text-[10px] font-bold text-slate-400">{isHe ? "גרור לשינוי סדר" : "Drag to reorder"}</span>
+               )}
             </div>
-          )}
-        </section>
+
+            <div className="space-y-3">
+              {route.pois.map((poi, idx) => (
+                <div 
+                  key={poi.id}
+                  onClick={() => !isEditMode && onPoiClick(poi)}
+                  className={`group relative bg-white border border-slate-100 p-4 rounded-2xl flex items-center gap-4 transition-all ${!isEditMode ? 'hover:border-indigo-200 hover:shadow-lg active:scale-[0.98] cursor-pointer' : ''}`}
+                >
+                  <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center text-sm font-black shrink-0 shadow-lg">
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                       {poi.category && CATEGORY_ICONS[poi.category]}
+                       <span>{isHe && poi.category ? CATEGORY_LABELS_HE[poi.category] : poi.category}</span>
+                    </div>
+                    <h4 className="text-[14px] font-black text-slate-900 truncate">{poi.name}</h4>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!isEditMode ? (
+                      <ChevronLeft size={18} className="text-slate-200 group-hover:text-indigo-500 transition-colors" />
+                    ) : (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
+                        className="p-2 text-rose-200 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {isEditMode && (
+                <form onSubmit={handleSearchNewPoi} className="flex gap-2 animate-in fade-in slide-in-from-bottom-2">
+                   <div className="flex-1 bg-white border border-slate-100 rounded-xl flex items-center px-4 focus-within:ring-2 ring-indigo-500/10 transition-all">
+                      <Search size={16} className="text-slate-300" />
+                      <input 
+                        type="text" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={isHe ? "הוסף מקום למסלול..." : "Add place to route..."}
+                        className="w-full bg-transparent border-none py-3 px-3 text-sm outline-none"
+                      />
+                   </div>
+                   <button 
+                     type="submit"
+                     disabled={isSearching}
+                     className="px-6 bg-slate-900 text-white rounded-xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all"
+                   >
+                     {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                   </button>
+                </form>
+              )}
+            </div>
+         </div>
+
+         {/* Suggested Additions */}
+         {isEditMode && suggestedPois.length > 0 && (
+           <div className="space-y-4 pt-4 border-t border-slate-50">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                 <Sparkles size={14} className="text-indigo-500" /> {isHe ? "הצעות מה-AI להרחבה" : "AI Suggestions"}
+              </h3>
+              <div className="grid grid-cols-1 gap-3">
+                 {suggestedPois.map((p) => (
+                   <div key={p.id} className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between group">
+                      <div className="flex-1">
+                        <h4 className="text-[13px] font-black text-indigo-900">{p.name}</h4>
+                        <p className="text-[10px] text-indigo-400 mt-1 line-clamp-1">{p.description}</p>
+                      </div>
+                      <button 
+                        onClick={() => { onAddPoi(p); setSuggestedPois(prev => prev.filter(item => item.id !== p.id)); }}
+                        className="p-2.5 bg-white text-indigo-600 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition-all"
+                      >
+                        <Plus size={18} />
+                      </button>
+                   </div>
+                 ))}
+              </div>
+           </div>
+         )}
       </div>
+
+      {/* Floating Call to Action */}
+      {!isExpanded && (
+        <div className="absolute bottom-6 inset-x-6 z-20">
+           <button 
+            onClick={() => setIsExpanded(true)}
+            className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-[12px] uppercase tracking-[0.2em] shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all"
+           >
+             <Navigation size={18} fill="currentColor" />
+             {isHe ? "פרטי המסלול המלאים" : "Full Route Details"}
+           </button>
+        </div>
+      )}
     </div>
   );
 };

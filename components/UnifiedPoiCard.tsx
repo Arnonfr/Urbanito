@@ -1,15 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { POI, UserPreferences, Route, AudioState } from '../types';
-import { fetchExtendedPoiDetails } from '../services/geminiService';
+import { POI, UserPreferences, Route } from '../types';
+import { fetchExtendedPoiDetails, fetchDeepResearch } from '../services/geminiService';
 import { 
-  Loader2, ScrollText, Heart, Trash2, ChevronRight, ChevronLeft, Plus, ArrowRight, ArrowLeft, X, Sparkles
+  Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ChevronRight, ArrowRight, ArrowLeft, 
+  Type as FontIcon, Link2, Heart, ExternalLink, Sparkles, BookOpen, Quote, Info
 } from 'lucide-react';
 import { CATEGORY_ICONS, CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
-import { getCityImage } from '../utils';
-
-declare var google: any;
+import { GoogleGallery } from './GoogleGallery';
 
 interface Props {
   poi: POI; 
@@ -17,207 +16,233 @@ interface Props {
   onClose: () => void; 
   onNext: () => void; 
   onPrev: () => void; 
-  onRemove: (id: string) => void; 
-  onAddToRoute: (poi: Partial<POI>, afterPoiId?: string) => void; 
-  onGoToPoi: (poi: POI) => void; 
-  onSaveRoute: () => void; 
   currentIndex: number; 
   totalCount: number; 
   preferences: UserPreferences; 
-  audioState: AudioState; 
-  setAudioState: (s: AudioState | ((prev: AudioState) => AudioState)) => void;
-  setIsAudioExpanded: (expanded: boolean) => void;
-  isSaved?: boolean;
-  onToggleSave?: () => void;
-  onEnrichPoi?: (poiId: string, data: Partial<POI>) => void;
-  onAddPoi?: (poi: POI) => void;
-  isScanned?: boolean;
+  onUpdatePreferences: (p: UserPreferences) => void;
+  isExpanded: boolean;
+  setIsExpanded: (v: boolean) => void;
+  onPlayPoi?: () => void;
 }
 
-const translations = {
-  he: { 
-    overview: "סיפור המקום (עומק היסטורי)", 
-    expDiscovery: "חווית גילוי עירונית", 
-    loadingInfo: "דולה מידע היסטורי מבלוגים וארכיונים...", 
-    next: "התחנה הבאה", 
-    prev: "התחנה הקודמת", 
-    backToRoute: "חזרה למסלול",
-    addToRoute: "הוספה למסלול שלי"
-  },
-  en: { 
-    overview: "Historical Deep-Dive", 
-    expDiscovery: "URBAN DISCOVERY EXPERIENCE", 
-    loadingInfo: "Fetching verified historical data...", 
-    next: "Next Stop", 
-    prev: "Previous Stop", 
-    backToRoute: "Back to Route",
-    addToRoute: "Add to my Route"
+const DisplayTitle = ({ name, isHe }: { name: string, isHe: boolean }) => {
+  const hebrewRegex = /[\u0590-\u05FF]/;
+  const parenMatch = name.match(/(.*?)\s*\((.*?)\)/);
+  let main = name;
+  let secondary = "";
+  if (parenMatch) {
+    const p1 = parenMatch[1].trim(); const p2 = parenMatch[2].trim();
+    if (isHe) { if (hebrewRegex.test(p2) && !hebrewRegex.test(p1)) { main = p2; secondary = p1; } else { main = p1; secondary = p2; } }
+    else { if (hebrewRegex.test(p1) && !hebrewRegex.test(p2)) { main = p2; secondary = p1; } else { main = p1; secondary = p2; } }
   }
-};
-
-/**
- * Splits a string into Hebrew and English components.
- * Assumes English text might be in parentheses or follow Hebrew text.
- */
-const splitName = (name: string) => {
-  const englishRegex = /([a-zA-Z].+)/;
-  const match = name.match(englishRegex);
-  
-  if (match) {
-    const en = match[0].replace(/[()]/g, '').trim();
-    const he = name.replace(match[0], '').replace(/[()]/g, '').trim();
-    return { he: he || en, en: he ? en : undefined };
-  }
-  return { he: name, en: undefined };
+  return (
+    <div className="flex flex-col text-right">
+      <h2 className="text-xl font-black text-slate-900 leading-tight">{main}</h2>
+      {secondary && <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{secondary}</span>}
+    </div>
+  );
 };
 
 export const UnifiedPoiCard: React.FC<Props> = ({ 
-  poi, route, onClose, currentIndex, totalCount, preferences, onNext, onPrev, isSaved, onToggleSave, onEnrichPoi, onRemove, onAddPoi, isScanned 
+  poi, route, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onPlayPoi, onNext, onPrev, currentIndex, totalCount
 }) => {
   const isHe = preferences.language === 'he';
-  const t = translations[preferences.language];
   const [extendedData, setExtendedData] = useState<any>(poi.isFullyLoaded ? poi : null);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(!poi.isFullyLoaded);
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Swipe Logic
+  const [isLoading, setIsLoading] = useState(!poi.isFullyLoaded);
+  
+  const [deepResearch, setDeepResearch] = useState<any>(null);
+  const [isDeepResearching, setIsDeepResearching] = useState(false);
+  
   const touchStart = useRef<number | null>(null);
-  const touchEnd = useRef<number | null>(null);
-  const minSwipeDistance = 60;
 
-  const onTouchStart = (e: React.TouchEvent) => { touchEnd.current = null; touchStart.current = e.targetTouches[0].clientY; };
-  const onTouchMove = (e: React.TouchEvent) => { touchEnd.current = e.targetTouches[0].clientY; };
-  const onTouchEnd = () => {
-    if (!touchStart.current || !touchEnd.current) return;
-    const distance = touchStart.current - touchEnd.current;
-    if (distance > minSwipeDistance && !isExpanded) setIsExpanded(true);
-    if (distance < -minSwipeDistance && isExpanded) setIsExpanded(false);
+  const prefetchNextPoi = async () => {
+    const nextIdx = currentIndex + 1;
+    if (nextIdx < totalCount && route.pois[nextIdx]) {
+      const nextPoi = route.pois[nextIdx];
+      if (!nextPoi.isFullyLoaded) {
+        fetchExtendedPoiDetails(nextPoi.name, route.city, preferences, nextPoi.lat, nextPoi.lng);
+      }
+    }
   };
 
-  const handleHeaderClick = () => setIsExpanded(!isExpanded);
-
   useEffect(() => {
-    if (!poi.isFullyLoaded) {
-      setIsLoadingDetails(true);
-      fetchExtendedPoiDetails(poi.name, route.city, preferences).then(data => {
-        if (data) { setExtendedData(data); onEnrichPoi?.(poi.id, data); }
-        setIsLoadingDetails(false);
-      }).catch(() => setIsLoadingDetails(false));
-    } else {
-      setExtendedData(poi);
-      setIsLoadingDetails(false);
-    }
-  }, [poi.id]);
+    setExtendedData(poi.isFullyLoaded ? poi : null);
+    setIsLoading(!poi.isFullyLoaded);
+    setDeepResearch(null); 
 
-  const cardHeightClass = isExpanded ? 'max-h-[92dvh] h-[92dvh]' : 'h-[38dvh]';
-  const { he, en } = splitName(poi.name);
+    const loadData = async () => {
+      if (!poi.isFullyLoaded) {
+        const data = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng);
+        if (data) {
+          setExtendedData(data);
+          setIsLoading(false);
+          poi.isFullyLoaded = true;
+          Object.assign(poi, data); 
+        }
+      } else {
+        setIsLoading(false);
+      }
+      prefetchNextPoi();
+    };
+
+    loadData();
+  }, [poi.id, poi.name]);
+
+  const handleDeepResearch = async () => {
+    setIsDeepResearching(true);
+    setIsExpanded(true); 
+    const data = await fetchDeepResearch(poi.name, route.city, preferences.language);
+    setDeepResearch(data);
+    setIsDeepResearching(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => { touchStart.current = e.targetTouches[0].clientY; };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStart.current === null) return;
+    const distance = touchStart.current - e.changedTouches[0].clientY;
+    if (distance > 60) setIsExpanded(true);
+    else if (distance < -60) setIsExpanded(false);
+    touchStart.current = null;
+  };
+
+  const handleCycleFontSize = () => {
+    const sizes = [14, 16, 18, 20];
+    const curr = sizes.indexOf(preferences.fontSize || 16);
+    const next = (curr + 1) % sizes.length;
+    onUpdatePreferences({ ...preferences, fontSize: sizes[next] });
+  };
+
+  const validSources = extendedData?.sources?.filter((s: any) => s.url && s.url.startsWith('http')) || [];
 
   return (
     <div 
-      dir={isHe ? 'rtl' : 'ltr'}
-      className={`fixed inset-x-0 bottom-0 z-[3000] flex flex-col pointer-events-auto overflow-hidden glass-card shadow-[0_-20px_100px_rgba(0,0,0,0.3)] transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${cardHeightClass} animate-in slide-in-from-bottom`}
-      style={{ borderRadius: '2rem 2rem 0 0' }}
-      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      className={`fixed inset-x-4 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[3100] flex flex-col bg-white shadow-[0_25px_70px_-15px_rgba(0,0,0,0.4)] border transition-all duration-500 ease-[cubic-bezier(0.3,1.2,0.3,1)] ${isExpanded ? 'h-[94dvh]' : 'h-[320px]'}`}
+      dir={isHe ? 'rtl' : 'ltr'} 
+      style={{ borderRadius: '15px' }} 
+      onTouchStart={handleTouchStart} 
+      onTouchEnd={handleTouchEnd}
     >
-      {/* Top Header Section */}
-      <div className="w-full h-14 shrink-0 flex items-center px-6 border-b border-white/20 relative z-20 bg-white/50 backdrop-blur-sm">
-        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="flex items-center gap-2 text-indigo-600 font-bold text-[11px] uppercase tracking-widest active:scale-95 transition-all">
-           {isHe ? <ArrowRight size={16} /> : <ArrowLeft size={16} />} <span>{t.backToRoute}</span>
+      {/* Scroll Handle */}
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)} 
+        className="w-full h-8 shrink-0 flex items-center justify-center cursor-pointer active:bg-slate-50 transition-colors"
+      >
+        <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
+      </div>
+
+      {/* Header with Hero Image Backdrop when collapsed? No, let's stick to a clean top image */}
+      <div className={`relative shrink-0 overflow-hidden transition-all duration-500 ${isExpanded ? 'h-52' : 'h-32'}`} style={{ borderRadius: '15px 15px 0 0' }}>
+         <GoogleImage query={`${poi.name} ${route.city} iconic landmark landscape`} className="w-full h-full" />
+         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+         <div className="absolute top-4 inset-x-4 flex items-center justify-between">
+            <button onClick={onClose} className="p-2 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/40 transition-all">
+               {isHe ? <ArrowRight size={20} /> : <ArrowLeft size={20} />}
+            </button>
+            <div className="flex gap-2">
+               <button onClick={onPlayPoi} className="p-2 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/40 transition-all"><Headphones size={20} /></button>
+               <button onClick={handleCycleFontSize} className="p-2 bg-white/20 backdrop-blur-md text-white rounded-full hover:bg-white/40 transition-all"><FontIcon size={20} /></button>
+            </div>
+         </div>
+         <div className="absolute bottom-4 right-4 left-4 flex flex-col items-start text-white text-right">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-indigo-600/80 backdrop-blur-sm text-[8px] font-black uppercase tracking-widest mb-1.5" style={{ borderRadius: '4px' }}>
+               {poi.category && CATEGORY_ICONS[poi.category]}
+               <span>{isHe ? CATEGORY_LABELS_HE[poi.category || 'history'] : poi.category}</span>
+            </div>
+         </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto no-scrollbar px-6 space-y-6 pt-6 pb-24">
+        <DisplayTitle name={poi.name} isHe={isHe} />
+
+        <button 
+          onClick={handleDeepResearch}
+          disabled={isDeepResearching}
+          className={`w-full py-4 flex items-center justify-center gap-2.5 text-[11px] font-black uppercase tracking-widest border transition-all shadow-sm active:scale-95 ${isDeepResearching ? 'bg-indigo-50 text-indigo-400 border-indigo-100' : 'bg-white text-indigo-600 border-indigo-100 hover:bg-indigo-50'}`}
+          style={{ borderRadius: '10px' }}
+        >
+          {isDeepResearching ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} className="text-indigo-500" />}
+          {isDeepResearching ? (isHe ? "מעמיק בתובנות..." : "Diving deeper...") : (isHe ? "עומק היסטורי (AI)" : "Historical Depth (AI)")}
         </button>
-        <div onClick={handleHeaderClick} className="flex-1 flex justify-center h-full items-center cursor-pointer group">
-          <div className={`w-12 h-1.5 bg-slate-200 rounded-full transition-all ${isExpanded ? 'bg-slate-300' : 'group-hover:bg-indigo-500'}`} />
-        </div>
-        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="p-2 text-slate-400 hover:text-slate-900 active:scale-95 transition-all"><X size={20}/></button>
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-8 pt-6 pb-40 space-y-8 no-scrollbar scroll-smooth">
-          {/* Main Visual */}
-          <div className={`w-full transition-all duration-700 overflow-hidden bg-slate-200 shadow-inner relative ${isExpanded ? 'aspect-video' : 'h-28'}`} style={{borderRadius: '1rem'}}>
-            <GoogleImage query={`${poi.name}, ${route.city}`} className="w-full h-full" fallbackUrl={poi.imageUrl} />
+        <section className="text-right space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+               <ScrollText size={16} className="text-indigo-500" /> {isHe ? "סקירה היסטורית" : "History"}
+            </h3>
+            {!isLoading && (
+              <a href={`https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`} target="_blank" className="flex items-center gap-1.5 text-indigo-600 font-black text-[11px] uppercase tracking-widest">
+                <MapPin size={14} /> {isHe ? "ניווט" : "Nav"}
+              </a>
+            )}
           </div>
 
-          {/* Title & Category */}
-          <div className="text-right">
-              <span className="text-[9px] text-indigo-600 tracking-widest block uppercase mb-1 font-black">{t.expDiscovery}</span>
-              <h2 className={`text-slate-900 font-black leading-tight transition-all duration-500 ${isExpanded ? 'text-3xl' : 'text-xl'}`}>
-                {he}
-                {en && (
-                  <span className="block text-slate-400 text-sm font-medium mt-1.5 tracking-normal opacity-80">{en}</span>
-                )}
-              </h2>
-              <div className="flex items-center gap-2 mt-4">
-                <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 text-[10px] text-indigo-600 font-black uppercase tracking-widest" style={{borderRadius: '5px'}}>
-                  {poi.category && CATEGORY_ICONS[poi.category]}
-                  <span>{isHe ? CATEGORY_LABELS_HE[poi.category || 'history'] : poi.category}</span>
-                </div>
+          <div className="text-slate-700 leading-relaxed transition-all duration-300" style={{ fontSize: `${preferences.fontSize || 16}px` }}>
+            {isLoading ? (
+              <div className="flex flex-col items-center py-12 gap-4 text-slate-400">
+                <Loader2 size={32} className="animate-spin text-indigo-400" />
+                <span className="text-[11px] font-black uppercase tracking-widest">{isHe ? 'שואב מידע...' : 'Loading...'}</span>
               </div>
-          </div>
+            ) : (
+              <div className="space-y-8 animate-in fade-in duration-700">
+                <p className="opacity-90 leading-loose whitespace-pre-line">{extendedData?.historicalAnalysis || poi.description}</p>
+                
+                <GoogleGallery query={`${poi.name}, ${route.city}`} isHe={isHe} />
 
-          {/* Action Buttons */}
-          <div className={`space-y-6 transition-all duration-500 ${isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-              <div className="grid grid-cols-1 gap-3">
-                {isScanned && (
-                  <button onClick={() => onAddPoi?.(poi)} className="w-full h-14 bg-indigo-600 text-white font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all" style={{borderRadius: '5px'}}>
-                    <Plus size={16} />{t.addToRoute}
-                  </button>
-                )}
-              </div>
-              
-              <div className="flex gap-4">
-                 <button onClick={onToggleSave} className={`flex-1 h-14 flex items-center justify-center border transition-all active:scale-95 ${isSaved ? 'text-pink-500 bg-pink-50 border-pink-100 shadow-inner' : 'text-slate-300 bg-white border-slate-100 shadow-sm'}`} style={{borderRadius: '5px'}}>
-                    <Heart size={20} fill={isSaved ? "currentColor" : "none"} />
-                 </button>
-                 {!isScanned && (
-                   <button onClick={() => { onRemove(poi.id); }} className="flex-1 h-14 flex items-center justify-center bg-white border border-slate-100 text-slate-300 hover:text-red-500 shadow-sm active:scale-95 transition-all" style={{borderRadius: '5px'}}>
-                      <Trash2 size={20} />
-                   </button>
-                 )}
-              </div>
-
-              {/* Rich Historical Content */}
-              <section className="text-right pb-10 border-t border-slate-100 pt-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <ScrollText size={20} className="text-indigo-500" />
-                  <h3 className="text-xl text-slate-900 font-black">{t.overview}</h3>
-                </div>
-                <div className="text-slate-700 text-[15px] leading-relaxed space-y-6 font-light">
-                  {isLoadingDetails ? (
-                    <div className="flex flex-col items-center gap-4 py-10 animate-pulse text-slate-300">
-                      <Loader2 size={32} className="animate-spin text-indigo-200" />
-                      <span className="text-xs font-bold tracking-widest uppercase">{t.loadingInfo}</span>
+                {deepResearch && (
+                  <div className="pt-8 border-t-2 border-indigo-50 space-y-8 animate-in slide-in-from-bottom-4 duration-700">
+                    <div className="flex items-center gap-2.5 text-indigo-600">
+                      <BookOpen size={20} />
+                      <h4 className="text-sm font-black uppercase tracking-widest">{isHe ? "ממצאי מחקר מורחב" : "Extended Research"}</h4>
                     </div>
-                  ) : (
-                    (extendedData?.historicalAnalysis || poi.description || "").split('\n').map((para: string, i: number) => (
-                      para.trim() && <p key={i} className="animate-in fade-in slide-in-from-bottom-2 duration-700" style={{ animationDelay: `${i * 150}ms` }}>{para}</p>
-                    ))
-                  )}
-                </div>
-              </section>
+
+                    <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 space-y-4 italic text-indigo-900 leading-relaxed shadow-inner">
+                      <Quote size={20} className="text-indigo-300" />
+                      <p className="font-medium">{deepResearch.deepAnalysis}</p>
+                    </div>
+
+                    {deepResearch.localLegends && (
+                      <div className="space-y-3">
+                         <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isHe ? "אגדות ופולקלור מקומי" : "Legends"}</h5>
+                         <p className="bg-slate-50 p-4 border border-slate-100 text-slate-600 text-[13px] leading-loose" style={{ borderRadius: '10px' }}>{deepResearch.localLegends}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sources Section - specifically requested via screenshot hints */}
+                {validSources.length > 0 && (
+                  <div className="pt-8 border-t border-slate-100 space-y-4">
+                     <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Info size={12} /> {isHe ? "מקורות מידע" : "Sources"}
+                     </h5>
+                     <div className="flex flex-wrap gap-2">
+                        {validSources.map((source: any, idx: number) => (
+                           <a key={idx} href={source.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-100 text-[10px] font-bold text-slate-600 transition-all" style={{ borderRadius: '8px' }}>
+                              <ExternalLink size={10} />
+                              {source.title || (isHe ? 'מקור' : 'Source')}
+                           </a>
+                        ))}
+                     </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+        </section>
       </div>
 
-      {/* Floating Navigation Bar */}
-      {!isScanned && currentIndex !== -1 && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[4000] bg-slate-900 text-white shadow-2xl p-1.5 flex gap-1 items-center w-[340px] transition-all duration-300 ${isExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`} style={{borderRadius: '5px'}}>
-           <button 
-             onClick={(e) => { e.stopPropagation(); onPrev(); }} 
-             disabled={currentIndex === 0} 
-             className={`flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${currentIndex === 0 ? 'text-slate-600' : 'text-white'}`}
-           >
-             {isHe ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-             {t.prev}
-           </button>
-           <div className="w-px h-8 bg-slate-700 shrink-0" />
-           <button 
-             onClick={(e) => { e.stopPropagation(); onNext(); }} 
-             disabled={currentIndex === totalCount - 1} 
-             className={`flex-1 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${currentIndex === totalCount - 1 ? 'text-slate-600' : 'text-white'}`}
-           >
-             {t.next}
-             {isHe ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-           </button>
-        </div>
-      )}
+      <footer className="absolute bottom-0 inset-x-0 bg-[#0f172a] border-none flex items-center shadow-2xl overflow-hidden h-14 shrink-0 z-30" style={{ borderRadius: '0 0 15px 15px' }}>
+         <button onClick={(e) => { e.stopPropagation(); onPrev(); }} disabled={currentIndex <= 0} className="flex-1 h-full text-white disabled:text-slate-600 font-bold text-xs flex items-center justify-center gap-3 active:bg-slate-800 transition-colors">
+           <ChevronRight size={16} />
+           <span>{isHe ? "התחנה הקודמת" : "Prev Station"}</span>
+         </button>
+         <div className="w-px h-6 bg-slate-800" />
+         <button onClick={(e) => { e.stopPropagation(); onNext(); }} disabled={currentIndex >= totalCount - 1} className="flex-1 h-full text-white disabled:text-slate-600 font-bold text-xs flex items-center justify-center gap-3 active:bg-slate-800 transition-colors">
+           <span>{isHe ? "התחנה הבאה" : "Next Station"}</span>
+           <ChevronLeft size={16} />
+         </button>
+      </footer>
     </div>
   );
 };

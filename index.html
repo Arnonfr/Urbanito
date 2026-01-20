@@ -6,19 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Urbanito - Your Urban Guide</title>
     
-    <!-- Favicon Configuration -->
     <link rel="icon" type="image/png" href="https://ibb.co/GB4KBcw" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="https://ibb.co/GB4KBcw" />
     <link rel="shortcut icon" href="https://ibb.co/GB4KBcw" />
     <link rel="apple-touch-icon" sizes="180x180" href="https://ibb.co/GB4KBcw" />
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC2ahib99SUIKcyVICTQmN7bwL2gcAoKMg&libraries=geometry,places&v=weekly"></script>
+    
+    <!-- Load Google Maps with Places Library (New) support -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=weekly"></script>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
-      /* Global Enforcement: Strictly 5px radius as requested */
       * {
         font-family: 'Noto Sans Hebrew', sans-serif !important;
         font-weight: 400 !important;
@@ -28,7 +29,6 @@
         border-radius: 5px !important;
       }
       
-      /* Circular exceptions for specific map/UI elements */
       .rounded-full-force { border-radius: 9999px !important; }
       .gm-style-mtk { border-radius: 50% !important; }
       
@@ -43,43 +43,48 @@
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       
       .glass-card {
-        background: rgba(255, 255, 255, 0.95) !important;
-        backdrop-filter: blur(20px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.3) !important;
-      }
-      
-      .guide-book {
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        box-shadow: -5px 5px 15px rgba(0,0,0,0.1);
-      }
-      .guide-book:hover {
-        transform: translateY(-5px);
-        box-shadow: -10px 10px 20px rgba(0,0,0,0.15);
+        background: rgba(255, 255, 255, 0.4) !important;
+        backdrop-filter: blur(45px) saturate(200%) !important;
+        -webkit-backdrop-filter: blur(45px) saturate(200%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
       }
 
-      @keyframes shimmer {
-        100% {
-          transform: translateX(100%);
-        }
+      /* Precise S-path travel animation matching Lucide Route icon */
+      @keyframes route-travel-s {
+        0% { transform: translate(-6px, 6px); opacity: 0; }
+        10% { opacity: 1; }
+        25% { transform: translate(6px, 6px); }   /* Bottom Line */
+        40% { transform: translate(6px, 0px); }   /* Vertical Center Up */
+        55% { transform: translate(-6px, 0px); }  /* Middle Line */
+        70% { transform: translate(-6px, -6px); } /* Vertical Top Up */
+        85% { transform: translate(6px, -6px); opacity: 1; } /* Top Line */
+        100% { transform: translate(6px, -6px); opacity: 0; }
       }
+
+      @keyframes white-dot-glow {
+        0% { box-shadow: 0 0 2px #fff, 0 0 5px rgba(255, 255, 255, 0.5); }
+        50% { box-shadow: 0 0 6px #fff, 0 0 15px rgba(255, 255, 255, 0.8); }
+        100% { box-shadow: 0 0 2px #fff, 0 0 5px rgba(255, 255, 255, 0.5); }
+      }
+
+      .animate-route-travel-s { animation: route-travel-s 2.5s infinite ease-in-out; }
+      .animate-dot-glow { animation: white-dot-glow 2s infinite ease-in-out; }
     </style>
-    <script type="importmap">
+  <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom": "https://esm.sh/react-dom@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.462.0",
-    "@google/genai": "https://esm.sh/@google/genai@1.34.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.47.10",
-    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
-    "react/": "https://esm.sh/react@19.0.0/",
-    "firebase/": "https://esm.sh/firebase@^12.7.0/"
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "firebase/": "https://esm.sh/firebase@^12.8.0/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1"
   }
 }
 </script>
-  </head>
+</head>
   <body class="overflow-hidden">
     <div id="root"></div>
   </body>
