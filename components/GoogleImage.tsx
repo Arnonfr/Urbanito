@@ -1,23 +1,39 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, X, Image as ImageIcon } from 'lucide-react';
+import { Loader2, CameraOff } from 'lucide-react';
+import { updatePoiImageInDb } from '../services/supabase';
 
 declare var google: any;
 
-interface Props {
+interface SmartImageProps {
   query: string;
+  poiName?: string;
+  cityName?: string;
+  lat?: number;
+  lng?: number;
+  size?: 'small' | 'medium' | 'large';
+  priority?: boolean;
   className?: string;
   fallbackUrl?: string;
+  existingUrl?: string;
 }
 
-// Persistent session cache for place images to save API costs
-const imageCache = new Map<string, string>();
+const memoryCache = new Map<string, string>();
+const STORAGE_PREFIX = 'urbanito-img-v5-';
+const CACHE_TTL = 86400000 * 7; 
 
-export const GoogleImage: React.FC<Props> = ({ query, className, fallbackUrl }) => {
-  const [imageUrl, setImageUrl] = useState<string | null>(imageCache.get(query) || null);
-  const [isLoading, setIsLoading] = useState(!imageCache.has(query));
+const SIZES = {
+  small: { maxWidthPx: 400 },
+  medium: { maxWidthPx: 800 },
+  large: { maxWidthPx: 1200 }
+};
+
+export const GoogleImage: React.FC<SmartImageProps> = ({ 
+  query, poiName, cityName, lat, lng, size = 'medium', priority = false, className = '', fallbackUrl, existingUrl 
+}) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(existingUrl || null);
+  const [isLoading, setIsLoading] = useState(!existingUrl);
   const [hasError, setHasError] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -26,125 +42,124 @@ export const GoogleImage: React.FC<Props> = ({ query, className, fallbackUrl }) 
   }, []);
 
   useEffect(() => {
-    if (!query) return;
-    
-    if (imageCache.has(query)) {
-      setImageUrl(imageCache.get(query)!);
+    if (existingUrl) {
+      setImageUrl(existingUrl);
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
-    setHasError(false);
+    if (!query) return;
+
+    const cleanHebrew = query.replace(/\([^)]*\)/g, '').trim();
+    const parenMatch = query.match(/\((.*?)\)/);
+    const englishName = parenMatch ? parenMatch[1] : null;
+    const searchQuery = (englishName || cleanHebrew).trim();
+
+    const cacheKey = `${STORAGE_PREFIX}${searchQuery.toLowerCase().replace(/\s+/g, '-')}-${size}`;
 
     const fetchImage = async () => {
       try {
-        if (!(window as any).google?.maps?.places) {
-          setTimeout(fetchImage, 500);
+        if (memoryCache.has(cacheKey)) {
+          setImageUrl(memoryCache.get(cacheKey)!);
+          setIsLoading(false);
           return;
         }
 
-        // Using Places API (New) via importLibrary or the places namespace
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const { url, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < CACHE_TTL) {
+            setImageUrl(url);
+            memoryCache.set(cacheKey, url);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Cache read error:", e);
+      }
+
+      setIsLoading(true);
+      
+      try {
+        if (!google?.maps?.importLibrary) {
+          throw new Error("Google Maps API not loaded");
+        }
+
         const { Place } = await google.maps.importLibrary("places") as any;
         
-        const trySearch = async (searchQuery: string, attempt: number = 1): Promise<void> => {
-          try {
-            const request = {
-              textQuery: searchQuery,
-              fields: ['photos'], // COST OPTIMIZATION: Only requesting photos
-              maxResultCount: 1,
-              language: 'en'
-            };
-
-            const { places } = await Place.searchByText(request);
-
-            if (!isMounted.current) return;
-
-            if (places && places.length > 0 && places[0].photos && places[0].photos.length > 0) {
-              // New API uses getURI instead of getUrl
-              const url = places[0].photos[0].getURI({ maxWidth: 1200, maxHeight: 1200 });
-              imageCache.set(query, url);
-              setImageUrl(url);
-              setIsLoading(false);
-            } else {
-              if (attempt === 1) await trySearch(`${query} tourism landmarks`, 2);
-              else if (attempt === 2) await trySearch(query, 3);
-              else {
-                setIsLoading(false);
-                setHasError(true);
-              }
-            }
-          } catch (e) {
-            console.error("Places New API Error:", e);
-            setHasError(true);
-            setIsLoading(false);
-          }
+        const request = {
+          textQuery: searchQuery,
+          fields: ['photos', 'displayName', 'id'],
+          maxResultCount: 1,
+          locationBias: lat && lng ? { center: { lat, lng }, radius: 1000 } : undefined
         };
 
-        await trySearch(`${query} iconic tourism`);
-      } catch (e) {
-        setHasError(true);
+        const { places } = await Place.searchByText(request);
+
+        if (!isMounted.current) return;
+
+        if (places && places.length > 0 && places[0].photos && places[0].photos.length > 0) {
+          const photoUrl = places[0].photos[0].getURI({
+            maxWidthPx: SIZES[size].maxWidthPx
+          });
+          
+          setImageUrl(photoUrl);
+          memoryCache.set(cacheKey, photoUrl);
+          
+          if (poiName && cityName) {
+            updatePoiImageInDb(poiName, cityName, photoUrl);
+          }
+
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+              url: photoUrl,
+              timestamp: Date.now()
+            }));
+          } catch (e) {}
+          
+          setIsLoading(false);
+        } else {
+          setImageUrl(fallbackUrl || `https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80&auto=format`);
+          setIsLoading(false);
+          setHasError(true);
+        }
+      } catch (err) {
+        console.error("New Places API Error:", err);
+        if (!isMounted.current) return;
+        setImageUrl(fallbackUrl || `https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80&auto=format`);
         setIsLoading(false);
+        setHasError(true);
       }
     };
 
     fetchImage();
-  }, [query]);
-
-  const toggleFullscreen = () => {
-    if (imageUrl) setIsFullscreen(!isFullscreen);
-  };
-
-  const finalFallback = fallbackUrl || `https://images.unsplash.com/featured/?${encodeURIComponent(query + ' tourism landmarks architecture')}`;
+  }, [query, size, lat, lng, existingUrl]);
 
   return (
-    <>
-      <div className={`relative overflow-hidden cursor-zoom-in bg-slate-100 ${className}`} onClick={toggleFullscreen}>
-        {isLoading && (
-          <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
-             <div className="w-full h-full animate-pulse bg-slate-200" />
-             <Loader2 size={24} className="absolute text-slate-300 animate-spin" />
-          </div>
-        )}
-        
-        {hasError ? (
-          <img 
-            src={finalFallback} 
-            className="w-full h-full object-cover grayscale-[0.2]" 
-            alt={query} 
-            loading="lazy"
-            onError={(e) => {
-               (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1467226319480-6bc9d893f216?auto=format&fit=crop&w=800&q=80";
-            }}
-          />
-        ) : (
-          <img 
-            src={imageUrl || finalFallback} 
-            className={`w-full h-full object-cover transition-opacity duration-700 ${isLoading ? 'opacity-0' : 'opacity-100'}`} 
-            alt={query}
-            loading="lazy"
-            onLoad={() => setIsLoading(false)}
-            onError={() => setHasError(true)}
-          />
-        )}
-      </div>
-
-      {isFullscreen && (imageUrl || finalFallback) && (
-        <div 
-          className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300"
-          onClick={toggleFullscreen}
-        >
-          <button className="absolute top-6 right-6 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-all">
-            <X size={24} />
-          </button>
-          <img 
-            src={imageUrl || finalFallback} 
-            className="max-w-full max-h-full object-contain shadow-2xl" 
-            style={{ borderRadius: '5px' }}
-            alt={query} 
-          />
+    <div className={`relative overflow-hidden bg-slate-100 ${className}`}>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-200/50">
+           <Loader2 size={18} className="text-indigo-500 animate-spin" />
         </div>
       )}
-    </>
+      {imageUrl && (
+        <img 
+          src={imageUrl} 
+          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`} 
+          alt={query}
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setHasError(true);
+            setIsLoading(false);
+          }}
+        />
+      )}
+      {hasError && !imageUrl && (
+        <div className="w-full h-full flex items-center justify-center text-slate-300">
+          <CameraOff size={20} />
+        </div>
+      )}
+    </div>
   );
 };

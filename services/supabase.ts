@@ -5,9 +5,15 @@ import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../type
 const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_vXT_oUjgSllGs8upeDQwLw_2lYYU3t9'; 
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-const ADMIN_EMAIL = "admin@urbanito.com"; 
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+    storageKey: 'urbanito-auth-v1',
+    storage: window.localStorage
+  }
+});
 
 export const normalize = (s: string) => {
   if (!s) return "";
@@ -35,8 +41,11 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
 
 export const saveUserPreferences = async (userId: string, preferences: UserPreferences) => {
   try {
-    const { error } = await supabase.from('user_profiles').upsert({ id: userId, preferences, updated_at: new Date().toISOString() });
-    if (error) console.error("Save Prefs Error:", error);
+    await supabase.from('user_profiles').upsert({ 
+      id: userId, 
+      preferences, 
+      updated_at: new Date().toISOString() 
+    }, { onConflict: 'id' });
   } catch (e) {}
 };
 
@@ -44,29 +53,8 @@ export const getCachedPoiDetails = async (poiName: string, city: string, lat?: n
   try {
     const normName = normalize(poiName);
     const normCity = normalize(city);
-    
-    const { data } = await supabase
-      .from('poi_details')
-      .select('details_data')
-      .eq('poi_name', normName)
-      .eq('city', normCity)
-      .maybeSingle();
-      
-    if (data) return data.details_data;
-
-    if (lat && lng) {
-      const { data: coordMatch } = await supabase
-        .from('poi_details')
-        .select('details_data')
-        .filter('details_data->lat', 'gte', lat - 0.0005)
-        .filter('details_data->lat', 'lte', lat + 0.0005)
-        .filter('details_data->lng', 'gte', lng - 0.0005)
-        .filter('details_data->lng', 'lte', lng + 0.0005)
-        .limit(1);
-
-      if (coordMatch && coordMatch.length > 0) return coordMatch[0].details_data;
-    }
-    
+    const { data } = await supabase.from('poi_details').select('details_data, image_url').eq('poi_name', normName).eq('city', normCity).maybeSingle();
+    if (data) return { ...data.details_data, imageUrl: data.image_url || data.details_data.imageUrl };
     return null;
   } catch (e) { return null; }
 };
@@ -75,49 +63,48 @@ export const cachePoiDetails = async (poiName: string, city: string, details: an
   try {
     const normName = normalize(poiName);
     const normCity = normalize(city);
-    
-    const payload = {
+    await supabase.from('poi_details').upsert({
       poi_name: normName,
       city: normCity,
-      details_data: { 
-        ...details, 
-        lat: Number(details.lat), 
-        lng: Number(details.lng),
-        poi_name: poiName, 
-        city_name: city,
-        enriched_at: new Date().toISOString()
-      },
+      details_data: details,
+      image_url: details.imageUrl || null,
       updated_at: new Date().toISOString()
-    };
-    
-    const { error } = await supabase.from('poi_details').upsert(payload, { onConflict: 'poi_name, city' });
+    }, { onConflict: 'poi_name,city' });
   } catch (e) {}
 };
 
-export const findCuratedRoute = async (city: string, theme: string): Promise<Route | null> => {
+export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl: string) => {
   try {
+    const normName = normalize(poiName);
     const normCity = normalize(city);
-    const normTheme = normalize(theme);
-    const { data } = await supabase.from('curated_routes').select('route_data').eq('city', normCity).eq('theme', normTheme).maybeSingle();
-    return data ? (data.route_data as Route) : null;
-  } catch (e) { return null; }
-};
-
-export const cacheCuratedRoute = async (city: string, theme: string, route: Route) => {
-  try {
-    const normCity = normalize(city);
-    const normTheme = normalize(theme);
-    await supabase.from('curated_routes').upsert({
+    await supabase.from('poi_details').upsert({ 
+      poi_name: normName,
       city: normCity,
-      theme: normTheme,
-      route_data: route
-    }, { onConflict: 'city, theme' });
+      image_url: imageUrl,
+      updated_at: new Date().toISOString() 
+    }, { onConflict: 'poi_name,city' });
   } catch (e) {}
+};
+
+export const saveToCuratedRoutes = async (route: Route, theme: string = 'general') => {
+  try {
+    await supabase.from('curated_routes').insert([{
+      city: normalize(route.city),
+      theme: theme,
+      route_data: route
+    }]);
+  } catch (e) {
+    console.error("Auto-save to curated failed:", e);
+  }
 };
 
 export const saveRouteToSupabase = async (userId: string, route: Route) => {
   try {
-    const { data, error } = await supabase.from('saved_routes').insert([{ user_id: userId, route_data: route, city: normalize(route.city) }]).select();
+    const { data, error } = await supabase.from('saved_routes').insert([{ 
+      user_id: userId, 
+      route_data: route, 
+      city: normalize(route.city) 
+    }]).select();
     if (error) throw error;
     return data ? data[0] : null;
   } catch (e) { return null; }
@@ -136,47 +123,63 @@ export const getSavedRoutesFromSupabase = async (userId: string) => {
   } catch (e) { return []; }
 };
 
-export const getSavedPoisFromSupabase = async (userId: string) => {
-  try {
-    const { data } = await supabase.from('saved_pois').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    return data || [];
-  } catch (e) { return []; }
-};
-
 export const deleteRouteFromSupabase = async (id: string, userId: string) => {
   try { await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId); } catch (e) {}
-};
-
-export const deletePoiFromSupabase = async (id: string, userId: string) => {
-  try { await supabase.from('saved_pois').delete().eq('id', id).eq('user_id', userId); } catch (e) {}
-};
-
-export const checkUsageLimit = async (userId: string | null): Promise<{ allowed: boolean, remaining: number, limit: number }> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (user?.email === ADMIN_EMAIL) return { allowed: true, remaining: 999, limit: 999 };
-  const today = new Date().toISOString().split('T')[0];
-  const { count } = await supabase.from('usage_logs').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', today);
-  const limit = userId ? 100 : 50; 
-  return { allowed: (count || 0) < limit, remaining: Math.max(0, limit - (count || 0)), limit };
 };
 
 export const logUsage = async (userId: string | null, city: string) => {
   try { await supabase.from('usage_logs').insert([{ user_id: userId, city: normalize(city) }]); } catch (e) {}
 };
 
+export const logPremiumInterest = async (userId: string | null) => {
+  try { await supabase.from('premium_interest').insert([{ user_id: userId, created_at: new Date().toISOString() }]); } catch (e) {}
+};
+
 export const submitFeedback = async (userId: string | null, feedback: FeedbackData, language: string) => {
   try {
-    const { error } = await supabase.from('app_feedback').insert([{ user_id: userId, feedback_data: feedback, language }]);
+    const { error } = await supabase.from('app_feedback').insert([{ 
+      user_id: userId, 
+      feedback_data: feedback, 
+      language,
+      created_at: new Date().toISOString() 
+    }]);
     return !error;
   } catch (e) { return false; }
 };
 
-export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[]> => {
+export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> => {
   try {
-    const { data } = await supabase.from('curated_routes').select('route_data').order('created_at', { ascending: false }).limit(limit);
-    return (data || []).map(d => d.route_data as Route);
-  } catch (e) { return []; }
+    // Separate calls to ensure one failure doesn't block the other (common with RLS issues)
+    const [curatedRes, savedRes] = await Promise.allSettled([
+      supabase.from('curated_routes').select('route_data').order('created_at', { ascending: false }).limit(limit),
+      supabase.from('saved_routes').select('route_data').order('created_at', { ascending: false }).limit(limit)
+    ]);
+    
+    const curatedData = curatedRes.status === 'fulfilled' ? (curatedRes.value.data || []) : [];
+    const savedData = savedRes.status === 'fulfilled' ? (savedRes.value.data || []) : [];
+    
+    const merged = [...curatedData, ...savedData];
+    const seen = new Set();
+    const final: Route[] = [];
+    
+    for (const item of merged) {
+      const r = item.route_data as Route;
+      if (!r || !r.name || !r.pois || r.pois.length === 0) continue;
+      const key = `${normalize(r.name)}-${normalize(r.city)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        final.push(r);
+      }
+    }
+    return final;
+  } catch (e) { 
+    console.error("Fetch recent routes failed:", e);
+    return []; 
+  }
+};
+
+export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[]> => {
+  return await getAllRecentRoutes(limit);
 };
 
 export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string): Promise<Route[]> => {
@@ -184,32 +187,49 @@ export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string):
     const normHe = normalize(cityName);
     const normEn = cityNameEn ? normalize(cityNameEn) : "";
     
-    // Wider search query using OR to find routes matched to either language name
-    const { data: curated } = await supabase
-      .from('curated_routes')
-      .select('route_data')
-      .or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`)
-      .limit(100);
+    // Fetch from curated and community tables
+    const [curatedRes, communityRes] = await Promise.allSettled([
+      supabase.from('curated_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30),
+      supabase.from('saved_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30)
+    ]);
 
-    const { data: community } = await supabase
-      .from('saved_routes')
-      .select('route_data')
-      .or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`)
-      .limit(100);
-    
+    const curated = curatedRes.status === 'fulfilled' ? (curatedRes.value.data || []) : [];
+    const community = communityRes.status === 'fulfilled' ? (communityRes.value.data || []) : [];
+
     const merged = [
-      ...((curated || []).map(d => d.route_data as Route)), 
-      ...((community || []).map(d => d.route_data as Route))
+      ...curated.map(d => d.route_data as Route), 
+      ...community.map(d => d.route_data as Route)
     ];
-    
+
     const seen = new Set();
     return merged.filter(r => { 
-      if (!r || !r.name || seen.has(r.name)) return false; 
-      seen.add(r.name); 
+      if (!r || !r.name) return false;
+      const key = `${normalize(r.name)}-${normalize(r.city)}`;
+      if (seen.has(key)) return false; 
+      seen.add(key); 
       return true; 
     });
-  } catch (e) { return []; }
+  } catch (e) { 
+    console.error("City hub fetch failed:", e);
+    return []; 
+  }
 };
 
-export const signInWithGoogle = async () => { await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } }); };
+export const signInWithGoogle = async () => { 
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({ 
+      provider: 'google', 
+      options: { 
+        redirectTo: window.location.origin,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
+      } 
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.error("Auth error:", err);
+  }
+};
 export const signOut = async () => { await supabase.auth.signOut(); };

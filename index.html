@@ -3,73 +3,49 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Urbanito - Your Urban Guide</title>
     
-    <link rel="icon" type="image/png" href="https://ibb.co/GB4KBcw" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="https://ibb.co/GB4KBcw" />
-    <link rel="shortcut icon" href="https://ibb.co/GB4KBcw" />
-    <link rel="apple-touch-icon" sizes="180x180" href="https://ibb.co/GB4KBcw" />
-    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg width='274' height='274' viewBox='0 0 274 274' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg clip-path='url(%23clip0_1_2)'%3E%3Crect width='274' height='274' rx='77' fill='%23801ED6'/%3E%3Cpath d='M67.9708 171.182L87.0037 89.5812L94.6606 107.083L70.8148 85.2058L71.9086 81.0492H136.664L135.789 85.6434L107.787 106.864L120.038 89.5812L101.661 168.776C98.1609 184.235 98.3068 196.122 102.099 204.435C106.037 212.602 113.402 216.686 124.194 216.686C131.633 216.686 137.977 215.082 143.227 211.873C148.478 208.519 152.926 203.341 156.572 196.341C160.364 189.34 163.573 180.152 166.198 168.776L184.575 89.5812L189.825 102.926L166.636 84.5495L167.511 81.0492H221.109L220.234 84.7683L194.857 102.707L203.608 89.5812L185.231 168.776C175.022 213.259 152.853 235.5 118.725 235.5C98.0151 235.5 83.2117 229.885 74.3151 218.655C65.4185 207.279 63.3037 191.455 67.9708 171.182Z' fill='white'/%3E%3Ccircle cx='100' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3Ccircle cx='190' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_1_2'%3E%3Crect width='274' height='274' rx='77' fill='white'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E" />
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Load Google Maps with Places Library (New) support -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=weekly"></script>
-    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
       * {
         font-family: 'Noto Sans Hebrew', sans-serif !important;
-        font-weight: 400 !important;
+        -webkit-tap-highlight-color: transparent;
       }
-      
-      div, button, input, section, article, nav, header, footer, img {
-        border-radius: 5px !important;
-      }
-      
       .rounded-full-force { border-radius: 9999px !important; }
-      .gm-style-mtk { border-radius: 50% !important; }
       
       body { 
-        background-color: #f8fafc;
-        color: #0f172a;
+        background-color: #f8fafc; 
+        color: #0f172a; 
         -webkit-font-smoothing: antialiased;
+        overscroll-behavior: none;
+        height: 100dvh;
       }
-      
-      #root { height: 100vh; width: 100vw; }
+      #root { height: 100dvh; width: 100vw; overflow: hidden; }
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      
-      .glass-card {
-        background: rgba(255, 255, 255, 0.4) !important;
-        backdrop-filter: blur(45px) saturate(200%) !important;
-        -webkit-backdrop-filter: blur(45px) saturate(200%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.5) !important;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
-      }
 
-      /* Precise S-path travel animation matching Lucide Route icon */
-      @keyframes route-travel-s {
-        0% { transform: translate(-6px, 6px); opacity: 0; }
+      @keyframes climb-move {
+        0% { offset-distance: 0%; opacity: 0; }
         10% { opacity: 1; }
-        25% { transform: translate(6px, 6px); }   /* Bottom Line */
-        40% { transform: translate(6px, 0px); }   /* Vertical Center Up */
-        55% { transform: translate(-6px, 0px); }  /* Middle Line */
-        70% { transform: translate(-6px, -6px); } /* Vertical Top Up */
-        85% { transform: translate(6px, -6px); opacity: 1; } /* Top Line */
-        100% { transform: translate(6px, -6px); opacity: 0; }
+        90% { opacity: 1; }
+        100% { offset-distance: 100%; opacity: 0; }
       }
-
-      @keyframes white-dot-glow {
-        0% { box-shadow: 0 0 2px #fff, 0 0 5px rgba(255, 255, 255, 0.5); }
-        50% { box-shadow: 0 0 6px #fff, 0 0 15px rgba(255, 255, 255, 0.8); }
-        100% { box-shadow: 0 0 2px #fff, 0 0 5px rgba(255, 255, 255, 0.5); }
+      .climbing-dot {
+        offset-path: path("M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8");
+        animation: climb-move 1.5s infinite ease-in-out alternate;
       }
-
-      .animate-route-travel-s { animation: route-travel-s 2.5s infinite ease-in-out; }
-      .animate-dot-glow { animation: white-dot-glow 2s infinite ease-in-out; }
+      .climbing-path {
+        stroke-dasharray: 1, 3;
+        stroke-linecap: round;
+        opacity: 0.3;
+      }
     </style>
   <script type="importmap">
 {
@@ -79,8 +55,9 @@
     "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.48.0",
     "firebase/": "https://esm.sh/firebase@^12.8.0/",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1"
+    "@google-cloud/secret-manager": "https://esm.sh/@google-cloud/secret-manager@^6.1.1"
   }
 }
 </script>

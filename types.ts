@@ -75,6 +75,7 @@ export interface Route {
   isOffline?: boolean;
   isAlternative?: boolean;
   style?: 'street' | 'area';
+  dist?: number; // Distance from center, used for nearby discovery
 }
 
 export interface AudioState {

@@ -36,7 +36,7 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
   const [isSuccess, setIsSuccess] = useState(false);
 
   const t = {
-    title: isHe ? 'מה דעתך על Urbanisto?' : 'What do you think of Urbanisto?',
+    title: isHe ? 'מה דעתך על Urbanito?' : 'What do you think of Urbanito?',
     subtitle: isHe ? 'נשמח לשמוע איך נוכל להשתפר' : 'We would love to hear how we can improve',
     sentimentTitle: isHe ? 'איך ההרגשה הכללית?' : 'How is the general vibe?',
     featuresTitle: isHe ? 'מה עבד לך טוב (או פחות)?' : 'What worked well (or less)?',
@@ -110,15 +110,15 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
         {isSuccess ? (
           <div className="p-12 text-center space-y-6">
             <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-sm">
-              <Check size={40} strokeWidth={3} />
+              <Check size={40} strokeWidth={2} />
             </div>
-            <h2 className="text-2xl font-bold text-slate-900">{t.success}</h2>
+            <h2 className="text-2xl font-medium text-slate-900">{t.success}</h2>
           </div>
         ) : (
           <>
             <header className="p-8 pb-4 flex items-start justify-between shrink-0">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                <h2 className="text-2xl font-medium text-slate-900 flex items-center gap-3">
                   <MessageSquareHeart className="text-pink-500" size={24} />
                   {t.title}
                 </h2>
@@ -132,7 +132,7 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
             <div className="p-8 pt-0 space-y-8 overflow-y-auto no-scrollbar flex-1">
               {/* Sentiment Scale */}
               <section className="space-y-4">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.sentimentTitle}</label>
+                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{t.sentimentTitle}</label>
                 <div className="flex justify-between items-center bg-slate-50 p-4 rounded-[2rem]">
                   {EMOJIS.map((emoji, idx) => (
                     <button 
@@ -148,7 +148,7 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
 
               {/* Advanced Feature Feedback */}
               <section className="space-y-6">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.featuresTitle}</label>
+                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{t.featuresTitle}</label>
                 
                 <div className="space-y-4">
                   {(Object.keys(feedback.features) as Array<keyof FeedbackData['features']>).map((key) => {
@@ -158,10 +158,10 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleToggleFeature(key)}
-                            className={`px-6 py-2.5 rounded-2xl text-xs font-bold transition-all border shrink-0 ${
+                            className={`px-6 py-2.5 rounded-2xl text-xs font-medium transition-all border shrink-0 ${
                               feat.isSelected 
                                 ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
-                                : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'
+                                : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300 font-normal'
                             }`}
                           >
                             {t[key]}
@@ -180,9 +180,9 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
                         {feat.isSelected && (
                           <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 space-y-5 animate-in slide-in-from-top-2 duration-300">
                              <div className="space-y-3">
-                               <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
+                               <div className="flex justify-between text-[10px] font-medium text-slate-400 uppercase">
                                   <span>{t.ratingLabels[1]} (1)</span>
-                                  <span className="text-emerald-500 font-black">{feat.rating}</span>
+                                  <span className="text-emerald-500 font-medium">{feat.rating}</span>
                                   <span>{t.ratingLabels[5]} (5)</span>
                                </div>
                                <input 
@@ -216,7 +216,7 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
 
               {/* General Feedback */}
               <section className="space-y-4 pt-4">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
                   <MessageCircle size={12} />
                   {isHe ? 'הערות נוספות' : 'General Comments'}
                 </label>
@@ -233,7 +233,7 @@ export const FeedbackModal: React.FC<Props> = ({ isHe, userId, onClose }) => {
               <button 
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="w-full py-5 bg-emerald-600 text-white rounded-[1.5rem] font-bold flex items-center justify-center gap-3 shadow-xl shadow-emerald-100 active:scale-95 transition-all disabled:opacity-50"
+                className="w-full py-5 bg-emerald-600 text-white rounded-[1.5rem] font-medium flex items-center justify-center gap-3 shadow-xl shadow-emerald-100 active:scale-95 transition-all disabled:opacity-50"
               >
                 {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : t.submit}
               </button>

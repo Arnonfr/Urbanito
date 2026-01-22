@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Headphones, Play, Pause, SkipForward, SkipBack, ChevronDown, Loader2, MapPin, Maximize2 } from 'lucide-react';
 import { AudioState, POI } from '../types';
-import { generateSpeech, decodeAudioData } from '../services/geminiService';
+import { generateSpeech, decodeAudioData, decode } from '../services/geminiService';
 
 interface Props {
   audioState: AudioState;
@@ -52,7 +52,7 @@ export const GlobalAudioPlayer: React.FC<Props> = ({
         audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
       
-      const audioBuffer = await generateSpeech(chapter.script, isHe ? 'he' : 'en');
+      const base64Audio = await generateSpeech(chapter.script, isHe ? 'he' : 'en');
       
       // CRITICAL CHECK: If user paused while we were generating, don't start playback
       if (!isPlayingRef.current) {
@@ -60,9 +60,9 @@ export const GlobalAudioPlayer: React.FC<Props> = ({
         return;
       }
 
-      const decodedBuffer = await decodeAudioData(audioBuffer, audioContext.current, 24000, 1);
+      const audioBuffer = await decodeAudioData(decode(base64Audio), audioContext.current, 24000, 1);
       const source = audioContext.current.createBufferSource();
-      source.buffer = decodedBuffer;
+      source.buffer = audioBuffer;
       source.playbackRate.value = audioState.playbackRate;
       source.connect(audioContext.current.destination);
       sourceNode.current = source;
