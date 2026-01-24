@@ -34,11 +34,16 @@ jobs:
       - name: Verify Build
         run: ls -la dist/index.html
           
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Create Service Account File
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEN_LANG_CLIENT_0224015230 }}' > service-account.json
+
       - name: Deploy to Firebase
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEN_LANG_CLIENT_0224015230 }}'
-          projectId: gen-lang-client-0224015230
-          channelId: live
+        run: firebase deploy --only hosting --non-interactive --project gen-lang-client-0224015230
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
+
+
 
