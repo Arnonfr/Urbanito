@@ -34,7 +34,7 @@ const LOGO_SVG = "data:image/svg+xml,%3Csvg width='274' height='274' viewBox='0 
 const INTERESTS_HE = ['היסטוריה', 'ארכיטקטורה', 'מוזיקה', 'אוכל', 'אמנות', 'צילום', 'קולינריה מקומית', 'אמנות רחוב', 'חיי לילה'];
 const INTERESTS_EN = ['History', 'Architecture', 'Music', 'Food', 'Art', 'Photography', 'Local Cuisine', 'Street Art', 'Nightlife'];
 
-export const PreferencesPanel: React.FC<Props> = ({ 
+export const PreferencesPanel: React.FC<Props> = ({
   preferences, setPreferences, savedRoutes, savedPois, offlineRouteIds, onLoadOfflineRoute, onRemoveOffline,
   user, onLogin, onLogout, onLoadRoute, onDeleteRoute, onDeletePoi, onOpenFeedback, onOpenGuide,
   uniqueUserCount, remainingGens
@@ -51,7 +51,7 @@ export const PreferencesPanel: React.FC<Props> = ({
         title: 'Urbanito',
         text: isHe ? 'כדאי לנסות את Urbanito!' : 'Check out Urbanito!',
         url: url
-      }).catch(() => {});
+      }).catch(() => { });
     } else {
       navigator.clipboard.writeText(url);
       alert(isHe ? 'הלינק הועתק!' : 'Link copied!');
@@ -90,7 +90,7 @@ export const PreferencesPanel: React.FC<Props> = ({
             {user ? (user.user_metadata?.full_name || user.email) : (isHe ? 'אורח/ת' : 'Guest')}
           </h2>
           {user ? (
-            <button 
+            <button
               onClick={onLogout}
               className="flex items-center gap-1.5 text-[11px] font-medium text-rose-500 hover:text-rose-600 active:bg-rose-50 py-2 px-3 -mx-3 rounded-[8px] transition-all uppercase tracking-[0.1em] mt-1"
             >
@@ -98,11 +98,11 @@ export const PreferencesPanel: React.FC<Props> = ({
               {isHe ? 'התנתקות מהחשבון' : 'Sign Out'}
             </button>
           ) : (
-             <p className="text-[10px] text-slate-400 font-normal uppercase tracking-widest mt-1">{isHe ? 'מצב תצוגה בלבד' : 'Viewing only mode'}</p>
+            <p className="text-[10px] text-slate-400 font-normal uppercase tracking-widest mt-1">{isHe ? 'מצב תצוגה בלבד' : 'Viewing only mode'}</p>
           )}
         </div>
         {!user && (
-          <button 
+          <button
             onClick={onLogin}
             className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-[8px] shadow-sm hover:shadow-md active:scale-95 transition-all text-[11px] font-medium text-slate-700 uppercase tracking-widest"
           >
@@ -114,47 +114,45 @@ export const PreferencesPanel: React.FC<Props> = ({
 
       <div className="space-y-10">
         <div className="grid grid-cols-1 gap-8">
-            <section>
-              <label className="flex items-center gap-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 px-1">
-                <Globe size={12} /> {isHe ? 'שפת האפליקציה' : 'App Language'}
-              </label>
-              <div className="flex gap-2">
-                {['he', 'en'].map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setPreferences({ ...preferences, language: lang as 'he' | 'en' })}
-                    className={`flex-1 py-3 rounded-[8px] text-[11px] font-medium transition-all border uppercase tracking-widest ${
-                      preferences.language === lang
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-lg'
-                        : 'bg-white text-slate-400 border-slate-100'
+          <section>
+            <label className="flex items-center gap-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 px-1">
+              <Globe size={12} /> {isHe ? 'שפת האפליקציה' : 'App Language'}
+            </label>
+            <div className="flex gap-2">
+              {['he', 'en'].map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setPreferences({ ...preferences, language: lang as 'he' | 'en' })}
+                  className={`flex-1 py-3 rounded-[8px] text-[11px] font-medium transition-all border uppercase tracking-widest ${preferences.language === lang
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-lg'
+                    : 'bg-white text-slate-400 border-slate-100'
                     }`}
-                  >
-                    {lang === 'he' ? 'עברית' : 'English'}
-                  </button>
-                ))}
-              </div>
-            </section>
+                >
+                  {lang === 'he' ? 'עברית' : 'English'}
+                </button>
+              ))}
+            </div>
+          </section>
 
-            <section>
-              <label className="flex items-center gap-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 px-1">
-                <BookOpen size={12} /> {isHe ? 'תחומי עניין עיקריים' : 'Key Interests'}
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {interests.map((interest) => (
-                  <button
-                    key={interest}
-                    onClick={() => toggleInterest(interest)}
-                    className={`px-4 py-2 rounded-[8px] text-[10px] font-normal transition-all border ${
-                      preferences.interests.includes(interest)
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                        : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'
+          <section>
+            <label className="flex items-center gap-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 px-1">
+              <BookOpen size={12} /> {isHe ? 'תחומי עניין עיקריים' : 'Key Interests'}
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {interests.map((interest) => (
+                <button
+                  key={interest}
+                  onClick={() => toggleInterest(interest)}
+                  className={`px-4 py-2 rounded-[8px] text-[10px] font-normal transition-all border ${preferences.interests.includes(interest)
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                    : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'
                     }`}
-                  >
-                    {interest}
-                  </button>
-                ))}
-              </div>
-            </section>
+                >
+                  {interest}
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
 
         <section>
@@ -185,14 +183,14 @@ export const PreferencesPanel: React.FC<Props> = ({
                       <h3 className="text-sm font-medium text-slate-900 truncate mt-1">{row.route_data?.name}</h3>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button 
-                        onClick={() => onLoadRoute(row.route_data.city, row.route_data)} 
+                      <button
+                        onClick={() => onLoadRoute(row.route_data.city, row.route_data)}
                         className="w-11 h-11 bg-slate-900 text-white rounded-[8px] flex items-center justify-center hover:bg-indigo-600 transition-all active:scale-95 shadow-md"
                       >
                         <Navigation size={18} fill="currentColor" />
                       </button>
-                      <button 
-                        onClick={() => onDeleteRoute(row.id)} 
+                      <button
+                        onClick={() => onDeleteRoute(row.id)}
                         className="w-11 h-11 bg-white border border-slate-100 text-slate-300 hover:text-red-500 rounded-[8px] flex items-center justify-center transition-all active:scale-95 shadow-sm"
                       >
                         <Trash2 size={18} />
@@ -206,7 +204,7 @@ export const PreferencesPanel: React.FC<Props> = ({
         </section>
 
         <section className="pt-6 border-t border-slate-100 space-y-4">
-           <button 
+          <button
             onClick={() => setShowFeedbackModal(true)}
             className="w-full flex items-center justify-between p-5 bg-white border border-slate-100 rounded-[8px] hover:bg-slate-50 transition-all shadow-sm group"
           >
@@ -222,8 +220,9 @@ export const PreferencesPanel: React.FC<Props> = ({
             <ChevronLeft size={18} className="text-slate-300" />
           </button>
 
-          <button 
+          <button
             onClick={onOpenGuide}
+
             className="w-full flex items-center justify-between p-5 bg-white border border-slate-100 rounded-[8px] hover:bg-slate-50 transition-all shadow-sm group"
           >
             <div className="flex items-center gap-4">
@@ -237,17 +236,17 @@ export const PreferencesPanel: React.FC<Props> = ({
             </div>
             <ChevronLeft size={18} className="text-slate-300" />
           </button>
-          
+
           <div className="flex gap-4">
-            <button 
+            <button
               onClick={handleShareInvite}
               className="flex-1 h-14 flex items-center justify-center gap-3 bg-white border border-slate-100 text-slate-600 rounded-[8px] text-[11px] font-medium uppercase tracking-widest hover:border-indigo-100 hover:text-indigo-600 active:scale-95 transition-all shadow-sm"
             >
               <Share2 size={16} /> {isHe ? "שיתוף אפליקציה" : "Share App"}
             </button>
-            <a 
-              href="https://www.buymeacoffee.com/travel.ai" 
-              target="_blank" 
+            <a
+              href="https://www.buymeacoffee.com/travel.ai"
+              target="_blank"
               className="flex-1 h-14 flex items-center justify-center gap-3 bg-white border border-slate-100 text-slate-600 rounded-[8px] text-[11px] font-medium uppercase tracking-widest hover:border-amber-200 hover:text-amber-600 active:scale-95 transition-all shadow-sm"
             >
               <Coffee size={16} /> Buy me coffee
@@ -256,35 +255,35 @@ export const PreferencesPanel: React.FC<Props> = ({
         </section>
 
         <section className="pt-2">
-           <div className="bg-indigo-600 text-white p-7 rounded-[8px] shadow-2xl relative overflow-hidden group">
-              <div className="relative z-10 flex items-center justify-between gap-6">
-                 <div className="flex-1 text-right">
-                    <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-indigo-200 mb-1">{isHe ? 'בקרוב באורבניטו' : 'COMING SOON'}</h4>
-                    <h3 className="text-xl font-medium tracking-tight">{isHe ? 'גירסת פרימיום' : 'Premium Version'}</h3>
-                    <p className="text-[11px] text-indigo-50 mt-2 leading-relaxed opacity-90">
-                      {isHe ? 'יותר תמונות היסטוריות, הסברים מעמיקים, קריינות קולית חיה ועוד הרבה פנינים.' : 'More historical photos, deep insights, live voice narration and more gems.'}
-                    </p>
-                 </div>
-                 <button 
-                  onClick={handlePremiumInterest}
-                  className={`w-16 h-16 rounded-[8px] flex items-center justify-center text-2xl transition-all active:scale-90 shadow-xl ${premiumLiked ? 'bg-white text-indigo-600 scale-110' : 'bg-white/20 text-white hover:bg-white/30'}`}
-                 >
-                   {premiumLiked ? <Heart size={24} fill="#4f46e5" /> : <Heart size={24} />}
-                 </button>
+          <div className="bg-indigo-600 text-white p-7 rounded-[8px] shadow-2xl relative overflow-hidden group">
+            <div className="relative z-10 flex items-center justify-between gap-6">
+              <div className="flex-1 text-right">
+                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-indigo-200 mb-1">{isHe ? 'בקרוב באורבניטו' : 'COMING SOON'}</h4>
+                <h3 className="text-xl font-medium tracking-tight">{isHe ? 'גירסת פרימיום' : 'Premium Version'}</h3>
+                <p className="text-[11px] text-indigo-50 mt-2 leading-relaxed opacity-90">
+                  {isHe ? 'יותר תמונות היסטוריות, הסברים מעמיקים, קריינות קולית חיה ועוד הרבה פנינים.' : 'More historical photos, deep insights, live voice narration and more gems.'}
+                </p>
               </div>
-           </div>
+              <button
+                onClick={handlePremiumInterest}
+                className={`w-16 h-16 rounded-[8px] flex items-center justify-center text-2xl transition-all active:scale-90 shadow-xl ${premiumLiked ? 'bg-white text-indigo-600 scale-110' : 'bg-white/20 text-white hover:bg-white/30'}`}
+              >
+                {premiumLiked ? <Heart size={24} fill="#4f46e5" /> : <Heart size={24} />}
+              </button>
+            </div>
+          </div>
         </section>
 
         <div className="pt-12 text-center space-y-2 opacity-30">
-           <p className="text-[10px] font-medium text-slate-500 uppercase tracking-[0.4em]">URBANITO V3.1 • 2025</p>
+          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-[0.4em]">URBANITO V3.1 • 2025</p>
         </div>
       </div>
 
       {showFeedbackModal && (
-        <FeedbackModal 
-          isHe={isHe} 
-          userId={user?.id || null} 
-          onClose={() => setShowFeedbackModal(false)} 
+        <FeedbackModal
+          isHe={isHe}
+          userId={user?.id || null}
+          onClose={() => setShowFeedbackModal(false)}
         />
       )}
     </div>

@@ -33,6 +33,7 @@ import {
   getAllRecentRoutes
 } from './services/supabase';
 
+
 declare var google: any;
 
 const PARIS_COORDS = { lat: 48.8566, lng: 2.3522 };
@@ -739,6 +740,8 @@ const App: React.FC = () => {
           } />
 
           <Route path="*" element={<Navigate to="/" replace />} />
+
+
         </Routes>
 
         {isAiMenuOpen && (

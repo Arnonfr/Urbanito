@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Urbanito Project Pulse - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.463.0/lucide.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 min-h-screen p-6 md:p-12">
+    <div class="max-w-6xl mx-auto space-y-12 animate-fade-in">
+
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div class="space-y-2">
+                <a href="index.html"
+                    class="flex items-center gap-2 text-slate-400 hover:text-indigo-600 transition-colors text-sm font-medium mb-4">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to App
+                </a>
+                <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">
+                    Urbanito <span class="text-indigo-600">Project Pulse</span>
+                </h1>
+                <p class="text-lg text-slate-500 max-w-2xl">
+                    A standalone overview of our progress building the ultimate AI-powered urban explorer.
+                </p>
+            </div>
+            <div
+                class="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100 self-start md:self-auto">
+                <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                <span class="text-sm font-semibold text-slate-600 uppercase tracking-wider">v2.5.0 Standalone</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- Main Visual Column -->
+            <div class="lg:col-span-2 space-y-8">
+
+                <!-- Gallery -->
+                <section
+                    class="bg-white rounded-3xl p-8 shadow-xl border border-slate-100 overflow-hidden relative group">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
+                        <i data-lucide="layout" class="text-indigo-600"></i> Feature Preview
+                    </h2>
+                    <div class="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 shadow-inner"
+                        id="gallery-container">
+                        <!-- Gallery items will be injected by JS -->
+                    </div>
+                    <div class="flex justify-center gap-2 mt-6" id="dots-container">
+                        <!-- Dots will be injected by JS -->
+                    </div>
+                </section>
+
+                <!-- Features Grid -->
+                <section class="grid grid-cols-1 md:grid-cols-2 gap-4" id="features-container">
+                    <!-- Features will be injected by JS -->
+                </section>
+            </div>
+
+            <!-- Sidebar Column -->
+            <div class="space-y-8">
+
+                <!-- Git History / Activity -->
+                <section class="bg-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden">
+                    <div class="absolute -top-12 -right-12 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl"></div>
+                    <h2 class="text-xl font-bold mb-8 flex items-center gap-3 relative z-10">
+                        <i data-lucide="history" class="text-indigo-400"></i> Recent Updates
+                    </h2>
+                    <div class="space-y-6 relative z-10" id="commits-container">
+                        <!-- Commits will be injected by JS -->
+                    </div>
+                    <button
+                        class="w-full mt-8 py-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl text-xs font-semibold tracking-wider transition-colors border border-white/10 flex items-center justify-center gap-2 group">
+                        VIEW FULL CHANGELOG <i data-lucide="chevron-right"
+                            class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+                    </button>
+                </section>
+
+                <!-- Architecture / Status -->
+                <section class="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-8 text-white shadow-xl">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
+                        <i data-lucide="layers" class="w-6 h-6"></i> Technology Stack
+                    </h2>
+                    <ul class="space-y-4" id="tech-stack-container">
+                        <!-- Tech stack will be injected by JS -->
+                    </ul>
+                    <div class="mt-8 pt-6 border-t border-white/10 flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] uppercase opacity-60 font-bold tracking-widest">Environment</span>
+                            <span class="font-mono text-xs">Standalone Review</span>
+                        </div>
+                        <i data-lucide="arrow-right" class="text-indigo-200"></i>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer
+            class="pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-sm">
+            <p>© 2026 Urbanito. Standalone Dashboard Version.</p>
+            <div class="flex gap-6">
+                <a href="#" class="hover:text-slate-600 transition-colors">Documentation</a>
+                <a href="#" class="hover:text-slate-600 transition-colors">Security</a>
+                <a href="#" class="hover:text-slate-600 transition-colors">Support</a>
+            </div>
+        </footer>
+
+    </div>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        const screenshots = [
+            { id: 'landing', title: 'Map Exploration', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/landing_page_map_1769286842708.png' },
+            { id: 'library', title: 'Route Library', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/library_page_1769286861696.png' },
+            { id: 'route', title: 'Tour Overview', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/route_overview_1769287028769.png' },
+        ];
+
+        const commits = [
+            { h: 'b7be093', a: 'ארנון', t: '3 minutes ago', m: 'fix: correct deployment step order' },
+            { h: '9ba00eb', a: 'ארנון', t: '6 minutes ago', m: 'fix: improve deployment workflow and permissions' },
+            { h: 'd385781', a: 'ארנון', t: '9 minutes ago', m: 'feat: implement multi-page routing, lazy loading, and CI/CD infrastructure' },
+            { h: '9532954', a: 'Arnonfr', t: '2 days ago', m: 'feat: Integrate Google Secret Manager for credentials' },
+            { h: '5a5c170', a: 'Arnonfr', t: '5 days ago', m: 'refactor: Update dependencies and Google Maps API key' },
+            { h: '7588bb3', a: 'Arnonfr', t: '9 days ago', m: 'feat: Update dependencies and styling for React 19 and Tailwind' },
+        ];
+
+        const features = [
+            { icon: 'sparkles', color: 'text-indigo-500', title: 'AI Route Generation', desc: 'Personalized walking tours created via Gemini API based on user preferences.' },
+            { icon: 'layout', color: 'text-emerald-500', title: 'Multi-device Optimized', desc: 'Mobile-first design with smooth transitions and intuitive bottom navigation.' },
+            { icon: 'monitor', color: 'text-amber-500', title: 'Real-time Interaction', desc: 'Live map integration with dynamic point-of-interest discovery.' },
+            { icon: 'cpu', color: 'text-rose-500', title: 'Cloud Integration', desc: 'Supabase for auth/data and Google Secret Manager for secure keys.' },
+        ];
+
+        const techStack = [
+            { l: 'Frontend', v: 'React 19 + TypeScript', p: 'w-full' },
+            { l: 'Routing', v: 'React Router v7', p: 'w-11/12' },
+            { l: 'AI Engine', v: 'Google Gemini API', p: 'w-full' },
+            { l: 'Database', v: 'Supabase Realtime', p: 'w-10/12' },
+        ];
+
+        // Initialize UI
+        let activeShot = 0;
+
+        function renderGallery() {
+            const container = document.getElementById('gallery-container');
+            const dots = document.getElementById('dots-container');
+            container.innerHTML = '';
+            dots.innerHTML = '';
+
+            screenshots.forEach((shot, idx) => {
+                const item = document.createElement('div');
+                item.className = `absolute inset-0 transition-opacity duration-1000 ease-in-out ${activeShot === idx ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'}`;
+                item.innerHTML = `
+                    <img src="${shot.path}" alt="${shot.title}" class="w-full h-full object-cover">
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+                        <p class="text-white font-semibold text-lg">${shot.title}</p>
+                    </div>
+                `;
+                container.appendChild(item);
+
+                const dot = document.createElement('button');
+                dot.onclick = () => { activeShot = idx; renderGallery(); };
+                dot.className = `w-2.5 h-2.5 rounded-full transition-all ${activeShot === idx ? 'bg-indigo-600 w-8' : 'bg-slate-200'}`;
+                dots.appendChild(dot);
+            });
+        }
+
+        function renderFeatures() {
+            const container = document.getElementById('features-container');
+            features.forEach(f => {
+                const item = document.createElement('div');
+                item.className = 'bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow';
+                item.innerHTML = `
+                    <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
+                        <i data-lucide="${f.icon}" class="w-5 h-5 ${f.color}"></i>
+                    </div>
+                    <h3 class="font-bold text-slate-900 mb-1">${f.title}</h3>
+                    <p class="text-sm text-slate-500 leading-relaxed">${f.desc}</p>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function renderCommits() {
+            const container = document.getElementById('commits-container');
+            commits.forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'group cursor-default';
+                item.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-[10px] font-mono text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded leading-none">${c.h}</span>
+                        <span class="text-[10px] text-slate-500 flex items-center gap-1"><i data-lucide="clock" class="w-2.5 h-2.5"></i> ${c.t}</span>
+                    </div>
+                    <p class="text-sm font-medium text-slate-200 group-hover:text-indigo-300 transition-colors leading-snug">
+                        ${c.m}
+                    </p>
+                    <div class="text-[10px] text-slate-500 mt-1">by ${c.a}</div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function renderTechStack() {
+            const container = document.getElementById('tech-stack-container');
+            techStack.forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <div class="flex justify-between text-xs font-semibold mb-1.5 opacity-80">
+                        <span>${item.l}</span>
+                        <span>${item.v}</span>
+                    </div>
+                    <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-indigo-300 rounded-full ${item.p}"></div>
+                    </div>
+                `;
+                container.appendChild(li);
+            });
+        }
+
+        // Initialize everything
+        window.onload = () => {
+            renderGallery();
+            renderFeatures();
+            renderCommits();
+            renderTechStack();
+            lucide.createIcons();
+
+            // Auto rotate gallery
+            setInterval(() => {
+                activeShot = (activeShot + 1) % screenshots.length;
+                renderGallery();
+            }, 5000);
+        };
+    </script>
+</body>
+
+</html>
