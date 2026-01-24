@@ -31,13 +31,14 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           
-      - name: Create Service Account File
-        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEN_LANG_CLIENT_0224015230 }}' > service-account.json
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEN_LANG_CLIENT_0224015230 }}'
+          projectId: gen-lang-client-0224015230
+          channelId: live
 
-      - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only hosting --non-interactive --project gen-lang-client-0224015230
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
 
 
 
