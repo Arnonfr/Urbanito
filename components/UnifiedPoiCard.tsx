@@ -2,21 +2,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { POI, UserPreferences, Route } from '../types';
 import { fetchExtendedPoiDetails } from '../services/geminiService';
-import { 
-  Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ArrowRight, ArrowLeft, 
+import {
+  Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ArrowRight, ArrowLeft,
   Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Sparkles, Building
 } from 'lucide-react';
 import { CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
 
 interface Props {
-  poi: POI; route: Route; onClose: () => void; onNext: () => void; onPrev: () => void; 
+  poi: POI; route: Route; onClose: () => void; onNext: () => void; onPrev: () => void;
   currentIndex: number; totalCount: number; preferences: UserPreferences; onUpdatePreferences: (p: UserPreferences) => void;
   isExpanded: boolean; setIsExpanded: (v: boolean) => void;
   showToast?: (m: string, t?: 'success' | 'error') => void;
 }
 
-export const UnifiedPoiCard: React.FC<Props> = ({ 
+export const UnifiedPoiCard: React.FC<Props> = ({
   poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast
 }) => {
   const isHe = preferences.language === 'he';
@@ -31,14 +31,11 @@ export const UnifiedPoiCard: React.FC<Props> = ({
     setIsLoading(true);
     const loadData = async () => {
       const data = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng);
-      if (data) { 
-        setExtendedData(data); 
-        setIsLoading(false); 
-        if (currentIndex < totalCount - 1) {
-          const nextPoi = route.pois[currentIndex + 1];
-          fetchExtendedPoiDetails(nextPoi.name, route.city, preferences, nextPoi.lat, nextPoi.lng);
-        }
+      if (data) {
+        setExtendedData(data);
+        setIsLoading(false);
       }
+
     };
     loadData();
   }, [poi.id, preferences.language]);
@@ -46,7 +43,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStart.current === null) return;
     const distance = touchStart.current - e.changedTouches[0].clientY;
-    if (distance > 60) setIsExpanded(true); 
+    if (distance > 60) setIsExpanded(true);
     else if (distance < -60) setIsExpanded(false);
     touchStart.current = null;
   };
@@ -65,17 +62,17 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const subTitle = parenMatch ? parenMatch[2].trim() : "";
 
   return (
-    <div 
+    <div
       className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[96dvh]' : 'h-[420px]'} bg-white overflow-hidden`}
-      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '8px 8px 0 0' }} 
+      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '8px 8px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
       <div className={`w-full shrink-0 relative transition-all duration-500 ${isExpanded ? 'h-64' : 'h-48'} bg-slate-900 group`}>
         <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
-        
+
         <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
-           <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
+          <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
         </div>
 
         <div className="absolute top-8 inset-x-6 flex items-center justify-between z-10">
@@ -85,32 +82,32 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               <span>{isHe ? "חזרה" : "Back"}</span>
             </button>
           </div>
-          
+
           <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 ${isHe ? "order-2" : "order-1"}`}>
-             <button onClick={() => setFontSize(prev => prev === 'normal' ? 'large' : 'normal')} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${fontSize === 'large' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'}`}>
-               <TypeIcon size={18} />
-             </button>
-             <button onClick={openInGoogleMaps} className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white rounded-[8px]">
-               <MapPin size={18} />
-             </button>
-             <button onClick={handleAudioClick} className="w-10 h-10 flex items-center justify-center text-white/20 rounded-[8px] relative">
-               <Headphones size={18} />
-             </button>
-             <button className="w-10 h-10 flex items-center justify-center text-rose-400 hover:text-rose-300 rounded-[8px]">
-               <Heart size={18} />
-             </button>
+            <button onClick={() => setFontSize(prev => prev === 'normal' ? 'large' : 'normal')} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${fontSize === 'large' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'}`}>
+              <TypeIcon size={18} />
+            </button>
+            <button onClick={openInGoogleMaps} className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white rounded-[8px]">
+              <MapPin size={18} />
+            </button>
+            <button onClick={handleAudioClick} className="w-10 h-10 flex items-center justify-center text-white/20 rounded-[8px] relative">
+              <Headphones size={18} />
+            </button>
+            <button className="w-10 h-10 flex items-center justify-center text-rose-400 hover:text-rose-300 rounded-[8px]">
+              <Heart size={18} />
+            </button>
           </div>
         </div>
 
         <div className="absolute bottom-6 inset-x-8 flex flex-col text-right">
-           <span className="text-[#14B8A6] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1">
-             {poi.category && CATEGORY_LABELS_HE[poi.category]}
-           </span>
-           <h2 className="text-2xl font-semibold text-white leading-tight">{mainTitle}</h2>
-           {subTitle && <span className="text-[11px] font-normal text-white/50 mt-0.5 tracking-wide uppercase">{subTitle}</span>}
+          <span className="text-[#14B8A6] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1">
+            {poi.category && CATEGORY_LABELS_HE[poi.category]}
+          </span>
+          <h2 className="text-2xl font-semibold text-white leading-tight">{mainTitle}</h2>
+          {subTitle && <span className="text-[11px] font-normal text-white/50 mt-0.5 tracking-wide uppercase">{subTitle}</span>}
         </div>
 
-        <button 
+        <button
           onClick={() => setIsImageFullscreen(true)}
           className="absolute bottom-4 left-6 w-9 h-9 bg-black/40 text-white rounded-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
         >
@@ -122,7 +119,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
         <section className="space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <h3 className="text-[11px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <ScrollText size={18} className="text-[#6366F1]" /> 
+              <ScrollText size={18} className="text-[#6366F1]" />
               {isHe ? "סיפור המקום המלא" : "The Full Story"}
             </h3>
           </div>
@@ -137,11 +134,11 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                 {(extendedData?.historicalAnalysis || poi.description).split('\n').filter((p: string) => p.trim()).map((paragraph: string, idx: number) => (
                   <p key={idx} className="opacity-90">{paragraph}</p>
                 ))}
-                
+
                 {extendedData?.sections?.map((section: any, idx: number) => (
                   <div key={idx} className="space-y-4 pt-10 border-t border-slate-100">
                     <h4 className="text-[10px] font-semibold text-[#6366F1] uppercase tracking-[0.2em] flex items-center gap-2">
-                      {idx % 3 === 0 ? <Building size={14}/> : idx % 3 === 1 ? <Sparkles size={14}/> : <Info size={14}/>}
+                      {idx % 3 === 0 ? <Building size={14} /> : idx % 3 === 1 ? <Sparkles size={14} /> : <Info size={14} />}
                       {section.title}
                     </h4>
                     <p className="opacity-90 leading-relaxed font-normal">{section.content}</p>
@@ -169,22 +166,22 @@ export const UnifiedPoiCard: React.FC<Props> = ({
       </div>
 
       <footer className="shrink-0 bg-white border-t border-slate-100 p-4 grid grid-cols-2 gap-3 h-24 mb-[env(safe-area-inset-bottom)]">
-         <button 
-           onClick={onPrev} 
-           disabled={currentIndex <= 0} 
-           className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[8px] font-medium text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
-         >
-           {isHe ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-           <span>{isHe ? "תחנה קודמת" : "Previous"}</span>
-         </button>
-         <button 
-           onClick={onNext} 
-           disabled={currentIndex >= totalCount - 1} 
-           className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[8px] font-medium text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
-         >
-           <span>{isHe ? "תחנה הבאה" : "Next Station"}</span>
-           {isHe ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-         </button>
+        <button
+          onClick={onPrev}
+          disabled={currentIndex <= 0}
+          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[8px] font-medium text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+        >
+          {isHe ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          <span>{isHe ? "תחנה קודמת" : "Previous"}</span>
+        </button>
+        <button
+          onClick={onNext}
+          disabled={currentIndex >= totalCount - 1}
+          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[8px] font-medium text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+        >
+          <span>{isHe ? "תחנה הבאה" : "Next Station"}</span>
+          {isHe ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+        </button>
       </footer>
 
       {isImageFullscreen && (
