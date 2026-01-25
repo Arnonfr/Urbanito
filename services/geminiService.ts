@@ -148,16 +148,86 @@ export const generateWalkingRoute = async (city: string, location: any, preferen
   try {
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
+
+    // Extract user preferences with defaults
+    const poiCount = preferences.desiredPoiCount || 5;
+    const walkingDistanceKm = preferences.walkingDistance || 3;
+    const interests = preferences.interests?.length > 0 ? preferences.interests.join(', ') : 'general history and culture';
+    const explanationDepth = preferences.explanationStyle || 'standard';
+
+    // Build constraints based on preferences
+    const constraints: string[] = [];
+    if (preferences.religiousFriendly) constraints.push('suitable for religious visitors');
+    if (preferences.veganFriendly) constraints.push('include vegan-friendly locations');
+    if (preferences.accessibleOnly) constraints.push('wheelchair accessible');
+
+    const constraintsText = constraints.length > 0 ? `\nADDITIONAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
+
+    // Bilingual naming instruction
+    const namingFormat = isHe
+      ? 'For each POI name: First line in Hebrew, second line in original language if different (e.g., "מגדל אייפל\\nTour Eiffel")'
+      : 'POI names in English with original local name if different (e.g., "Eiffel Tower\\nTour Eiffel")';
+
     const response = await aiCall({
-      contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, city, preferences)} 
-      Create a verified walking tour for ${city} starting at ${location.lat}, ${location.lng}. 
-      Ensure all POIs are real. Everything in ${langName}.
-      JSON: { "name": "Localized Tour Title", "description": "Intro in ${langName}", "pois": [{ "name": "שם (Original)", "lat": 0, "lng": 0, "narrative": "3-4 accurate paragraphs in ${langName}", "category": "history" }] }`,
+      contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, city, preferences)}
+      
+TASK: Create a verified walking tour for ${city} starting at coordinates ${location.lat}, ${location.lng}.
+
+ROUTE PARAMETERS:
+- Number of stops: EXACTLY ${poiCount} POIs
+- Maximum walking distance: ${walkingDistanceKm} km total
+- User interests: ${interests}
+- Explanation depth: ${explanationDepth}${constraintsText}
+
+NAMING FORMAT:
+${namingFormat}
+
+QUALITY REQUIREMENTS:
+1. ALL POIs must be REAL, verified locations in ${city}
+2. POIs should be within ${walkingDistanceKm}km walking distance from the starting point
+3. Create a logical walking route (each POI close to the previous one)
+4. Each narrative must be 3-4 accurate, engaging paragraphs in ${langName}
+5. Include diverse categories: history, architecture, culture, etc.
+6. NO HALLUCINATIONS - only real places with accurate information
+
+JSON SCHEMA:
+{
+  "name": "Engaging tour title in ${langName}",
+  "description": "2-3 sentence introduction in ${langName}",
+  "pois": [
+    {
+      "name": "Name in ${langName}\\nOriginal Name (if different)",
+      "lat": <latitude>,
+      "lng": <longitude>,
+      "narrative": "3-4 detailed paragraphs in ${langName}",
+      "category": "history|architecture|culture|food|nature|art|religion"
+    }
+  ]
+}
+
+Return ONLY valid JSON.`,
       config: { responseMimeType: "application/json" }
     });
+
     const data = JSON.parse(cleanJson(response.text || "{}"));
-    const pois = (data.pois || []).map((p: any) => ({ ...p, id: generateStableId(p.name, p.lat, p.lng), isFullyLoaded: false }));
-    return { id: `r-${Date.now()}`, city, name: data.name || city, description: data.description || "", durationMinutes: 120, creator: "Urbanito AI", pois };
+    const pois = (data.pois || []).map((p: any) => ({
+      ...p,
+      id: generateStableId(p.name, p.lat, p.lng),
+      isFullyLoaded: false
+    }));
+
+    // Calculate estimated duration based on POI count and walking distance
+    const estimatedDuration = Math.round((poiCount * 15) + (walkingDistanceKm * 20)); // 15 min per POI + 20 min per km
+
+    return {
+      id: `r-${Date.now()}`,
+      city,
+      name: data.name || city,
+      description: data.description || "",
+      durationMinutes: estimatedDuration,
+      creator: "Urbanito AI",
+      pois
+    };
   } catch (err) { throw err; }
 };
 
@@ -165,15 +235,75 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
   try {
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
+
+    // Extract user preferences with defaults (street walks are typically shorter)
+    const poiCount = preferences.desiredPoiCount || 4; // Fewer stops for street walks
+    const interests = preferences.interests?.length > 0 ? preferences.interests.join(', ') : 'architecture and local history';
+
+    // Bilingual naming instruction
+    const namingFormat = isHe
+      ? 'For each POI name: First line in Hebrew, second line in original language if different (e.g., "בית הראשונים\\nFirst Settlers House")'
+      : 'POI names in English with original local name if different (e.g., "First Settlers House\\nבית הראשונים")';
+
     const response = await aiCall({
-      contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, streetName, preferences)} 
-      Street Walk for "${streetName}". All points must be on this specific street. Everything in ${langName}.
-      JSON: { "name": "Localized Street Tour Title", "description": "Intro in ${langName}", "pois": [{ "name": "שם (Original)", "lat": 0, "lng": 0, "narrative": "3-4 accurate paragraphs in ${langName}", "category": "architecture" }] }`,
+      contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, streetName, preferences)}
+      
+TASK: Create a focused street walking tour along "${streetName}".
+
+ROUTE PARAMETERS:
+- Number of stops: EXACTLY ${poiCount} POIs
+- ALL POIs must be located ON or IMMEDIATELY ADJACENT to ${streetName}
+- Focus: ${interests}
+- Language: ${langName}
+
+NAMING FORMAT:
+${namingFormat}
+
+QUALITY REQUIREMENTS:
+1. ALL POIs must be REAL locations on ${streetName}
+2. Focus on architectural details, historical buildings, and street-specific stories
+3. Each narrative must be 3-4 accurate paragraphs in ${langName}
+4. Maintain geographical order along the street
+5. NO HALLUCINATIONS - only verified locations
+
+JSON SCHEMA:
+{
+  "name": "Engaging street tour title in ${langName}",
+  "description": "2-3 sentence introduction about ${streetName} in ${langName}",
+  "pois": [
+    {
+      "name": "Name in ${langName}\\nOriginal Name (if different)",
+      "lat": <latitude>,
+      "lng": <longitude>,
+      "narrative": "3-4 detailed paragraphs in ${langName}",
+      "category": "architecture|history|culture|art"
+    }
+  ]
+}
+
+Return ONLY valid JSON.`,
       config: { responseMimeType: "application/json" }
     });
+
     const data = JSON.parse(cleanJson(response.text || "{}"));
-    const pois = (data.pois || []).map((p: any) => ({ ...p, id: generateStableId(p.name, p.lat, p.lng), isFullyLoaded: false }));
-    return { id: `st-${Date.now()}`, city: streetName, name: data.name || streetName, description: data.description || "", durationMinutes: 45, creator: "Street Guide", pois };
+    const pois = (data.pois || []).map((p: any) => ({
+      ...p,
+      id: generateStableId(p.name, p.lat, p.lng),
+      isFullyLoaded: false
+    }));
+
+    // Calculate duration: 10 min per POI for street walks
+    const estimatedDuration = poiCount * 10;
+
+    return {
+      id: `st-${Date.now()}`,
+      city: streetName,
+      name: data.name || streetName,
+      description: data.description || "",
+      durationMinutes: estimatedDuration,
+      creator: "Street Guide",
+      pois
+    };
   } catch (err) { throw err; }
 };
 
