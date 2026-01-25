@@ -2,8 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../types';
 import { globalCache } from './cacheUtils';
 
-const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_vXT_oUjgSllGs8upeDQwLw_2lYYU3t9';
+// @ts-ignore - import.meta is a Vite feature
+const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://xrawvyvcyewjmlzypnqc.supabase.co';
+// @ts-ignore - import.meta is a Vite feature
+const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -88,11 +90,18 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
 
 export const saveToCuratedRoutes = async (route: Route, theme: string = 'general') => {
   try {
-    await supabase.from('curated_routes').insert([{
+    const { data, error } = await supabase.from('curated_routes').insert([{
       city: normalize(route.city),
       theme: theme,
       route_data: route
-    }]);
+    }]).select();
+
+    if (error) {
+      console.error("Supabase insert error (curated_routes):", error);
+    } else {
+      console.log("Successfully saved to curated_routes:", data);
+      globalCache.invalidatePattern('all-recent-routes');
+    }
   } catch (e) {
     console.error("Auto-save to curated failed:", e);
   }
@@ -105,9 +114,16 @@ export const saveRouteToSupabase = async (userId: string, route: Route) => {
       route_data: route,
       city: normalize(route.city)
     }]).select();
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase insert error (saved_routes):", error);
+      throw error;
+    }
+    globalCache.invalidatePattern('all-recent-routes');
     return data ? data[0] : null;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.error("saveRouteToSupabase failed:", e);
+    return null;
+  }
 };
 
 export const updateSavedRouteData = async (dbId: string, userId: string, route: Route) => {
