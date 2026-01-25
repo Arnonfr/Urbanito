@@ -1,6 +1,6 @@
-
 import { createClient } from '@supabase/supabase-js';
 import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../types';
+import { globalCache } from './cacheUtils';
 
 const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_vXT_oUjgSllGs8upeDQwLw_2lYYU3t9';
@@ -127,6 +127,29 @@ export const deleteRouteFromSupabase = async (id: string, userId: string) => {
   try { await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId); } catch (e) { }
 };
 
+export const savePoiToSupabase = async (userId: string, poi: POI) => {
+  try {
+    const { data, error } = await supabase.from('saved_pois').upsert([{
+      user_id: userId,
+      poi_id: poi.id,
+      poi_data: poi
+    }], { onConflict: 'user_id,poi_id' }).select();
+    if (error) throw error;
+    return data ? data[0] : null;
+  } catch (e) { return null; }
+};
+
+export const getSavedPoisFromSupabase = async (userId: string) => {
+  try {
+    const { data } = await supabase.from('saved_pois').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    return data || [];
+  } catch (e) { return []; }
+};
+
+export const deletePoiFromSupabase = async (poiId: string, userId: string) => {
+  try { await supabase.from('saved_pois').delete().eq('poi_id', poiId).eq('user_id', userId); } catch (e) { }
+};
+
 export const logUsage = async (userId: string | null, city: string) => {
   try { await supabase.from('usage_logs').insert([{ user_id: userId, city: normalize(city) }]); } catch (e) { }
 };
@@ -148,35 +171,37 @@ export const submitFeedback = async (userId: string | null, feedback: FeedbackDa
 };
 
 export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> => {
-  try {
-    // Separate calls to ensure one failure (like RLS for non-logged-in users) doesn't block the other
-    const [curatedRes, savedRes] = await Promise.allSettled([
-      supabase.from('curated_routes').select('route_data').order('created_at', { ascending: false }).limit(limit),
-      supabase.from('saved_routes').select('route_data').order('created_at', { ascending: false }).limit(limit)
-    ]);
+  return globalCache.fetch(`all-recent-routes-${limit}`, async () => {
+    try {
+      // Separate calls to ensure one failure (like RLS for non-logged-in users) doesn't block the other
+      const [curatedRes, savedRes] = await Promise.allSettled([
+        supabase.from('curated_routes').select('route_data').order('created_at', { ascending: false }).limit(limit),
+        supabase.from('saved_routes').select('route_data').order('created_at', { ascending: false }).limit(limit)
+      ]);
 
-    const curatedData = curatedRes.status === 'fulfilled' && curatedRes.value.data ? curatedRes.value.data : [];
-    const savedData = savedRes.status === 'fulfilled' && savedRes.value.data ? savedRes.value.data : [];
+      const curatedData = curatedRes.status === 'fulfilled' && curatedRes.value.data ? curatedRes.value.data : [];
+      const savedData = savedRes.status === 'fulfilled' && savedRes.value.data ? savedRes.value.data : [];
 
-    const merged = [...curatedData, ...savedData];
-    const seen = new Set();
-    const final: Route[] = [];
+      const merged = [...curatedData, ...savedData];
+      const seen = new Set();
+      const final: Route[] = [];
 
-    for (const item of merged) {
-      if (!item.route_data) continue;
-      const r = item.route_data as Route;
-      if (!r.name || !r.pois || r.pois.length === 0) continue;
-      const key = `${normalize(r.name)}-${normalize(r.city)}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        final.push(r);
+      for (const item of merged) {
+        if (!item.route_data) continue;
+        const r = item.route_data as Route;
+        if (!r.name || !r.pois || r.pois.length === 0) continue;
+        const key = `${normalize(r.name)}-${normalize(r.city)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          final.push(r);
+        }
       }
+      return final;
+    } catch (e) {
+      console.error("Fetch recent routes failed:", e);
+      return [];
     }
-    return final;
-  } catch (e) {
-    console.error("Fetch recent routes failed:", e);
-    return [];
-  }
+  }, { ttl: 60000 }); // 1 minute cache for recent routes
 };
 
 
@@ -185,35 +210,57 @@ export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[
 };
 
 export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string): Promise<Route[]> => {
+  const normHe = normalize(cityName);
+  const normEn = cityNameEn ? normalize(cityNameEn) : "";
+  const cacheKey = `city-hub-${normHe}-${normEn}`;
+
+  return globalCache.fetch(cacheKey, async () => {
+    try {
+      // Fetch from curated and community tables
+      const [curatedRes, communityRes] = await Promise.allSettled([
+        supabase.from('curated_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30),
+        supabase.from('saved_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30)
+      ]);
+
+      const curated = curatedRes.status === 'fulfilled' ? (curatedRes.value.data || []) : [];
+      const community = communityRes.status === 'fulfilled' ? (communityRes.value.data || []) : [];
+
+      const merged = [
+        ...curated.map(d => d.route_data as Route),
+        ...community.map(d => d.route_data as Route)
+      ];
+
+      const seen = new Set();
+      return merged.filter(r => {
+        if (!r || !r.name) return false;
+        const key = `${normalize(r.name)}-${normalize(r.city)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    } catch (e) {
+      console.error("City hub fetch failed:", e);
+      return [];
+    }
+  }, { ttl: 300000 }); // 5 minutes cache for city hubs
+};
+
+export const getRouteById = async (routeId: string): Promise<Route | null> => {
   try {
-    const normHe = normalize(cityName);
-    const normEn = cityNameEn ? normalize(cityNameEn) : "";
+    // Check curated_routes first
+    const { data: curatedData } = await supabase.from('curated_routes').select('route_data').eq('route_data->>id', routeId).maybeSingle();
+    if (curatedData?.route_data) return curatedData.route_data as Route;
 
-    // Fetch from curated and community tables
-    const [curatedRes, communityRes] = await Promise.allSettled([
-      supabase.from('curated_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30),
-      supabase.from('saved_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30)
-    ]);
+    // Then check saved_routes
+    // Note: This might fail if the user is not the owner (RLS), 
+    // but curated routes are public.
+    const { data: savedData } = await supabase.from('saved_routes').select('route_data').eq('route_data->>id', routeId).maybeSingle();
+    if (savedData?.route_data) return savedData.route_data as Route;
 
-    const curated = curatedRes.status === 'fulfilled' ? (curatedRes.value.data || []) : [];
-    const community = communityRes.status === 'fulfilled' ? (communityRes.value.data || []) : [];
-
-    const merged = [
-      ...curated.map(d => d.route_data as Route),
-      ...community.map(d => d.route_data as Route)
-    ];
-
-    const seen = new Set();
-    return merged.filter(r => {
-      if (!r || !r.name) return false;
-      const key = `${normalize(r.name)}-${normalize(r.city)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return null;
   } catch (e) {
-    console.error("City hub fetch failed:", e);
-    return [];
+    console.error("Get route by ID failed:", e);
+    return null;
   }
 };
 
