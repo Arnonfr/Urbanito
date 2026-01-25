@@ -131,14 +131,7 @@ const App: React.FC = () => {
     normalize(r.route_data.city) === normalize(currentRoute.city)
   );
 
-  useEffect(() => {
-    // Debug log for API Key presence (masked)
-    // @ts-ignore
-    const apiKey = import.meta.env?.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.API_KEY : 'undefined');
-    console.log('[DEBUG] API Key status:', apiKey ? `Present (ends with ${apiKey.slice(-4)})` : 'MISSING/UNDEFINED');
-    // @ts-ignore
-    console.log('[DEBUG] VITE_GEMINI_API_KEY direct:', import.meta.env?.VITE_GEMINI_API_KEY ? 'Present' : 'Missing');
-  }, []);
+
 
   const refreshSavedContent = async (userId: string) => {
     try {
