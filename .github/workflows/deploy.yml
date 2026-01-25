@@ -23,6 +23,18 @@ jobs:
       
       - name: Install Dependencies
         run: npm install
+      
+      - name: Debug Environment Variables
+        run: |
+          echo "Checking environment variables..."
+          echo "GEMINI_API_KEY exists: ${{ secrets.GEMINI_API_KEY != '' }}"
+          echo "SUPABASE_URL exists: ${{ secrets.SUPABASE_URL != '' }}"
+          echo "SUPABASE_ANON_KEY exists: ${{ secrets.SUPABASE_ANON_KEY != '' }}"
+          echo "GEMINI_API_KEY length: ${#VITE_GEMINI_API_KEY}"
+        env:
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         
       - name: Build
         run: npm run build
