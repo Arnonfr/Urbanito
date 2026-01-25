@@ -1,13 +1,30 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { UserPreferences, Route, POI } from "../types";
-import { 
+import {
   getCachedPoiDetails,
   cachePoiDetails,
   logUsage,
   generateStableId,
   supabase
 } from "./supabase";
+
+/**
+ * Robustly retrieves the Gemini API Key from multiple possible environment sources.
+ * Checks import.meta.env (Vite standard) and process.env (Legacy/Fallback).
+ */
+const getApiKey = () => {
+  // @ts-ignore - import.meta is a Vite feature
+  const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
+  if (viteKey) return viteKey;
+
+  // Fallback to process.env for legacy/other setups
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
+  }
+
+  return "";
+};
 
 /**
  * Helper to clean JSON from model response if it contains markdown markers
@@ -57,7 +74,7 @@ export async function decodeAudioData(
 const getGuidePrompt = (style: string, language: string, city: string, prefs: UserPreferences) => {
   const isHe = language === 'he';
   const langName = isHe ? "Hebrew" : "English";
-  
+
   const qualityRule = `CRITICAL ACCURACY & LANGUAGE RULE: 
   1. LANGUAGE: ALL TEXT (Titles, descriptions, narratives, sections) MUST be exclusively in ${langName}. 
   2. STRICT: Do not use English headers or terms if the target language is Hebrew.
@@ -77,9 +94,14 @@ const getGuidePrompt = (style: string, language: string, city: string, prefs: Us
  * Using gemini-3-flash-preview for optimal performance in text tasks.
  */
 async function aiCall(params: any, retries = 3): Promise<any> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.error("CRITICAL ERROR: Gemini API Key is missing. Please check your environment variables (VITE_GEMINI_API_KEY).");
+    throw new Error("An API Key must be set for Urbanito to function.");
+  }
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-flash-preview';
-  
+
   try {
     return await ai.models.generateContent({ ...params, model });
   } catch (error: any) {
@@ -96,7 +118,7 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
   try {
     const cached = await getCachedPoiDetails(poiName, city, lat, lng);
     if (cached && cached.historicalAnalysis && cached.historicalAnalysis.length > 300) return { ...cached, isFullyLoaded: true };
-    
+
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
     const response = await aiCall({
@@ -113,7 +135,7 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
       }`,
       config: { responseMimeType: "application/json" }
     });
-    
+
     const data = JSON.parse(cleanJson(response.text || '{}'));
     if (data.historicalAnalysis) {
       await cachePoiDetails(poiName, city, { ...data, lat, lng });
@@ -157,19 +179,24 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
 
 export const generateSpeech = async (text: string, language: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      console.warn("Speech generation skipped: API Key missing");
+      return "";
+    }
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
-      config: { 
-        responseModalities: [Modality.AUDIO], 
-        speechConfig: { 
-          voiceConfig: { 
-            prebuiltVoiceConfig: { 
-              voiceName: language === 'he' ? 'Kore' : 'Puck' 
-            } 
-          } 
-        } 
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: language === 'he' ? 'Kore' : 'Puck'
+            }
+          }
+        }
       }
     });
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
