@@ -16,29 +16,22 @@ interface Props {
   showToast?: (m: string, t?: 'success' | 'error') => void;
 }
 
+import { useAudio } from '../contexts/AudioContext';
+
 export const UnifiedPoiCard: React.FC<Props> = ({
   poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast
 }) => {
   const isHe = preferences.language === 'he';
-  const [extendedData, setExtendedData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { playText, stop, isPlaying, currentItem } = useAudio();
+  const isCurrentPoiPlaying = isPlaying && currentItem?.poiId === poi.id;
+
   const [fontSize, setFontSize] = useState<'normal' | 'large'>('normal');
   const [isImageFullscreen, setIsImageFullscreen] = useState(false);
   const touchStart = useRef<number | null>(null);
 
-  useEffect(() => {
-    setExtendedData(null);
-    setIsLoading(true);
-    const loadData = async () => {
-      const data = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng);
-      if (data) {
-        setExtendedData(data);
-        setIsLoading(false);
-      }
-
-    };
-    loadData();
-  }, [poi.id, preferences.language]);
+  // Data comes fully from props now (managed by App.tsx pre-fetching)
+  const isLoading = !poi.isFullyLoaded;
+  const extendedData = poi; // Use poi as extendedData since fields are merged
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStart.current === null) return;
@@ -54,7 +47,14 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   };
 
   const handleAudioClick = () => {
-    if (showToast) showToast(isHe ? "הדרכה קולית תגיע בקרוב!" : "Audio guide coming soon!");
+    if (isCurrentPoiPlaying) {
+      stop();
+      return;
+    }
+
+    // Play audio
+    const text = poi.narrative || poi.description || poi.name;
+    playText(text, preferences.language, poi.id, 'high');
   };
 
   const parenMatch = poi.name.match(/(.*?)\s*\((.*?)\)/);
@@ -77,7 +77,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
 
         <div className="absolute top-8 inset-x-6 flex items-center justify-between z-10">
           <div className={isHe ? "order-1" : "order-2"}>
-            <button onClick={onClose} className="h-10 px-4 flex items-center gap-2 bg-black/40 backdrop-blur-md text-white rounded-[8px] border border-white/10 transition-transform active:scale-90 text-[11px] font-medium uppercase tracking-widest">
+            <button onClick={onClose} className="h-12 px-4 flex items-center gap-2 bg-black/40 backdrop-blur-md text-white rounded-[8px] border border-white/10 transition-transform active:scale-90 text-[11px] font-medium uppercase tracking-widest">
               {isHe ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}
               <span>{isHe ? "חזרה" : "Back"}</span>
             </button>
@@ -90,7 +90,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
             <button onClick={openInGoogleMaps} className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white rounded-[8px]">
               <MapPin size={18} />
             </button>
-            <button onClick={handleAudioClick} className="w-10 h-10 flex items-center justify-center text-white/20 rounded-[8px] relative">
+            <button onClick={handleAudioClick} className="w-10 h-10 flex items-center justify-center text-white/90 hover:text-white rounded-[8px] relative active:bg-white/10 transition-colors">
               <Headphones size={18} />
             </button>
             <button className="w-10 h-10 flex items-center justify-center text-rose-400 hover:text-rose-300 rounded-[8px]">
@@ -116,6 +116,23 @@ export const UnifiedPoiCard: React.FC<Props> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar px-8 py-8 space-y-12 pb-32">
+        {/* Distance from previous stop */}
+        {currentIndex > 0 && poi.travelFromPrevious && (
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-[8px] border border-indigo-100">
+            <div className="text-[9px] font-medium text-slate-400 uppercase tracking-widest mb-1">
+              {isHe ? 'מרחק מהתחנה הקודמת' : 'Distance from previous stop'}
+            </div>
+            <div className="flex items-center gap-3 text-indigo-700">
+              <div className="flex items-center gap-1.5">
+                <MapPin size={14} />
+                <span className="text-sm font-semibold">{poi.travelFromPrevious.distance}</span>
+              </div>
+              <span className="text-slate-300">•</span>
+              <div className="text-sm font-semibold">{poi.travelFromPrevious.duration}</div>
+            </div>
+          </div>
+        )}
+
         <section className="space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <h3 className="text-[11px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -130,30 +147,70 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                 <p className="text-[9px] font-medium uppercase text-slate-400 tracking-widest">{isHe ? 'מפיק הסברים...' : 'Generating Insight...'}</p>
               </div>
             ) : (
-              <div className="space-y-10 animate-in fade-in duration-700">
-                {(extendedData?.historicalAnalysis || poi.description).split('\n').filter((p: string) => p.trim()).map((paragraph: string, idx: number) => (
-                  <p key={idx} className="opacity-90">{paragraph}</p>
-                ))}
+              <div className="space-y-8 animate-in fade-in duration-700">
+                {/* Main content with improved paragraph structure */}
+                {(() => {
+                  const mainContent = extendedData?.historicalAnalysis || poi.description;
+                  const paragraphs = mainContent.split('\n').filter((p: string) => p.trim());
 
+                  return paragraphs.map((paragraph: string, idx: number) => {
+                    // Check if paragraph looks like a heading (short, ends with :, or all caps)
+                    const isHeading = paragraph.length < 60 && (
+                      paragraph.endsWith(':') ||
+                      paragraph === paragraph.toUpperCase() ||
+                      /^[\u0590-\u05FF\s]{3,40}:$/.test(paragraph)
+                    );
+
+                    if (isHeading) {
+                      return (
+                        <h4 key={idx} className="text-lg font-bold text-slate-900 mt-8 mb-3 flex items-center gap-2">
+                          <span className="w-1 h-6 bg-indigo-500 rounded-full"></span>
+                          {paragraph.replace(/:$/, '')}
+                        </h4>
+                      );
+                    }
+
+                    return (
+                      <p key={idx} className="opacity-90 leading-relaxed">
+                        {paragraph}
+                      </p>
+                    );
+                  });
+                })()}
+
+                {/* Additional sections */}
                 {extendedData?.sections?.map((section: any, idx: number) => (
-                  <div key={idx} className="space-y-4 pt-10 border-t border-slate-100">
-                    <h4 className="text-[10px] font-semibold text-[#6366F1] uppercase tracking-[0.2em] flex items-center gap-2">
-                      {idx % 3 === 0 ? <Building size={14} /> : idx % 3 === 1 ? <Sparkles size={14} /> : <Info size={14} />}
+                  <div key={idx} className="space-y-4 pt-8 border-t border-slate-100">
+                    <h4 className="text-sm font-bold text-indigo-600 flex items-center gap-2">
+                      {idx % 3 === 0 ? <Building size={16} /> : idx % 3 === 1 ? <Sparkles size={16} /> : <Info size={16} />}
                       {section.title}
                     </h4>
-                    <p className="opacity-90 leading-relaxed font-normal">{section.content}</p>
+                    {section.content.split('\n').filter((p: string) => p.trim()).map((para: string, pIdx: number) => (
+                      <p key={pIdx} className="opacity-90 leading-relaxed">
+                        {para}
+                      </p>
+                    ))}
                   </div>
                 ))}
 
+                {/* Sources */}
                 {extendedData?.sources && extendedData.sources.length > 0 && (
-                  <div className="pt-8 border-t border-slate-50">
-                    <h4 className="text-[10px] font-medium text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <BookOpen size={12} /> {isHe ? "מקורות להרחבה" : "Sources"}
+                  <div className="pt-10 border-t-2 border-slate-100">
+                    <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <BookOpen size={14} className="text-indigo-500" />
+                      {isHe ? "מקורות להרחבה" : "Sources for Further Reading"}
                     </h4>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {extendedData.sources.map((source: any, sIdx: number) => (
-                        <a key={sIdx} href={source.url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-slate-50 text-[10px] text-slate-500 font-medium rounded-[8px] hover:bg-slate-100 transition-colors flex items-center gap-1.5 border border-slate-100">
-                          {source.title} <ExternalLink size={10} />
+                        <a
+                          key={sIdx}
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block px-4 py-3 bg-slate-50 hover:bg-indigo-50 text-[12px] text-slate-700 hover:text-indigo-700 font-medium rounded-[8px] transition-all border border-slate-100 hover:border-indigo-200 flex items-center justify-between group"
+                        >
+                          <span className="flex-1">{source.title}</span>
+                          <ExternalLink size={12} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
                         </a>
                       ))}
                     </div>
@@ -165,22 +222,78 @@ export const UnifiedPoiCard: React.FC<Props> = ({
         </section>
       </div>
 
-      <footer className="shrink-0 bg-white border-t border-slate-100 p-4 grid grid-cols-2 gap-3 h-24 mb-[env(safe-area-inset-bottom)]">
+      <footer className="shrink-0 bg-white border-t border-slate-100 p-4 grid grid-cols-2 gap-3 h-24 mb-[env(safe-area-inset-bottom)] relative z-30">
+        {/* Mini Player Floating above buttons */}
+        {currentItem && (
+          <div className="absolute -top-16 inset-x-4 h-14 bg-slate-900/95 backdrop-blur-md text-white rounded-[12px] shadow-xl border border-white/10 flex items-center justify-between px-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isPlaying ? 'bg-indigo-500' : 'bg-white/10'}`}>
+                <Headphones size={14} className={isPlaying ? 'animate-pulse' : ''} />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[12px] font-bold leading-tight truncate">
+                  {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing') : (isHe ? 'מושהה' : 'Paused')}
+                </span>
+                <span className="text-[10px] text-white/60 truncate max-w-[150px]">
+                  {poi.name}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {/* Play/Pause Toggle */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPlaying) {
+                    try { stop(); } catch (e) { } // Using stop for now as pause might hold the context
+                  } else {
+                    // If we have text, play it again or resume? 
+                    // Context resume() resumes the whole context. 
+                    // Ideally we play again if stopped, or resume if suspended.
+                    // For simplicity in this "speech" context, we might just replay if lost.
+                    // But if we just want to toggle:
+                    handleAudioClick();
+                  }
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10 transition-colors"
+              >
+                {isPlaying ? (
+                  <div className="flex gap-1">
+                    <div className="w-1 h-3 bg-white rounded-full animate-[music-bar_1s_ease-in-out_infinite]" />
+                    <div className="w-1 h-3 bg-white rounded-full animate-[music-bar_1s_ease-in-out_infinite_0.2s]" />
+                  </div>
+                ) : (
+                  <div className="w-0 h-0 border-t-[6px] border-t-transparent border-l-[10px] border-l-white border-b-[6px] border-b-transparent ml-1" />
+                )}
+              </button>
+
+              {/* Close / Stop */}
+              <button
+                onClick={(e) => { e.stopPropagation(); stop(); }}
+                className="w-10 h-10 flex items-center justify-center text-white/50 hover:text-white rounded-full transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
         <button
           onClick={onPrev}
           disabled={currentIndex <= 0}
-          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[8px] font-medium text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
         >
-          {isHe ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          {isHe ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
           <span>{isHe ? "תחנה קודמת" : "Previous"}</span>
         </button>
         <button
           onClick={onNext}
           disabled={currentIndex >= totalCount - 1}
-          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[8px] font-medium text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
         >
           <span>{isHe ? "תחנה הבאה" : "Next Station"}</span>
-          {isHe ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+          {isHe ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
         </button>
       </footer>
 

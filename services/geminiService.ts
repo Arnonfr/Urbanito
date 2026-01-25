@@ -122,16 +122,21 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
     const response = await aiCall({
-      contents: `Provide reliable historical context for "${poiName}" in ${city} (Location: ${lat}, ${lng}).
-      STRICT REQUIREMENT: ALL text including section titles MUST be in ${langName}. No English headers.
-      MANDATORY: NO HALLUCINATIONS.
+      contents: `Provide rich, engaging, and reliable historical context for "${poiName}" in ${city} (Location: ${lat}, ${lng}).
+      
+      CRITICAL INSTRUCTIONS:
+      1. LANGUAGE: ALL content (titles, text, analysis) MUST be in ${langName} only.
+      2. DEPTH: Write 2-5 detailed paragraphs. Do not force information if it doesn't exist, but find 2-3 fascinating facts or historical anecdotes.
+      3. TONE: Professional yet engaging urban historian.
+      4. ACCURACY: STRICTLY NO HALLUCINATIONS. If specific details aren't known, focus on the general architectural/historical context of the area/street.
       
       JSON SCHEMA: { 
-        "historicalAnalysis": "Detailed paragraphs in ${langName}...", 
-        "architecturalAnalysis": "Contextual style info in ${langName}...", 
-        "narrative": "Accurate storytelling in ${langName}...", 
-        "sections": [{"title": "Localized Title in ${langName}", "content": "Content in ${langName}..."}], 
-        "sources": [{"title": "Reference Name", "url": "..."}] 
+        "historicalAnalysis": "2-5 comprehensive paragraphs in ${langName} covering history, significance, and interesting anecdotes...", 
+        "architecturalAnalysis": "Detailed architectural style and features analysis in ${langName}...", 
+        "narrative": "A cohesive story of the place in ${langName}...", 
+        "sections": [{"title": "Meaningful Title in ${langName}", "content": "Specific detail/fact in ${langName}..."}], 
+        "sources": [{"title": "Reference Name", "url": "..."}],
+        "shareTeaser": "A very short (1 sentence) intriguing fact about this specific place for sharing."
       }`,
       config: { responseMimeType: "application/json" }
     });
@@ -194,6 +199,7 @@ JSON SCHEMA:
 {
   "name": "Engaging tour title in ${langName}",
   "description": "2-3 sentence introduction in ${langName}",
+  "shareTeaser": "A fascinating, TRUE anecdote or surprising fact about one of the tour's locations (1-2 sentences max, in ${langName}). Make it curiosity-inducing and shareable. Example: 'Did you know that beneath the main square lies a 2000-year-old Roman bath that was only discovered in 1952?'",
   "pois": [
     {
       "name": "Name in ${langName}\\nOriginal Name (if different)",
@@ -224,6 +230,7 @@ Return ONLY valid JSON.`,
       city,
       name: data.name || city,
       description: data.description || "",
+      shareTeaser: data.shareTeaser || "",
       durationMinutes: estimatedDuration,
       creator: "Urbanito AI",
       pois
@@ -270,6 +277,7 @@ JSON SCHEMA:
 {
   "name": "Engaging street tour title in ${langName}",
   "description": "2-3 sentence introduction about ${streetName} in ${langName}",
+  "shareTeaser": "A fascinating, TRUE anecdote or surprising fact about ${streetName} or one of its buildings (1-2 sentences max, in ${langName}). Make it curiosity-inducing and shareable. Example: 'This street was once the secret meeting place of revolutionaries in 1848, and you can still see their coded symbols on building #12.'",
   "pois": [
     {
       "name": "Name in ${langName}\\nOriginal Name (if different)",
@@ -300,6 +308,7 @@ Return ONLY valid JSON.`,
       city: streetName,
       name: data.name || streetName,
       description: data.description || "",
+      shareTeaser: data.shareTeaser || "",
       durationMinutes: estimatedDuration,
       creator: "Street Guide",
       pois

@@ -44,6 +44,14 @@ class QueryCache {
         this.cache.delete(key);
     }
 
+    invalidatePattern(pattern: string) {
+        for (const key of this.cache.keys()) {
+            if (key.includes(pattern)) {
+                this.cache.delete(key);
+            }
+        }
+    }
+
     clear() {
         this.cache.clear();
         this.inflight.clear();

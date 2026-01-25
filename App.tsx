@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import {
   Compass, Loader2, Route as RouteIcon, Library as LibraryIcon, User as UserIcon, X, Navigation, MapPin, ListTodo, Plus, Heart, Target as TargetIcon, Trash2, CheckCircle, MapPinned, Search, LocateFixed, ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, BookOpen, Key, Eye, Check, AlertCircle, Crosshair, Bookmark, Globe, Settings2, Sliders, ChevronDown, ChevronUp, History, Map as MapIcon, Timer, SearchCode, Maximize2, Layers, Signpost, ArrowDownCircle, Send
 } from 'lucide-react';
@@ -7,13 +7,17 @@ import { UserPreferences, Route as RouteType, POI } from './types';
 
 
 import { generateWalkingRoute, generateStreetWalkRoute, fetchExtendedPoiDetails } from './services/geminiService';
-import { PreferencesPanel } from './components/PreferencesPanel';
-import { UnifiedPoiCard } from './components/UnifiedPoiCard';
-import { RouteOverview } from './components/RouteOverview';
-import { QuickRouteSetup } from './components/QuickRouteSetup';
-import { GoogleImage } from './components/GoogleImage';
-import { RouteSkeleton } from './components/RouteSkeleton';
-import { UserGuide } from './components/UserGuide';
+import { SuspenseLoader } from '~components/SuspenseLoader/SuspenseLoader';
+
+const PreferencesPanel = lazy(() => import('~components/PreferencesPanel').then(module => ({ default: module.PreferencesPanel })));
+const UnifiedPoiCard = lazy(() => import('~components/UnifiedPoiCard').then(module => ({ default: module.UnifiedPoiCard })));
+const RouteOverview = lazy(() => import('~components/RouteOverview').then(module => ({ default: module.RouteOverview })));
+const QuickRouteSetup = lazy(() => import('~components/QuickRouteSetup').then(module => ({ default: module.QuickRouteSetup })));
+const GoogleImage = lazy(() => import('~components/GoogleImage').then(module => ({ default: module.GoogleImage })));
+const RouteSkeleton = lazy(() => import('~components/RouteSkeleton').then(module => ({ default: module.RouteSkeleton })));
+const UserGuide = lazy(() => import('~components/UserGuide').then(module => ({ default: module.UserGuide })));
+const VoiceGuideManager = lazy(() => import('~components/VoiceGuideManager').then(module => ({ default: module.VoiceGuideManager })));
+import { AnimatedCompass } from '~components/AnimatedCompass';
 import {
   supabase,
   getSavedRoutesFromSupabase,
@@ -34,13 +38,16 @@ import {
   getAllRecentRoutes,
   getSavedPoisFromSupabase,
   savePoiToSupabase,
-  deletePoiFromSupabase
+  deletePoiFromSupabase,
+  forkRoute
 } from './services/supabase';
 
 
-declare var google: any;
+// google is declared globally in types/globals.d.ts
 
 const PARIS_COORDS = { lat: 48.8566, lng: 2.3522 };
+import { useGeolocation } from '~hooks/useGeolocation';
+import { useNearbyRoutes } from '~features/routes/hooks/useNearbyRoutes';
 
 const FALLBACK_CITIES = [
   { id: 'f1', name: 'ירושלים', name_en: 'Jerusalem', img_url: 'https://images.unsplash.com/photo-1542666281-9958e32c32ee?w=800&q=80' },
@@ -51,15 +58,7 @@ const FALLBACK_CITIES = [
   { id: 'f6', name: 'ברצלונה', name_en: 'Barcelona', img_url: 'https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800&q=80' }
 ];
 
-const extractStandardCity = (results: any[]) => {
-  if (!results || results.length === 0) return null;
-  const locality = results.find(r => r.types.includes('locality') || r.types.includes('administrative_area_level_2') || r.types.includes('administrative_area_level_3'));
-  if (locality) {
-    const comp = locality.address_components.find((c: any) => c.types.includes('locality') || c.types.includes('political') || c.types.includes('administrative_area_level_1'));
-    if (comp) return comp.long_name;
-  }
-  return results[0]?.address_components.find((c: any) => c.types.includes('locality') || c.types.includes('political'))?.long_name;
-};
+import { extractStandardCity } from '~utils/geocoding';
 
 export const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
@@ -87,25 +86,29 @@ const App: React.FC = () => {
   const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewingCity, setViewingCity] = useState<string | null>(null);
+  const [viewingCityData, setViewingCityData] = useState<any>(null);
   const [citySpecificRoutes, setCitySpecificRoutes] = useState<RouteType[]>([]);
+  const [citySuggestions, setCitySuggestions] = useState<any[]>([]);
   const [recentGlobalRoutes, setRecentGlobalRoutes] = useState<RouteType[]>([]);
   const [savedRoutes, setSavedRoutes] = useState<any[]>([]);
   const [savedPois, setSavedPois] = useState<any[]>([]);
   const [popularCities, setPopularCities] = useState<any[]>(FALLBACK_CITIES);
   const [isLoadingCityRoutes, setIsLoadingCityRoutes] = useState(false);
+  const [generatingSuggestionId, setGeneratingSuggestionId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   const activeTab = locationPath.pathname.split('/')[1] || 'navigation';
   const setActiveTab = (tab: string) => navigate(tab === 'navigation' ? '/' : `/${tab}`);
 
-  const [isLocating, setIsLocating] = useState(false);
+  const { location, isLocating, locateUser, setLocation } = useGeolocation();
   const [streetConfirmData, setStreetConfirmData] = useState<{ city: string, street: string, type: 'area' | 'street' } | null>(null);
   const [isConfirmPrefsExpanded, setIsConfirmPrefsExpanded] = useState(false);
   const [dynamicRadius, setDynamicRadius] = useState<number>(3);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [location, setLocation] = useState(PARIS_COORDS);
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const [isSearchingNearby, setIsSearchingNearby] = useState(false);
+
+  // Use the new hook for nearby routes
+  const { isSearching: isSearchingNearby, searchNearby } = useNearbyRoutes();
 
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMap = useRef<any>(null);
@@ -172,67 +175,44 @@ const App: React.FC = () => {
   const clearPreviewMarkers = () => { previewMarkers.current.forEach(m => m && m.setMap(null)); previewMarkers.current = []; };
 
   const handleLocateUser = (panOnly = false) => {
-    if (!navigator.geolocation) {
-      if (!panOnly) showToast(isHe ? "הדפדפן שלך לא תומך בזיהוי מיקום" : "Geolocation not supported", "error");
-      return;
-    }
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-        setLocation(pos);
+    locateUser(
+      (pos) => {
         if (googleMap.current) {
           googleMap.current.panTo(pos);
           googleMap.current.setZoom(16);
         }
-        setIsLocating(false);
       },
       () => {
-        setIsLocating(false);
-        if (!panOnly && googleMap.current) {
+        if (!panOnly) {
           showToast(isHe ? "לא ניתן לגשת למיקום שלך, עוברים לפריז" : "Unable to access location, going to Paris", "error");
-          googleMap.current.panTo(PARIS_COORDS);
-          setLocation(PARIS_COORDS);
         }
-      },
-      { timeout: 5000 }
+        if (googleMap.current) {
+          googleMap.current.panTo(PARIS_COORDS);
+        }
+        setLocation(PARIS_COORDS);
+      }
     );
   };
 
   const handleFindNearbyRoutes = async () => {
     if (!googleMap.current) return;
-    setIsSearchingNearby(true);
     setIsAiMenuOpen(false);
 
-    try {
-      const allRoutes = await getAllRecentRoutes(150);
-      const center = googleMap.current.getCenter();
+    const center = googleMap.current.getCenter();
+    const routes = await searchNearby(center.lat(), center.lng());
 
-      const routesWithDist = allRoutes.map(route => {
-        const startPoi = route.pois[0];
-        const dist = google.maps.geometry.spherical.computeDistanceBetween(
-          center,
-          new google.maps.LatLng(startPoi.lat, startPoi.lng)
-        );
-        return { ...route, dist };
+    if (routes.length > 0) {
+      renderNearbyMarkersOnMap(routes);
+      const bounds = new google.maps.LatLngBounds();
+      routes.forEach((r: any) => {
+        if (r.pois && r.pois.length > 0) {
+          bounds.extend(new google.maps.LatLng(r.pois[0].lat, r.pois[0].lng));
+        }
       });
-
-      const sorted = routesWithDist.sort((a, b) => (a.dist || 0) - (b.dist || 0));
-      const top10 = sorted.slice(0, 10);
-
-      if (top10.length > 0) {
-        renderNearbyMarkersOnMap(top10);
-        const bounds = new google.maps.LatLngBounds();
-        top10.forEach(r => bounds.extend(new google.maps.LatLng(r.pois[0].lat, r.pois[0].lng)));
-        googleMap.current.fitBounds(bounds);
-        showToast(isHe ? `מצאנו ${top10.length} מסלולים קרובים!` : `Found ${top10.length} nearby tours!`);
-      } else {
-        showToast(isHe ? "לא נמצאו מסלולים קרובים" : "No nearby tours found", "error");
-      }
-    } catch (err) {
-      showToast(isHe ? "שגיאה בחיפוש מסלולים" : "Error searching for tours", "error");
-    } finally {
-      setIsSearchingNearby(false);
+      googleMap.current.fitBounds(bounds);
+      showToast(isHe ? `מצאנו ${routes.length} מסלולים קרובים!` : `Found ${routes.length} nearby tours!`);
+    } else {
+      showToast(isHe ? "לא נמצאו מסלולים קרובים" : "No nearby tours found", "error");
     }
   };
 
@@ -340,12 +320,113 @@ const App: React.FC = () => {
 
   const handleCitySelect = async (city: any) => {
     setViewingCity(city.name);
+    setViewingCityData(city);
     setIsLoadingCityRoutes(true);
     try {
       const routes = await getRoutesByCityHub(city.name, city.name_en);
       setCitySpecificRoutes(routes || []);
-    } catch (err) { setCitySpecificRoutes([]); }
+
+      // Generate suggestions if we have fewer than 20 routes
+      if (routes.length < 20) {
+        const suggestions = generateCitySuggestions(city, routes.length);
+        setCitySuggestions(suggestions);
+      } else {
+        setCitySuggestions([]);
+      }
+    } catch (err) {
+      setCitySpecificRoutes([]);
+      setCitySuggestions([]);
+    }
     finally { setIsLoadingCityRoutes(false); }
+  };
+
+  const generateCitySuggestions = (city: any, existingCount: number) => {
+    const needed = Math.max(0, 20 - existingCount);
+    const themes = [
+      { id: 'historic', nameHe: 'מסלול היסטורי', nameEn: 'Historic Tour', icon: '🏛️' },
+      { id: 'food', nameHe: 'מסלול קולינרי', nameEn: 'Food Tour', icon: '🍽️' },
+      { id: 'art', nameHe: 'מסלול אמנות', nameEn: 'Art Tour', icon: '🎨' },
+      { id: 'architecture', nameHe: 'מסלול ארכיטקטורה', nameEn: 'Architecture Tour', icon: '🏗️' },
+      { id: 'nature', nameHe: 'מסלול טבע', nameEn: 'Nature Tour', icon: '🌳' },
+      { id: 'nightlife', nameHe: 'מסלול חיי לילה', nameEn: 'Nightlife Tour', icon: '🌙' },
+      { id: 'shopping', nameHe: 'מסלול קניות', nameEn: 'Shopping Tour', icon: '🛍️' },
+      { id: 'religious', nameHe: 'מסלול דתי', nameEn: 'Religious Sites Tour', icon: '🕌' },
+      { id: 'modern', nameHe: 'מסלול מודרני', nameEn: 'Modern Tour', icon: '🏙️' },
+      { id: 'romantic', nameHe: 'מסלול רומנטי', nameEn: 'Romantic Tour', icon: '💕' },
+    ];
+
+    return themes.slice(0, needed).map(theme => ({
+      id: `suggestion-${city.id}-${theme.id}`,
+      cityName: city.name,
+      cityNameEn: city.name_en,
+      theme: theme.id,
+      nameHe: theme.nameHe,
+      nameEn: theme.nameEn,
+      icon: theme.icon,
+      isSuggestion: true
+    }));
+  };
+
+  const handleGenerateSuggestion = async (suggestion: any) => {
+    setGeneratingSuggestionId(suggestion.id);
+
+    try {
+      // Get city center coordinates
+      const geocoder = new google.maps.Geocoder();
+      const result = await new Promise<any>((resolve, reject) => {
+        geocoder.geocode({ address: suggestion.cityNameEn || suggestion.cityName }, (results: any, status: string) => {
+          if (status === 'OK' && results[0]) {
+            resolve(results[0]);
+          } else {
+            reject(new Error('Geocoding failed'));
+          }
+        });
+      });
+
+      const pos = {
+        lat: result.geometry.location.lat(),
+        lng: result.geometry.location.lng()
+      };
+
+      // Generate route with theme-specific preferences
+      const themePrefs = {
+        ...preferences,
+        interests: [suggestion.nameHe],
+        walkingDistance: 3,
+        desiredPoiCount: 5
+      };
+
+      const route = await generateWalkingRoute(
+        suggestion.cityName,
+        pos,
+        themePrefs,
+        suggestion.theme,
+        user?.id
+      );
+
+      if (route) {
+        // Calculate distances between POIs
+        const routeWithDistances = await calculateRouteDistances(route);
+
+        // Save to database
+        await saveToCuratedRoutes(routeWithDistances, suggestion.theme);
+
+        // Load the route
+        handleLoadSavedRoute(routeWithDistances.city, routeWithDistances);
+
+        // Refresh city routes
+        if (viewingCityData) {
+          handleCitySelect(viewingCityData);
+        }
+
+        showToast(isHe ? 'המסלול נוצר בהצלחה!' : 'Tour created successfully!');
+      }
+    } catch (err) {
+      console.error('Failed to generate suggestion:', err);
+      showToast(isHe ? 'שגיאה ביצירת המסלול' : 'Error creating tour', 'error');
+    } finally {
+      setGeneratingSuggestionId(null);
+    }
   };
 
   useEffect(() => {
@@ -460,7 +541,186 @@ const App: React.FC = () => {
       });
     }
   }, []);
+
+  const calculateRouteDistances = async (route: RouteType): Promise<RouteType> => {
+    if (!route.pois || route.pois.length < 2) return route;
+
+    try {
+      const service = new google.maps.DistanceMatrixService();
+      const updatedPois = [...route.pois];
+
+      for (let i = 1; i < updatedPois.length; i++) {
+        const origin = new google.maps.LatLng(updatedPois[i - 1].lat, updatedPois[i - 1].lng);
+        const destination = new google.maps.LatLng(updatedPois[i].lat, updatedPois[i].lng);
+
+        try {
+          const result = await new Promise<any>((resolve, reject) => {
+            service.getDistanceMatrix(
+              {
+                origins: [origin],
+                destinations: [destination],
+                travelMode: google.maps.TravelMode.WALKING,
+              },
+              (response: any, status: string) => {
+                if (status === 'OK' && response?.rows[0]?.elements[0]) {
+                  resolve(response.rows[0].elements[0]);
+                } else {
+                  reject(new Error('Distance calculation failed'));
+                }
+              }
+            );
+          });
+
+          if (result.status === 'OK') {
+            updatedPois[i] = {
+              ...updatedPois[i],
+              travelFromPrevious: {
+                distance: result.distance.text,
+                duration: result.duration.text
+              }
+            };
+          }
+        } catch (err) {
+          console.warn(`Failed to calculate distance for POI ${i}:`, err);
+        }
+      }
+
+      return { ...route, pois: updatedPois };
+    } catch (err) {
+      console.error('Error calculating route distances:', err);
+      return route;
+    }
+  };
+
+  const handlePoiDataLoaded = (routeId: string, poiId: string, data: any) => {
+    setOpenRoutes(prev => prev.map(route => {
+      if (route.id !== routeId) return route;
+      return {
+        ...route,
+        pois: route.pois.map(p => {
+          if (p.id !== poiId) return p;
+          return { ...p, ...data, isFullyLoaded: true, isLoading: false };
+        })
+      };
+    }));
+
+    // Also update selectedPoi if it's the one being modified
+    setSelectedPoi(prev => {
+      if (prev && prev.id === poiId) {
+        return { ...prev, ...data, isFullyLoaded: true, isLoading: false };
+      }
+      return prev;
+    });
+  };
+
+  const enrichPoi = async (routeId: string, poi: POI, routeCity: string, userPrefs: UserPreferences) => {
+    if (poi.isFullyLoaded || poi.isLoading) return;
+
+    // Mark as loading
+    setOpenRoutes(prev => prev.map(r => {
+      if (r.id !== routeId) return r;
+      return {
+        ...r,
+        pois: r.pois.map(p => p.id === poi.id ? { ...p, isLoading: true } : p)
+      };
+    }));
+
+    try {
+      const data = await fetchExtendedPoiDetails(poi.name, routeCity, userPrefs, poi.lat, poi.lng);
+      if (data) {
+        handlePoiDataLoaded(routeId, poi.id, data);
+        // Save enriched POI to DB
+        if (user) {
+          // We might want to update the route in DB or save the POI details separately
+          // For now, caching is handled in fetchExtendedPoiDetails (supabase cache)
+        }
+      } else {
+        // Failed or empty, unset loading properly to allow retry? Or just leave it.
+        // Let's reset loading so it can be retried if needed
+        setOpenRoutes(prev => prev.map(r => {
+          if (r.id !== routeId) return r;
+          return {
+            ...r,
+            pois: r.pois.map(p => p.id === poi.id ? { ...p, isLoading: false } : p)
+          };
+        }));
+      }
+    } catch (e) {
+      console.error("Enrichment failed", e);
+      setOpenRoutes(prev => prev.map(r => {
+        if (r.id !== routeId) return r;
+        return {
+          ...r,
+          pois: r.pois.map(p => p.id === poi.id ? { ...p, isLoading: false } : p)
+        };
+      }));
+    }
+  };
+
+  // Effect to pre-fetch next stops when a POI is selected
+  useEffect(() => {
+    if (!selectedPoi || !currentRoute) return;
+
+    const currentIndex = currentRoute.pois.findIndex(p => p.id === selectedPoi.id);
+    if (currentIndex === -1) return;
+
+    // Enrich current
+    enrichPoi(currentRoute.id, currentRoute.pois[currentIndex], currentRoute.city, preferences);
+
+    // Enrich next 2
+    const next1 = currentRoute.pois[currentIndex + 1];
+    if (next1) enrichPoi(currentRoute.id, next1, currentRoute.city, preferences);
+
+    const next2 = currentRoute.pois[currentIndex + 2];
+    if (next2) enrichPoi(currentRoute.id, next2, currentRoute.city, preferences);
+
+  }, [selectedPoi?.id]); // Trigger when selected POI changes
+
   const handleActionCreateRoute = async () => {
+    // 1. Fork/Update existing route logic
+    if (!streetConfirmData && currentRoute && activeTab === 'route') {
+      const parentRoute = currentRoute;
+      const finalPrefs = preferences;
+
+      // Do NOT set generatingRouteIds or ShowGeneratingTooltip to avoid blocking UI with a full-screen skeleton.
+      // The "Update" button in RouteOverview will handle its own loading state via 'isRegenerating' prop passed down.
+      // NOTE: We need to pass the regeneration state down to RouteOverview. 
+      // Currently, RouteOverview receives `isRegenerating` which might be tied to `generatingRouteIds`.
+      // To fix this properly, we should rely on a local loading state in this function if the architecture allows, 
+      // or simply rely on the fact that existing route is visible while we await.
+
+      // Let's rely on the fact that the caller will set the button to loading state.
+      // But we must NOT set the global `setGeneratingRouteIds` if that triggers the Skeleton overlay.
+
+      try {
+        const startLoc = parentRoute.pois[0] ? { lat: parentRoute.pois[0].lat, lng: parentRoute.pois[0].lng } : { lat: PARIS_COORDS.lat, lng: PARIS_COORDS.lng };
+
+        const newRoute = await generateWalkingRoute(parentRoute.city, startLoc, finalPrefs, "general", user?.id);
+
+        if (newRoute) {
+          const routeWithDistances = await calculateRouteDistances(newRoute);
+          const validatedRoute = { ...routeWithDistances, parent_route_id: parentRoute.id };
+
+          if (user) {
+            await forkRoute(user.id, parentRoute, validatedRoute);
+          }
+
+          setOpenRoutes(prev => prev.map(r => r.id === parentRoute.id ? validatedRoute : r));
+          renderRouteMarkers(validatedRoute);
+          showToast(isHe ? 'המסלול עודכן בהצלחה!' : 'Route updated successfully!', 'success');
+
+          if (validatedRoute.pois.length > 0) {
+            enrichPoi(validatedRoute.id, validatedRoute.pois[0], validatedRoute.city, finalPrefs);
+          }
+        }
+      } catch (e) {
+        console.error("Update failed:", e);
+        showToast(isHe ? 'שגיאה בעדכון המסלול' : 'Failed to update route', 'error');
+      }
+
+      return;
+    }
+
     if (!streetConfirmData) return;
     const mode = streetConfirmData.type;
     const finalStreet = streetConfirmData.street;
@@ -491,7 +751,9 @@ const App: React.FC = () => {
         : await generateWalkingRoute(finalCity, pos, finalPrefs, "general", user?.id);
 
       if (route) {
-        const validatedRoute = { ...route, id: tempId, city: finalCity, name: mode === 'street' ? finalStreet : route.name };
+        // Calculate distances between POIs
+        const routeWithDistances = await calculateRouteDistances(route);
+        const validatedRoute = { ...routeWithDistances, id: tempId, city: finalCity, name: mode === 'street' ? finalStreet : routeWithDistances.name };
         setOpenRoutes(prev => prev.map(r => r.id === tempId ? validatedRoute : r));
         setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(tempId); return next; });
 
@@ -502,6 +764,14 @@ const App: React.FC = () => {
         logUsage(user?.id || null, finalCity);
         await saveToCuratedRoutes(validatedRoute);
         await loadGlobalContent();
+
+        // Trigger enrichment for the first POI immediately
+        if (validatedRoute.pois.length > 0) {
+          enrichPoi(validatedRoute.id, validatedRoute.pois[0], validatedRoute.city, finalPrefs);
+          // And maybe the second one too, why not?
+          if (validatedRoute.pois[1]) enrichPoi(validatedRoute.id, validatedRoute.pois[1], validatedRoute.city, finalPrefs);
+        }
+
       }
     } catch (err: any) {
       console.error("Route generation failure:", err);
@@ -533,6 +803,27 @@ const App: React.FC = () => {
     setViewingCity(null);
   };
 
+  const handleSaveRoute = async () => {
+    if (!currentRoute) return;
+    if (!user) {
+      showToast(isHe ? 'יש להתחבר כדי לשמור מסלולים' : 'Please login to save routes', 'error');
+      setActiveTab('profile');
+      return;
+    }
+
+    try {
+      const saved = await saveRouteToSupabase(user.id, currentRoute);
+      if (saved) {
+        showToast(isHe ? 'המסלול נשמר בהצלחה!' : 'Route saved successfully!');
+        refreshSavedContent(user.id);
+      } else {
+        showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
+      }
+    } catch (err) {
+      showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
+    }
+  };
+
 
   const renderRouteMarkers = (route: RouteType) => {
     clearMarkers();
@@ -553,7 +844,8 @@ const App: React.FC = () => {
     if (googleMap.current && !bounds.isEmpty()) {
       googleMap.current.fitBounds(bounds);
     }
-    new google.maps.DirectionsService().route({
+    const directionsService = new google.maps.DirectionsService();
+    directionsService.route({
       origin: { lat: route.pois[0].lat, lng: route.pois[0].lng },
       destination: { lat: route.pois[route.pois.length - 1].lat, lng: route.pois[route.pois.length - 1].lng },
       waypoints: route.pois.slice(1, -1).map(p => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })),
@@ -597,7 +889,11 @@ const App: React.FC = () => {
     <div className="h-[100dvh] w-full flex flex-col relative bg-white overflow-hidden" dir={isHe ? 'rtl' : 'ltr'}>
       <style>{`.liquid-indicator { transition: transform 0.4s cubic-bezier(0.68, -0.6, 0.32, 1.6); width: 20%; display: flex; justify-content: center; align-items: center; pointer-events: none; } .indicator-pill { width: 70%; height: 80%; background-color: #6366F1; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2); } .crosshair-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 9000; display: flex; flex-direction: column; align-items: center; transition: top 0.5s ease-in-out; } .crosshair-container.shifted { top: 65%; } .gen-tooltip { position: absolute; bottom: calc(100px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: #0F172A; color: white; padding: 12px 24px; border-radius: 8px; font-size: 11px; font-medium: 500; z-index: 5000; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; animation: in-out 0.3s ease-out; } @keyframes in-out { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } } .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom, 16px); min-height: calc(64px + env(safe-area-inset-bottom, 0px)); } .top-safe-area { padding-top: env(safe-area-inset-top, 24px); }`}</style>
 
-      {showOnboarding && <UserGuide isHe={isHe} onClose={() => { setShowOnboarding(false); localStorage.setItem('urbanito_onboarding_v2', 'true'); }} />}
+
+
+      <Suspense fallback={null}>
+        {showOnboarding && <UserGuide isHe={isHe} onClose={() => { setShowOnboarding(false); localStorage.setItem('urbanito_onboarding_v2', 'true'); }} />}
+      </Suspense>
       {toast && <div className={`fixed top-[calc(env(safe-area-inset-top)+12px)] left-1/2 -translate-x-1/2 z-[10000] px-6 py-3 rounded-[8px] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}><CheckCircle size={18} /><span className="text-sm font-medium">{toast.message}</span></div>}
       {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
       {isSearchingNearby && <div className="fixed inset-0 z-[8000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-[8px] shadow-2xl flex flex-col items-center gap-4"><Loader2 size={40} className="animate-spin text-indigo-500" /><p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים בסביבה...' : 'Searching nearby...'}</p></div></div>}
@@ -605,195 +901,261 @@ const App: React.FC = () => {
       <main className="flex-1 relative h-full">
         <div ref={mapRef} className="w-full h-full" />
 
-        <Routes>
-          <Route path="/" element={
-            <>
-              {streetConfirmData && !isAiMenuOpen && (
-                <div className={`crosshair-container ${streetConfirmData.type === 'area' ? 'shifted' : ''}`}>
-                  <div className="animate-in zoom-in duration-300 flex flex-col items-center mb-2">
-                    {streetConfirmData.type === 'street' ? <MapPin size={28} className="text-[#6366F1] fill-indigo-100/50" strokeWidth={1.2} /> : <TargetIcon size={28} className="text-[#6366F1] animate-pulse" />}
-                  </div>
-                  <div className="pointer-events-auto animate-in slide-in-from-top-4 duration-500">
-                    <div className="w-[300px] bg-white rounded-[8px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100/50 overflow-hidden flex flex-col">
-                      <div className="p-5 pb-2">
-                        <div className="flex justify-between items-start mb-4">
-                          <div className="text-right flex-1 min-w-0">
-                            <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">{streetConfirmData.type === 'street' ? (isHe ? 'מסלול רחוב' : 'Street Tour') : (isHe ? 'סיור באזור' : 'Area Tour')}</h4>
-                            <div className={`text-lg font-medium text-slate-900 bg-slate-50/50 rounded-[8px] px-3 py-1.5 truncate transition-opacity duration-200 ${isGeocoding ? 'opacity-30' : 'opacity-100'}`}>
-                              {streetConfirmData.type === 'street' ? streetConfirmData.street : streetConfirmData.city}
+        <Suspense fallback={<div className="absolute inset-0 bg-white z-[2000] flex items-center justify-center"><SuspenseLoader isHe={isHe} /></div>}>
+          <Routes>
+            <Route path="/" element={
+              <>
+                {streetConfirmData && !isAiMenuOpen && (
+                  <div className={`crosshair-container ${streetConfirmData.type === 'area' ? 'shifted' : ''}`}>
+                    <div className="animate-in zoom-in duration-300 flex flex-col items-center mb-2">
+                      {streetConfirmData.type === 'street' ? <MapPin size={28} className="text-[#6366F1] fill-indigo-100/50" strokeWidth={1.2} /> : <TargetIcon size={28} className="text-[#6366F1] animate-pulse" />}
+                    </div>
+                    <div className="pointer-events-auto animate-in slide-in-from-top-4 duration-500">
+                      <div className="w-[300px] bg-white rounded-[8px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100/50 overflow-hidden flex flex-col">
+                        <div className="p-5 pb-2">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="text-right flex-1 min-w-0">
+                              <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">{streetConfirmData.type === 'street' ? (isHe ? 'מסלול רחוב' : 'Street Tour') : (isHe ? 'סיור באזור' : 'Area Tour')}</h4>
+                              <div className={`text-lg font-medium text-slate-900 bg-slate-50/50 rounded-[8px] px-3 py-1.5 truncate transition-opacity duration-200 ${isGeocoding ? 'opacity-30' : 'opacity-100'}`}>
+                                {streetConfirmData.type === 'street' ? streetConfirmData.street : streetConfirmData.city}
+                              </div>
+                              {streetConfirmData.type === 'area' && (
+                                <p className="text-[10px] text-slate-400 mt-2 font-medium tracking-wide">
+                                  {isHe ? 'רדיוס סיור:' : 'Radius:'} <span className="text-[#6366F1] font-medium">{dynamicRadius}km</span>
+                                </p>
+                              )}
                             </div>
-                            {streetConfirmData.type === 'area' && (
-                              <p className="text-[10px] text-slate-400 mt-2 font-medium tracking-wide">
-                                {isHe ? 'רדיוס סיור:' : 'Radius:'} <span className="text-[#6366F1] font-medium">{dynamicRadius}km</span>
-                              </p>
-                            )}
+                            <button onClick={() => { setStreetConfirmData(null); if (selectionCircle.current) { selectionCircle.current.setMap(null); selectionCircle.current = null; } }} className="p-1.5 text-slate-300 hover:text-slate-600 transition-colors bg-slate-50 rounded-full"><X size={16} /></button>
                           </div>
-                          <button onClick={() => { setStreetConfirmData(null); if (selectionCircle.current) { selectionCircle.current.setMap(null); selectionCircle.current = null; } }} className="p-1.5 text-slate-300 hover:text-slate-600 transition-colors bg-slate-50 rounded-full"><X size={16} /></button>
+                          <button onClick={() => setIsConfirmPrefsExpanded(!isConfirmPrefsExpanded)} className="w-full flex items-center justify-between py-2 text-[10px] font-medium text-slate-400 border-t border-slate-50 mt-1 hover:text-[#6366F1] transition-colors">
+                            <span className="flex items-center gap-2"><Settings2 size={14} /> {isHe ? 'העדפות מסלול' : 'Route Preferences'}</span>
+                            {isConfirmPrefsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
                         </div>
-                        <button onClick={() => setIsConfirmPrefsExpanded(!isConfirmPrefsExpanded)} className="w-full flex items-center justify-between py-2 text-[10px] font-medium text-slate-400 border-t border-slate-50 mt-1 hover:text-[#6366F1] transition-colors">
-                          <span className="flex items-center gap-2"><Settings2 size={14} /> {isHe ? 'העדפות מסלול' : 'Route Preferences'}</span>
-                          {isConfirmPrefsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                      </div>
-                      <div className={`overflow-y-auto no-scrollbar transition-all duration-500 ease-in-out ${isConfirmPrefsExpanded ? 'max-h-[300px] opacity-100 border-t border-slate-50' : 'max-h-0 opacity-0'}`}>
-                        <QuickRouteSetup preferences={preferences} onUpdatePreferences={setPreferences} onGenerate={() => { }} onCancel={() => { }} isEmbedded={true} hideActionButton={true} />
-                      </div>
-                      <div className="p-5 pt-3">
-                        <button onClick={handleActionCreateRoute} className="w-full py-4 bg-[#0F172A] text-white rounded-[8px] font-medium text-[11px] uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                          <RouteTravelIcon className="w-5 h-5" animated={false} />
-                          {isHe ? 'בנה לי מסלול אישי' : 'Build My Tour'}
-                        </button>
+                        <div className={`overflow-y-auto no-scrollbar transition-all duration-500 ease-in-out ${isConfirmPrefsExpanded ? 'max-h-[300px] opacity-100 border-t border-slate-50' : 'max-h-0 opacity-0'}`}>
+                          <Suspense fallback={<div className="p-4 flex justify-center"><Loader2 className="animate-spin text-indigo-500" /></div>}>
+                            <QuickRouteSetup preferences={preferences} onUpdatePreferences={setPreferences} onGenerate={() => { }} onCancel={() => { }} isEmbedded={true} hideActionButton={true} />
+                          </Suspense>
+                        </div>
+                        <div className="p-5 pt-3">
+                          <button onClick={handleActionCreateRoute} className="w-full py-4 bg-[#0F172A] text-white rounded-[8px] font-medium text-[11px] uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                            <RouteTravelIcon className="w-5 h-5" animated={false} />
+                            {isHe ? 'בנה לי מסלול אישי' : 'Build My Tour'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {!selectedPoi && !isAiMenuOpen && !streetConfirmData && (
-                <div className="absolute top-0 inset-x-0 z-[1000] flex flex-col items-center pointer-events-none top-safe-area px-6">
-                  <div className="w-full max-w-md bg-white p-1.5 h-16 flex items-center gap-2 pointer-events-auto shadow-xl rounded-[8px] border border-slate-100 mt-4">
-                    <button onClick={handleManualSearch} className="flex items-center justify-center w-12 h-12 text-slate-400 hover:text-[#6366F1]"><Search size={20} /></button>
-                    <input ref={searchInputRef} type="text" placeholder={isHe ? 'לאן מטיילים?' : 'Where to?'} className="bg-transparent border-none outline-none flex-1 text-base font-medium text-slate-800" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()} />
-                  </div>
-                </div>
-              )}
-
-              {!selectedPoi && (
-                <button onClick={() => handleLocateUser()} className={`absolute bottom-24 ${isHe ? 'left-6' : 'right-6'} z-[1000] w-12 h-12 bg-white rounded-full-force shadow-2xl border border-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition-all`}>
-                  {isLocating ? <Loader2 size={20} className="animate-spin text-[#6366F1]" /> : <LocateFixed size={20} />}
-                </button>
-              )}
-            </>
-          } />
-
-          <Route path="/library" element={
-            <div className="absolute inset-0 bg-slate-50 z-[3000] p-6 overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500">
-              <div className="flex justify-between items-center mb-8 pt-4 top-safe-area"><h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2></div>
-              {!viewingCity ? (
-                <div className="space-y-12">
-                  <section>
-                    <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                      <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
-                    </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES).map(city => (
-                        <button key={city.id} onClick={() => handleCitySelect(city)} className="group flex flex-col gap-1.5">
-                          <div className="relative aspect-[4/5] overflow-hidden shadow-lg rounded-[8px] bg-slate-200">
-                            <img src={city.img_url} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={city.name} />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 flex items-end justify-center p-2">
-                              <span className="text-white text-[10px] font-medium text-center">{city.name}</span>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
+                {!selectedPoi && !isAiMenuOpen && !streetConfirmData && (
+                  <div className="absolute top-0 inset-x-0 z-[1000] flex flex-col items-center pointer-events-none top-safe-area px-6">
+                    <div className="w-full max-w-md bg-white p-1.5 h-16 flex items-center gap-2 pointer-events-auto shadow-xl rounded-[8px] border border-slate-100 mt-4">
+                      <button onClick={handleManualSearch} className="flex items-center justify-center w-12 h-12 text-slate-400 hover:text-[#6366F1]"><Search size={20} /></button>
+                      <input ref={searchInputRef} type="text" placeholder={isHe ? 'לאן מטיילים?' : 'Where to?'} className="bg-transparent border-none outline-none flex-1 text-base font-medium text-slate-800" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()} />
                     </div>
-                  </section>
+                  </div>
+                )}
 
-                  {recentGlobalRoutes.length > 0 && (
+                {!selectedPoi && (
+                  <button onClick={() => handleLocateUser()} className={`absolute bottom-24 ${isHe ? 'left-6' : 'right-6'} z-[1000] w-12 h-12 bg-white rounded-full-force shadow-2xl border border-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition-all`}>
+                    {isLocating ? <Loader2 size={20} className="animate-spin text-[#6366F1]" /> : <LocateFixed size={20} />}
+                  </button>
+                )}
+              </>
+            } />
+
+            <Route path="/library" element={
+              <div className="absolute inset-0 bg-slate-50 z-[3000] p-6 overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500">
+                <div className="flex justify-between items-center mb-8 pt-4 top-safe-area"><h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2></div>
+                {!viewingCity ? (
+                  <div className="space-y-12">
                     <section>
                       <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                        <History size={12} className="text-amber-500" /> {isHe ? 'מסלולים אחרונים בקהילה' : 'Recent Community Tours'}
+                        <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
                       </h3>
-                      <div className="grid grid-cols-1 gap-3">
-                        {recentGlobalRoutes.slice(0, 30).map((route, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleLoadSavedRoute(route.city, route)}
-                            className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
-                          >
-                            <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
-                              <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                      <div className="grid grid-cols-3 gap-3">
+                        {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES).map(city => (
+                          <button key={city.id} onClick={() => handleCitySelect(city)} className="group flex flex-col gap-1.5">
+                            <div className="relative aspect-[4/5] overflow-hidden shadow-lg rounded-[8px] bg-slate-200">
+                              <img src={city.img_url} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={city.name} />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 flex items-end justify-center p-2">
+                                <span className="text-white text-[10px] font-medium text-center">{city.name}</span>
+                              </div>
                             </div>
-                            <div className="flex-1 text-right min-w-0">
-                              <div className="text-[8px] font-medium text-[#6366F1] uppercase tracking-widest">{route.city}</div>
-                              <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight">
-                                {route.name.replace(/\s*\(.*?\)\s*/g, '')}
-                              </h4>
-                            </div>
-                            <ChevronLeft size={16} className="text-slate-300" />
                           </button>
                         ))}
                       </div>
                     </section>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-6 animate-in fade-in duration-500">
-                  <button onClick={() => setViewingCity(null)} className="flex items-center gap-1.5 text-[10px] uppercase font-medium text-slate-400 hover:text-[#6366F1]">
-                    <ArrowRight size={12} /> {isHe ? 'חזרה לספריה' : 'Back to Library'}
-                  </button>
-                  <h3 className="text-3xl font-medium tracking-tight">{viewingCity}</h3>
-                  {isLoadingCityRoutes ? (
-                    <div className="flex flex-col items-center py-20 gap-4">
-                      <Loader2 className="animate-spin text-indigo-500" />
-                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים פנומנליים...' : 'Searching Tours...'}</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3">
-                      {citySpecificRoutes.length === 0 ? (
-                        <div className="p-12 text-center text-slate-400 bg-white rounded-[8px] border border-dashed border-slate-200">
-                          <p className="text-[11px] uppercase tracking-widest">{isHe ? 'אין עדיין מסלולים בעיר זו' : 'No tours for this city yet'}</p>
+
+                    {recentGlobalRoutes.length > 0 && (
+                      <section>
+                        <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <History size={12} className="text-amber-500" /> {isHe ? 'מסלולים אחרונים בקהילה' : 'Recent Community Tours'}
+                        </h3>
+                        <div className="grid grid-cols-1 gap-3">
+                          {recentGlobalRoutes.slice(0, 30).map((route, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleLoadSavedRoute(route.city, route)}
+                              className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
+                            >
+                              <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
+                                <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                              </div>
+                              <div className="flex-1 text-right min-w-0">
+                                <div className="text-[8px] font-medium text-[#6366F1] uppercase tracking-widest">{route.city}</div>
+                                <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight">
+                                  {route.name.replace(/\s*\(.*?\)\s*/g, '')}
+                                </h4>
+                              </div>
+                              <ChevronLeft size={16} className="text-slate-300" />
+                            </button>
+                          ))}
                         </div>
-                      ) : (
-                        citySpecificRoutes.map((route, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleLoadSavedRoute(route.city, route)}
-                            className="w-full flex items-center gap-4 bg-white p-4 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
-                          >
-                            <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
-                              <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                      </section>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-6 animate-in fade-in duration-500">
+                    <button onClick={() => setViewingCity(null)} className="flex items-center gap-1.5 text-[10px] uppercase font-medium text-slate-400 hover:text-[#6366F1]">
+                      <ArrowRight size={12} /> {isHe ? 'חזרה לספריה' : 'Back to Library'}
+                    </button>
+                    <h3 className="text-3xl font-medium tracking-tight">{viewingCity}</h3>
+                    {isLoadingCityRoutes ? (
+                      <div className="flex flex-col items-center py-20 gap-4">
+                        <Loader2 className="animate-spin text-indigo-500" />
+                        <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים פנומנליים...' : 'Searching Tours...'}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Existing Routes */}
+                        {citySpecificRoutes.length > 0 && (
+                          <div>
+                            <h4 className="text-[9px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-3">
+                              {isHe ? `מסלולים קיימים (${citySpecificRoutes.length})` : `Existing Tours (${citySpecificRoutes.length})`}
+                            </h4>
+                            <div className="grid grid-cols-1 gap-3">
+                              {citySpecificRoutes.map((route, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => handleLoadSavedRoute(route.city, route)}
+                                  className="w-full flex items-center gap-4 bg-white p-4 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
+                                >
+                                  <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
+                                    <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                                  </div>
+                                  <div className="flex-1 text-right min-w-0">
+                                    <h4 className="text-[15px] font-medium text-slate-900 truncate">
+                                      {route.name.replace(/\s*\(.*?\)\s*/g, '')}
+                                    </h4>
+                                  </div>
+                                  <ChevronLeft size={16} className="text-slate-300" />
+                                </button>
+                              ))}
                             </div>
-                            <div className="flex-1 text-right min-w-0">
-                              <h4 className="text-[15px] font-medium text-slate-900 truncate">
-                                {route.name.replace(/\s*\(.*?\)\s*/g, '')}
-                              </h4>
+                          </div>
+                        )}
+
+                        {/* Suggested Routes */}
+                        {citySuggestions.length > 0 && (
+                          <div>
+                            <h4 className="text-[9px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                              <Layers size={10} className="text-indigo-500" />
+                              {isHe ? 'הצעות למסלולים נוספים' : 'Suggested Tours'}
+                            </h4>
+                            <div className="grid grid-cols-1 gap-3">
+                              {citySuggestions.map((suggestion) => (
+                                <button
+                                  key={suggestion.id}
+                                  onClick={() => handleGenerateSuggestion(suggestion)}
+                                  disabled={generatingSuggestionId === suggestion.id}
+                                  className="w-full flex items-center gap-4 bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-[8px] border-2 border-dashed border-indigo-200 hover:border-indigo-400 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <div className="w-16 h-16 rounded-[8px] bg-white flex items-center justify-center text-3xl shrink-0 shadow-sm">
+                                    {generatingSuggestionId === suggestion.id ? (
+                                      <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                    ) : (
+                                      suggestion.icon
+                                    )}
+                                  </div>
+                                  <div className="flex-1 text-right min-w-0">
+                                    <h4 className="text-[15px] font-medium text-slate-900 truncate">
+                                      {isHe ? suggestion.nameHe : suggestion.nameEn}
+                                    </h4>
+                                    <p className="text-[10px] text-indigo-600 uppercase tracking-widest mt-0.5">
+                                      {generatingSuggestionId === suggestion.id
+                                        ? (isHe ? 'מייצר מסלול...' : 'Generating...')
+                                        : (isHe ? 'לחץ ליצירה' : 'Click to generate')
+                                      }
+                                    </p>
+                                  </div>
+                                  <Plus size={16} className="text-indigo-400" />
+                                </button>
+                              ))}
                             </div>
-                            <ChevronLeft size={16} className="text-slate-300" />
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          } />
+                          </div>
+                        )}
 
-          <Route path="/route" element={
-            <div className="absolute inset-0 z-[3000] pointer-events-none">
-              {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={() => { }} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
-            </div>
-          } />
-          <Route path="/route/:routeId" element={
-            <div className="absolute inset-0 z-[3000] pointer-events-none">
-              {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={() => { }} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
-            </div>
-          } />
+                        {citySpecificRoutes.length === 0 && citySuggestions.length === 0 && (
+                          <div className="p-12 text-center text-slate-400 bg-white rounded-[8px] border border-dashed border-slate-200">
+                            <p className="text-[11px] uppercase tracking-widest">{isHe ? 'אין עדיין מסלולים בעיר זו' : 'No tours for this city yet'}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            } />
 
-          <Route path="/profile" element={
-            <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500">
-              <div className="top-safe-area"><PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} /></div>
-            </div>
-          } />
+            <Route path="/route" element={
+              <div className="absolute inset-0 z-[3000] pointer-events-none">
+                {currentRoute && (
+                  <Suspense fallback={null}>
+                    <VoiceGuideManager route={currentRoute} language={preferences.language} />
+                  </Suspense>
+                )}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
+              </div>
+            } />
+            <Route path="/route/:routeId" element={
+              <div className="absolute inset-0 z-[3000] pointer-events-none">
+                {currentRoute && (
+                  <Suspense fallback={null}>
+                    <VoiceGuideManager route={currentRoute} language={preferences.language} />
+                  </Suspense>
+                )}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
+              </div>
+            } />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/profile" element={
+              <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500">
+                <div className="top-safe-area"><PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} /></div>
+              </div>
+            } />
+
+            <Route path="*" element={<Navigate to="/" replace />} />
 
 
-        </Routes>
+          </Routes>
+        </Suspense>
 
         {isAiMenuOpen && (
           <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xl z-[7000] flex flex-col items-center justify-end pb-32 px-6">
-            <div className="w-full max-w-[340px] space-y-3 mb-16">
-              <button onClick={() => startStreetConfirm('area')} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px]"><Navigation size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'סיור חכם באזור' : 'Smart Area Tour'}</h4></button>
-              <button onClick={() => startStreetConfirm('street')} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px]"><Signpost size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'מסלול רחוב' : 'Street Tour'}</h4></button>
-              <button onClick={handleFindNearbyRoutes} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px]"><MapPinned size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'מסלולים מוכנים בסביבה' : 'Ready Nearby Tours'}</h4></button>
+            <div className="w-full max-w-[340px] space-y-3 mb-16 animate-in slide-in-from-bottom-10 fade-in duration-300">
+              <button onClick={() => startStreetConfirm('area')} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px] hover:scale-[1.02] active:scale-95 transition-all"><Navigation size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'סיור חכם באזור' : 'Smart Area Tour'}</h4></button>
+              <button onClick={() => startStreetConfirm('street')} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px] hover:scale-[1.02] active:scale-95 transition-all"><Signpost size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'מסלול רחוב' : 'Street Tour'}</h4></button>
+              <button onClick={handleFindNearbyRoutes} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px] hover:scale-[1.02] active:scale-95 transition-all"><MapPinned size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'מסלולים מוכנים בסביבה' : 'Ready Nearby Tours'}</h4></button>
             </div>
           </div>
         )}
 
         {selectedPoi && currentRoute && (
-          <UnifiedPoiCard poi={selectedPoi} route={currentRoute} currentIndex={currentRoute.pois.findIndex(p => p.id === selectedPoi.id)} totalCount={currentRoute.pois.length} preferences={preferences} onUpdatePreferences={setPreferences} onClose={() => setSelectedPoi(null)} onNext={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]); }} onPrev={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]); }} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} showToast={showToast} />
+          <Suspense fallback={<div className="fixed inset-x-0 bottom-0 h-[400px] bg-white z-[5000] rounded-t-lg flex items-center justify-center border-t shadow-2xl"><Loader2 className="animate-spin text-indigo-500 w-8 h-8" /></div>}>
+            <UnifiedPoiCard poi={selectedPoi} route={currentRoute} currentIndex={currentRoute.pois.findIndex(p => p.id === selectedPoi.id)} totalCount={currentRoute.pois.length} preferences={preferences} onUpdatePreferences={setPreferences} onClose={() => setSelectedPoi(null)} onNext={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]); }} onPrev={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]); }} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} showToast={showToast} />
+          </Suspense>
         )}
 
         {activeTab === 'route' && openRoutes.length > 0 && !streetConfirmData && (
@@ -812,17 +1174,35 @@ const App: React.FC = () => {
       </main>
 
       {!selectedPoi && (
-        <div className="fixed bottom-0 left-0 right-0 z-[8000] bg-white border-t border-slate-100 flex flex-col shadow-[0_-4px_20px_rgba(0,0,0,0.05)] bottom-nav-safe">
-          {!isAiMenuOpen ? (
-            <div className="relative w-full grid grid-cols-5 h-16 items-center">
+        <div className={`fixed bottom-0 left-0 right-0 z-[8000] border-t transition-all duration-300 flex flex-col bottom-nav-safe ${isAiMenuOpen ? 'bg-transparent border-transparent shadow-none pointer-events-none' : 'bg-white border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]'}`}>
+          <div className="relative w-full h-16">
+
+            {/* Standard Navigation - Fades out when menu is open */}
+            <div className={`absolute inset-0 grid grid-cols-5 items-center transition-all duration-300 ${isAiMenuOpen ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
               <div className="absolute inset-y-0 h-16 liquid-indicator z-0" style={{ transform: getIndicatorPosition() }}><div className="indicator-pill" /></div>
-              <button onClick={() => navigate('/')} className={`relative z-10 flex justify-center ${activeTab === 'navigation' ? 'text-white' : 'text-slate-400'}`}><Compass size={22} /></button>
+              <button onClick={() => navigate('/')} className={`relative z-10 flex justify-center ${activeTab === 'navigation' ? 'text-white' : 'text-slate-400'}`}>
+                <AnimatedCompass className={activeTab === 'navigation' ? 'text-white' : 'text-slate-400'} size={24} />
+              </button>
               <button onClick={() => navigate('/library')} className={`relative z-10 flex justify-center ${activeTab === 'library' ? 'text-white' : 'text-slate-400'}`}><LibraryIcon size={22} /></button>
-              <div className="relative z-10 flex justify-center">{!isCardOpen && (<button onClick={handleToggleAiMenu} className="w-12 h-12 bg-white text-[#6366F1] shadow-xl flex items-center justify-center rounded-full-force border border-slate-100 -mt-8"><Plus size={28} /></button>)}</div>
+
+              {/* Spacer for the central button */}
+              <div className="relative z-10 flex justify-center" />
+
               <button onClick={() => navigate('/route')} className={`relative z-10 flex justify-center transition-all ${activeTab === 'route' ? 'text-white' : 'text-slate-400'}`}>{generatingRouteIds.size > 0 ? <RouteTravelIcon className="w-7 h-7" animated={true} /> : <RouteIcon size={22} />}</button>
               <button onClick={() => navigate('/profile')} className={`relative z-10 flex justify-center ${activeTab === 'profile' ? 'text-white' : 'text-slate-400'}`}><UserIcon size={22} /></button>
             </div>
-          ) : <div className="flex items-center justify-center h-16"><button onClick={handleToggleAiMenu} className="w-12 h-12 bg-white text-[#6366F1] shadow-xl flex items-center justify-center rounded-full-force border border-slate-100 -mt-8"><X size={24} /></button></div>}
+
+            {/* Central FAB - Handles both Open and Close states independently */}
+            <div className="absolute left-1/2 -translate-x-1/2 -top-10 z-20 pointer-events-auto">
+              <button
+                onClick={handleToggleAiMenu}
+                className={`w-14 h-14 shadow-2xl flex items-center justify-center rounded-full border-[4px] disabled:opacity-50 transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isAiMenuOpen ? 'bg-white text-[#6366F1] border-slate-50 rotate-90' : 'bg-[#6366F1] text-white border-white rotate-0 hover:scale-105 active:scale-95'}`}
+              >
+                <Plus size={32} className={`transition-transform duration-500 ${isAiMenuOpen ? 'rotate-45' : 'rotate-0'}`} />
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
 

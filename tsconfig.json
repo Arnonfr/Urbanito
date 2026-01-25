@@ -18,9 +18,27 @@
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "~features/*": [
+        "./features/*"
+      ],
+      "~hooks/*": [
+        "./hooks/*"
+      ],
+      "~utils/*": [
+        "./utils/*"
+      ],
+      "~components/*": [
+        "./components/*"
+      ],
+      "~types/*": [
+        "./types/*"
       ]
     },
     "allowImportingTsExtensions": true,

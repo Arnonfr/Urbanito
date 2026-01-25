@@ -34,32 +34,56 @@
         .animate-fade-in {
             animation: fadeIn 0.6s ease-out forwards;
         }
+
+        /* Custom scrollbar for agent logs */
+        .agent-log::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .agent-log::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .agent-log::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
     </style>
 </head>
 
 <body class="bg-slate-50 text-slate-900 min-h-screen p-6 md:p-12">
-    <div class="max-w-6xl mx-auto space-y-12 animate-fade-in">
+    <div class="max-w-7xl mx-auto space-y-12 animate-fade-in">
 
         <!-- Header -->
         <header class="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div class="space-y-2">
-                <a href="index.html"
+                <a href="/"
                     class="flex items-center gap-2 text-slate-400 hover:text-indigo-600 transition-colors text-sm font-medium mb-4">
-                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to App
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Main App
                 </a>
                 <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">
-                    Urbanito <span class="text-indigo-600">Project Pulse</span>
+                    Urbanito <span class="text-indigo-600">Sync & Status</span>
                 </h1>
                 <p class="text-lg text-slate-500 max-w-2xl">
-                    A standalone overview of our progress building the ultimate AI-powered urban explorer.
+                    Live tracking of active AI Agents and their current development tasks.
                 </p>
             </div>
             <div
                 class="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100 self-start md:self-auto">
                 <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span class="text-sm font-semibold text-slate-600 uppercase tracking-wider">v2.5.0 Standalone</span>
+                <span class="text-sm font-semibold text-slate-600 uppercase tracking-wider">System Operational</span>
             </div>
         </header>
+
+        <!-- AGENT STATUS ROW -->
+        <section>
+            <h2 class="text-2xl font-bold mb-6 flex items-center gap-3 text-slate-800">
+                <i data-lucide="bot" class="text-indigo-600"></i> Active Agents
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="agents-container">
+                <!-- Agents injected via JS -->
+            </div>
+        </section>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
@@ -70,7 +94,7 @@
                 <section
                     class="bg-white rounded-3xl p-8 shadow-xl border border-slate-100 overflow-hidden relative group">
                     <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
-                        <i data-lucide="layout" class="text-indigo-600"></i> Feature Preview
+                        <i data-lucide="layout" class="text-indigo-600"></i> Latest UI Previews
                     </h2>
                     <div class="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 shadow-inner"
                         id="gallery-container">
@@ -82,44 +106,33 @@
                 </section>
 
                 <!-- Features Grid -->
-                <section class="grid grid-cols-1 md:grid-cols-2 gap-4" id="features-container">
-                    <!-- Features will be injected by JS -->
-                </section>
+                <!-- <section class="grid grid-cols-1 md:grid-cols-2 gap-4" id="features-container"> -->
+                <!-- Features will be injected by JS -->
+                <!-- </section> -->
             </div>
 
             <!-- Sidebar Column -->
             <div class="space-y-8">
 
+                <!-- Pending Suggestions -->
+                <section class="bg-white rounded-3xl p-8 shadow-lg border border-slate-100">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3 text-amber-600">
+                        <i data-lucide="lightbulb" class="w-5 h-5"></i> Pending Suggestions
+                    </h2>
+                    <div class="space-y-4" id="suggestions-container">
+                        <!-- Injected by JS -->
+                    </div>
+                </section>
+
+
                 <!-- Git History / Activity -->
                 <section class="bg-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden">
                     <div class="absolute -top-12 -right-12 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl"></div>
                     <h2 class="text-xl font-bold mb-8 flex items-center gap-3 relative z-10">
-                        <i data-lucide="history" class="text-indigo-400"></i> Recent Updates
+                        <i data-lucide="history" class="text-indigo-400"></i> Recent Commits
                     </h2>
                     <div class="space-y-6 relative z-10" id="commits-container">
                         <!-- Commits will be injected by JS -->
-                    </div>
-                    <button
-                        class="w-full mt-8 py-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl text-xs font-semibold tracking-wider transition-colors border border-white/10 flex items-center justify-center gap-2 group">
-                        VIEW FULL CHANGELOG <i data-lucide="chevron-right"
-                            class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
-                    </button>
-                </section>
-
-                <!-- Architecture / Status -->
-                <section class="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-8 text-white shadow-xl">
-                    <h2 class="text-xl font-bold mb-6 flex items-center gap-3">
-                        <i data-lucide="layers" class="w-6 h-6"></i> Technology Stack
-                    </h2>
-                    <ul class="space-y-4" id="tech-stack-container">
-                        <!-- Tech stack will be injected by JS -->
-                    </ul>
-                    <div class="mt-8 pt-6 border-t border-white/10 flex items-center justify-between">
-                        <div class="flex flex-col">
-                            <span class="text-[10px] uppercase opacity-60 font-bold tracking-widest">Environment</span>
-                            <span class="font-mono text-xs">Standalone Review</span>
-                        </div>
-                        <i data-lucide="arrow-right" class="text-indigo-200"></i>
                     </div>
                 </section>
 
@@ -129,12 +142,7 @@
         <!-- Footer -->
         <footer
             class="pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-sm">
-            <p>© 2026 Urbanito. Standalone Dashboard Version.</p>
-            <div class="flex gap-6">
-                <a href="#" class="hover:text-slate-600 transition-colors">Documentation</a>
-                <a href="#" class="hover:text-slate-600 transition-colors">Security</a>
-                <a href="#" class="hover:text-slate-600 transition-colors">Support</a>
-            </div>
+            <p>© 2026 Urbanito. Agent Surveillance Dashboard.</p>
         </footer>
 
     </div>
@@ -142,6 +150,54 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
+        // --- DATA SOURCE (Simulated from DASHBOARD.md) ---
+
+        const activeAgents = [
+            {
+                role: 'Product Manager',
+                status: 'active', // active, idle, waiting
+                currentTask: 'AdSense Integration Plan',
+                lastUpdate: 'Created implementation_plan_google_ads.md. Prioritizing Voice features.',
+                icon: 'briefcase',
+                color: 'text-blue-600',
+                bg: 'bg-blue-50'
+            },
+            {
+                role: 'Full Stack Developer',
+                status: 'busy',
+                currentTask: 'Supabase & Stations',
+                lastUpdate: 'Integrated Supabase MCP. Fixed Hebrew station titles display.',
+                icon: 'code-2',
+                color: 'text-emerald-600',
+                bg: 'bg-emerald-50'
+            },
+            {
+                role: 'UI/UX Designer',
+                status: 'active',
+                currentTask: 'Animation & Hierarchy',
+                lastUpdate: 'Refining Remotion animations. Reviewing "two purple buttons" conflict.',
+                icon: 'palette',
+                color: 'text-purple-600',
+                bg: 'bg-purple-50'
+            },
+            {
+                role: 'DevOps & QA',
+                status: 'idle',
+                currentTask: 'System Health Check',
+                lastUpdate: 'Monitoring build status. Investigating autonomous testing agents.',
+                icon: 'server',
+                color: 'text-slate-600',
+                bg: 'bg-slate-50'
+            }
+        ];
+
+        const pendingSuggestions = [
+            { text: 'Replace share icon with standard icon', type: 'design' },
+            { text: 'Resolve "Two Purple Buttons" conflict', type: 'design' },
+            { text: 'Implement Voice AI / Reading Plan', type: 'feature' },
+            { text: 'Finalize Google AdSense script', type: 'feature' },
+        ];
+
         const screenshots = [
             { id: 'landing', title: 'Map Exploration', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/landing_page_map_1769286842708.png' },
             { id: 'library', title: 'Route Library', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/library_page_1769286861696.png' },
@@ -149,73 +205,119 @@
         ];
 
         const commits = [
-            { h: 'b7be093', a: 'ארנון', t: '3 minutes ago', m: 'fix: correct deployment step order' },
-            { h: '9ba00eb', a: 'ארנון', t: '6 minutes ago', m: 'fix: improve deployment workflow and permissions' },
-            { h: 'd385781', a: 'ארנון', t: '9 minutes ago', m: 'feat: implement multi-page routing, lazy loading, and CI/CD infrastructure' },
-            { h: '9532954', a: 'Arnonfr', t: '2 days ago', m: 'feat: Integrate Google Secret Manager for credentials' },
-            { h: '5a5c170', a: 'Arnonfr', t: '5 days ago', m: 'refactor: Update dependencies and Google Maps API key' },
-            { h: '7588bb3', a: 'Arnonfr', t: '9 days ago', m: 'feat: Update dependencies and styling for React 19 and Tailwind' },
+            { h: 'HEAD', a: 'System', t: 'Just now', m: 'docs: Update DASHBOARD.md with today\'s progress' },
+            { h: 'd385781', a: 'Arnonfr', t: 'Today', m: 'feat: Add Supabase MCP integration' },
+            { h: '9ba00eb', a: 'Arnonfr', t: 'Today', m: 'fix: Hebrew station titles not showing' },
+            { h: 'b7be093', a: 'Arnonfr', t: 'Today', m: 'docs: Create AdSense implementation plan' },
         ];
 
-        const features = [
-            { icon: 'sparkles', color: 'text-indigo-500', title: 'AI Route Generation', desc: 'Personalized walking tours created via Gemini API based on user preferences.' },
-            { icon: 'layout', color: 'text-emerald-500', title: 'Multi-device Optimized', desc: 'Mobile-first design with smooth transitions and intuitive bottom navigation.' },
-            { icon: 'monitor', color: 'text-amber-500', title: 'Real-time Interaction', desc: 'Live map integration with dynamic point-of-interest discovery.' },
-            { icon: 'cpu', color: 'text-rose-500', title: 'Cloud Integration', desc: 'Supabase for auth/data and Google Secret Manager for secure keys.' },
-        ];
 
-        const techStack = [
-            { l: 'Frontend', v: 'React 19 + TypeScript', p: 'w-full' },
-            { l: 'Routing', v: 'React Router v7', p: 'w-11/12' },
-            { l: 'AI Engine', v: 'Google Gemini API', p: 'w-full' },
-            { l: 'Database', v: 'Supabase Realtime', p: 'w-10/12' },
-        ];
+        // --- RENDER FUNCTIONS ---
 
-        // Initialize UI
-        let activeShot = 0;
+        function renderAgents() {
+            const container = document.getElementById('agents-container');
+            container.innerHTML = '';
+
+            activeAgents.forEach(agent => {
+                const statusColor = agent.status === 'busy' ? 'bg-amber-500' : (agent.status === 'active' ? 'bg-emerald-500' : 'bg-slate-300');
+
+                const card = document.createElement('div');
+                card.className = `bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden`;
+                card.innerHTML = `
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                         <i data-lucide="${agent.icon}" class="w-16 h-16 ${agent.color}"></i>
+                    </div>
+                    
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 ${agent.bg} rounded-full flex items-center justify-center">
+                            <i data-lucide="${agent.icon}" class="w-5 h-5 ${agent.color}"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-900 leading-tight">${agent.role}</h3>
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <div class="w-1.5 h-1.5 rounded-full ${statusColor}"></div>
+                                <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">${agent.status}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div>
+                            <p class="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1">Current Task</p>
+                            <p class="text-sm font-semibold text-slate-800">${agent.currentTask}</p>
+                        </div>
+                        
+                        <div class="pt-3 border-t border-slate-50">
+                            <p class="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1">Last Update</p>
+                            <p class="text-xs text-slate-600 leading-relaxed agent-log max-h-16 overflow-y-auto pr-1">
+                                "${agent.lastUpdate}"
+                            </p>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderSuggestions() {
+            const container = document.getElementById('suggestions-container');
+            container.innerHTML = '';
+            pendingSuggestions.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100';
+                const icon = s.type === 'design' ? 'palette' : 'code';
+                item.innerHTML = `
+                    <i data-lucide="${icon}" class="w-4 h-4 text-slate-400 mt-0.5 shrink-0"></i>
+                    <span class="text-sm text-slate-600">${s.text}</span>
+                `;
+                container.appendChild(item);
+            });
+        }
 
         function renderGallery() {
             const container = document.getElementById('gallery-container');
             const dots = document.getElementById('dots-container');
+            if (!container) return;
+
             container.innerHTML = '';
-            dots.innerHTML = '';
+            dots.innerHTML = ''; // Reset dots
 
-            screenshots.forEach((shot, idx) => {
-                const item = document.createElement('div');
-                item.className = `absolute inset-0 transition-opacity duration-1000 ease-in-out ${activeShot === idx ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'}`;
-                item.innerHTML = `
-                    <img src="${shot.path}" alt="${shot.title}" class="w-full h-full object-cover">
-                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                        <p class="text-white font-semibold text-lg">${shot.title}</p>
-                    </div>
-                `;
-                container.appendChild(item);
+            // Simply show the last screenshot if exists, or a placeholder
+            // For this version we will just cycle simple if we had real images. 
+            // Since paths might be broken in standalone, we'll try carefully.
 
-                const dot = document.createElement('button');
-                dot.onclick = () => { activeShot = idx; renderGallery(); };
-                dot.className = `w-2.5 h-2.5 rounded-full transition-all ${activeShot === idx ? 'bg-indigo-600 w-8' : 'bg-slate-200'}`;
-                dots.appendChild(dot);
-            });
-        }
+            // For now, let's just make a placeholder strictly for layout if images fail
+            const active = screenshots[activeShot || 0];
 
-        function renderFeatures() {
-            const container = document.getElementById('features-container');
-            features.forEach(f => {
-                const item = document.createElement('div');
-                item.className = 'bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow';
-                item.innerHTML = `
-                    <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
-                        <i data-lucide="${f.icon}" class="w-5 h-5 ${f.color}"></i>
-                    </div>
-                    <h3 class="font-bold text-slate-900 mb-1">${f.title}</h3>
-                    <p class="text-sm text-slate-500 leading-relaxed">${f.desc}</p>
-                `;
-                container.appendChild(item);
-            });
+            const item = document.createElement('div');
+            item.className = `absolute inset-0 bg-slate-800 flex items-center justify-center`;
+            // Using a gradient placeholder if image breaks
+            item.innerHTML = `
+                 <div class="text-white text-center">
+                    <i data-lucide="image" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>
+                    <p class="font-medium">Live Preview: ${active.title}</p>
+                    <p class="text-xs opacity-50 mt-2">${active.path.split('/').pop()}</p>
+                 </div>
+            `;
+            // Try to use real image
+            const img = new Image();
+            img.src = active.path;
+            img.className = "absolute inset-0 w-full h-full object-cover opacity-60";
+            img.onload = () => {
+                item.innerHTML = '';
+                item.appendChild(img);
+                const overlay = document.createElement('div');
+                overlay.className = "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-6";
+                overlay.innerHTML = `<p class="text-white font-semibold text-lg">${active.title}</p>`;
+                item.appendChild(overlay);
+            };
+
+            container.appendChild(item);
         }
 
         function renderCommits() {
             const container = document.getElementById('commits-container');
+            container.innerHTML = '';
             commits.forEach(c => {
                 const item = document.createElement('div');
                 item.className = 'group cursor-default';
@@ -233,36 +335,20 @@
             });
         }
 
-        function renderTechStack() {
-            const container = document.getElementById('tech-stack-container');
-            techStack.forEach(item => {
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <div class="flex justify-between text-xs font-semibold mb-1.5 opacity-80">
-                        <span>${item.l}</span>
-                        <span>${item.v}</span>
-                    </div>
-                    <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div class="h-full bg-indigo-300 rounded-full ${item.p}"></div>
-                    </div>
-                `;
-                container.appendChild(li);
-            });
-        }
+        let activeShot = 0;
 
         // Initialize everything
         window.onload = () => {
+            renderAgents();
+            renderSuggestions();
             renderGallery();
-            renderFeatures();
             renderCommits();
-            renderTechStack();
             lucide.createIcons();
 
-            // Auto rotate gallery
             setInterval(() => {
                 activeShot = (activeShot + 1) % screenshots.length;
                 renderGallery();
-            }, 5000);
+            }, 6000);
         };
     </script>
 </body>

@@ -1,52 +1,89 @@
-
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Urbanito - Your Urban Guide</title>
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg width='274' height='274' viewBox='0 0 274 274' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg clip-path='url(%23clip0_1_2)'%3E%3Crect width='274' height='274' rx='77' fill='%23801ED6'/%3E%3Cpath d='M67.9708 171.182L87.0037 89.5812L94.6606 107.083L70.8148 85.2058L71.9086 81.0492H136.664L135.789 85.6434L107.787 106.864L120.038 89.5812L101.661 168.776C98.1609 184.235 98.3068 196.122 102.099 204.435C106.037 212.602 113.402 216.686 124.194 216.686C131.633 216.686 137.977 215.082 143.227 211.873C148.478 208.519 152.926 203.341 156.572 196.341C160.364 189.34 163.573 180.152 166.198 168.776L184.575 89.5812L189.825 102.926L166.636 84.5495L167.511 81.0492H221.109L220.234 84.7683L194.857 102.707L203.608 89.5812L185.231 168.776C175.022 213.259 152.853 235.5 118.725 235.5C98.0151 235.5 83.2117 229.885 74.3151 218.655C65.4185 207.279 63.3037 191.455 67.9708 171.182Z' fill='white'/%3E%3Ccircle cx='100' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3Ccircle cx='190' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_1_2'%3E%3Crect width='274' height='274' rx='77' fill='white'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=weekly"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
-    <style>
-      * {
-        font-family: 'Noto Sans Hebrew', sans-serif !important;
-        -webkit-tap-highlight-color: transparent;
-      }
-      .rounded-full-force { border-radius: 9999px !important; }
-      
-      body { 
-        background-color: #f8fafc; 
-        color: #0f172a; 
-        -webkit-font-smoothing: antialiased;
-        overscroll-behavior: none;
-        height: 100dvh;
-      }
-      #root { height: 100dvh; width: 100vw; overflow: hidden; }
-      .no-scrollbar::-webkit-scrollbar { display: none; }
-      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-      @keyframes climb-move {
-        0% { offset-distance: 0%; opacity: 0; }
-        10% { opacity: 1; }
-        90% { opacity: 1; }
-        100% { offset-distance: 100%; opacity: 0; }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Urbanito - Your Urban Guide</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg width='274' height='274' viewBox='0 0 274 274' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg clip-path='url(%23clip0_1_2)'%3E%3Crect width='274' height='274' rx='77' fill='%23801ED6'/%3E%3Cpath d='M67.9708 171.182L87.0037 89.5812L94.6606 107.083L70.8148 85.2058L71.9086 81.0492H136.664L135.789 85.6434L107.787 106.864L120.038 89.5812L101.661 168.776C98.1609 184.235 98.3068 196.122 102.099 204.435C106.037 212.602 113.402 216.686 124.194 216.686C131.633 216.686 137.977 215.082 143.227 211.873C148.478 208.519 152.926 203.341 156.572 196.341C160.364 189.34 163.573 180.152 166.198 168.776L184.575 89.5812L189.825 102.926L166.636 84.5495L167.511 81.0492H221.109L220.234 84.7683L194.857 102.707L203.608 89.5812L185.231 168.776C175.022 213.259 152.853 235.5 118.725 235.5C98.0151 235.5 83.2117 229.885 74.3151 218.655C65.4185 207.279 63.3037 191.455 67.9708 171.182Z' fill='white'/%3E%3Ccircle cx='100' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3Ccircle cx='190' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_1_2'%3E%3Crect width='274' height='274' rx='77' fill='white'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E" />
+
+  <!-- Google AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5516166184309166"
+    crossorigin="anonymous"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=weekly"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&display=swap"
+    rel="stylesheet">
+  <style>
+    * {
+      font-family: 'Noto Sans Hebrew', sans-serif !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .rounded-full-force {
+      border-radius: 9999px !important;
+    }
+
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior: none;
+      height: 100dvh;
+    }
+
+    #root {
+      height: 100dvh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    @keyframes climb-move {
+      0% {
+        offset-distance: 0%;
+        opacity: 0;
       }
-      .climbing-dot {
-        offset-path: path("M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8");
-        animation: climb-move 1.5s infinite ease-in-out alternate;
+
+      10% {
+        opacity: 1;
       }
-      .climbing-path {
-        stroke-dasharray: 1, 3;
-        stroke-linecap: round;
-        opacity: 0.3;
+
+      90% {
+        opacity: 1;
       }
-    </style>
+
+      100% {
+        offset-distance: 100%;
+        opacity: 0;
+      }
+    }
+
+    .climbing-dot {
+      offset-path: path("M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8");
+      animation: climb-move 1.5s infinite ease-in-out alternate;
+    }
+
+    .climbing-path {
+      stroke-dasharray: 1, 3;
+      stroke-linecap: round;
+      opacity: 0.3;
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -62,9 +99,10 @@
 }
 </script>
 </head>
-  <body class="overflow-hidden">
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
-</html>
 
+<body class="overflow-hidden">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>

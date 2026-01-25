@@ -52,6 +52,7 @@ export interface POI {
   historicalAnalysis?: string;
   architecturalAnalysis?: string;
   tourScript?: string;
+  narrative?: string;
   imageUrl?: string;
   additionalImages?: string[];
   sections?: POISection[];
@@ -62,6 +63,7 @@ export interface POI {
   };
   externalUrl?: string;
   isFullyLoaded?: boolean;
+  isLoading?: boolean;
 }
 
 export interface Route {
@@ -72,10 +74,12 @@ export interface Route {
   description: string;
   durationMinutes: number;
   creator: string;
+  shareTeaser?: string; // Engaging anecdote for sharing
   isOffline?: boolean;
   isAlternative?: boolean;
   style?: 'street' | 'area';
   dist?: number; // Distance from center, used for nearby discovery
+  parent_route_id?: string; // ID of the route this was forked from
 }
 
 export interface AudioState {
@@ -83,7 +87,17 @@ export interface AudioState {
   currentPoiId: string | null;
   currentChapterIndex: number;
   playbackRate: number;
-  chapters: Array<{title: string, script: string, id: string}>;
+  chapters: Array<{ title: string, script: string, id: string }>;
+}
+
+export interface AudioItem {
+  id: string;
+  text: string;
+  language: 'he' | 'en';
+  priority: 'high' | 'normal'; // 'high' avoids queue and plays immediately (or after current phrase)
+  poiId?: string; // If associated with a POI
+  audioBuffer?: AudioBuffer; // Pre-loaded buffer
+  status: 'pending' | 'loading' | 'ready' | 'playing' | 'completed' | 'failed';
 }
 
 export interface FeatureFeedback {

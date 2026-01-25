@@ -31,7 +31,8 @@
     - Standard pattern: python script.py <command> [args]
 -->
 <!-- Key discoveries during exploration -->
--
+- Project is configured for Firebase Hosting (firebase.json).
+- Build command `npm run build` uses Vite and works correctly.
 
 ## Technical Decisions
 <!-- 
@@ -58,7 +59,7 @@
 <!-- Errors and how they were resolved -->
 | Issue | Resolution |
 |-------|------------|
-|       |            |
+| Firebase Deployment | CLI not found/authenticated in agent environment. User must deploy manually. |
 
 ## Resources
 <!-- 

@@ -143,6 +143,39 @@ export const deleteRouteFromSupabase = async (id: string, userId: string) => {
   try { await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId); } catch (e) { }
 };
 
+export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route) => {
+  try {
+    // 1. Prepare the new route object
+    const forkedRoute: Route = {
+      ...newRouteData,
+      id: `r-${Date.now()}`, // Generate new ID
+      creator: userId, // New owner
+      parent_route_id: originalRoute.id, // Link to parent
+      // Note: We keep the original city/name but they might be updated by AI logic before passing here
+    };
+
+    // 2. Save to Supabase (creating a new entry)
+    const { data, error } = await supabase.from('saved_routes').insert([{
+      user_id: userId,
+      route_data: forkedRoute,
+      city: normalize(forkedRoute.city),
+      parent_route_id: originalRoute.id // If DB has this column, otherwise rely on jsonb
+    }]).select();
+
+    if (error) {
+      console.error("Forking route failed (DB insert):", error);
+      throw error;
+    }
+
+    globalCache.invalidatePattern('all-recent-routes');
+    return data ? data[0] : null;
+
+  } catch (e) {
+    console.error("forkRoute failed:", e);
+    return null;
+  }
+};
+
 export const savePoiToSupabase = async (userId: string, poi: POI) => {
   try {
     const { data, error } = await supabase.from('saved_pois').upsert([{
