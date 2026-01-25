@@ -24,13 +24,17 @@ import {
   signOut,
   getRecentCuratedRoutes,
   getRoutesByCityHub,
+  getRouteById,
   getCachedPoiDetails,
   getUserPreferences,
   saveUserPreferences,
   normalize,
   logUsage,
   saveToCuratedRoutes,
-  getAllRecentRoutes
+  getAllRecentRoutes,
+  getSavedPoisFromSupabase,
+  savePoiToSupabase,
+  deletePoiFromSupabase
 } from './services/supabase';
 
 
@@ -86,6 +90,7 @@ const App: React.FC = () => {
   const [citySpecificRoutes, setCitySpecificRoutes] = useState<RouteType[]>([]);
   const [recentGlobalRoutes, setRecentGlobalRoutes] = useState<RouteType[]>([]);
   const [savedRoutes, setSavedRoutes] = useState<any[]>([]);
+  const [savedPois, setSavedPois] = useState<any[]>([]);
   const [popularCities, setPopularCities] = useState<any[]>(FALLBACK_CITIES);
   const [isLoadingCityRoutes, setIsLoadingCityRoutes] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -126,12 +131,25 @@ const App: React.FC = () => {
     normalize(r.route_data.city) === normalize(currentRoute.city)
   );
 
+  useEffect(() => {
+    // Debug log for API Key presence (masked)
+    // @ts-ignore
+    const apiKey = import.meta.env?.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.API_KEY : 'undefined');
+    console.log('[DEBUG] API Key status:', apiKey ? `Present (ends with ${apiKey.slice(-4)})` : 'MISSING/UNDEFINED');
+    // @ts-ignore
+    console.log('[DEBUG] VITE_GEMINI_API_KEY direct:', import.meta.env?.VITE_GEMINI_API_KEY ? 'Present' : 'Missing');
+  }, []);
+
   const refreshSavedContent = async (userId: string) => {
     try {
-      const routes = await getSavedRoutesFromSupabase(userId);
+      const routesPromise = getSavedRoutesFromSupabase(userId);
+      const poisPromise = getSavedPoisFromSupabase(userId);
+      const [routes, pois] = await Promise.all([routesPromise, poisPromise]);
       setSavedRoutes(routes || []);
+      setSavedPois(pois || []);
     } catch (err) {
       setSavedRoutes([]);
+      setSavedPois([]);
     }
   };
 
@@ -383,6 +401,28 @@ const App: React.FC = () => {
     });
     return () => authListener?.subscription?.unsubscribe();
   }, []);
+
+  // Handle deep linking for routes
+  useEffect(() => {
+    const pathParts = locationPath.pathname.split('/');
+    if (pathParts[1] === 'route' && pathParts[2]) {
+      const routeId = pathParts[2];
+      const isAlreadyOpen = openRoutes.find(r => r.id === routeId);
+
+      if (!isAlreadyOpen) {
+        const loadRoute = async () => {
+          const route = await getRouteById(routeId);
+          if (route) {
+            handleLoadSavedRoute(route.city, route);
+          } else {
+            showToast(isHe ? "המסלול לא נמצא" : "Route not found", "error");
+            navigate('/');
+          }
+        };
+        loadRoute();
+      }
+    }
+  }, [locationPath.pathname]);
 
   useEffect(() => {
     if (mapRef.current && !googleMap.current) {
@@ -732,10 +772,15 @@ const App: React.FC = () => {
               {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={() => { }} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
             </div>
           } />
+          <Route path="/route/:routeId" element={
+            <div className="absolute inset-0 z-[3000] pointer-events-none">
+              {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={() => { }} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
+            </div>
+          } />
 
           <Route path="/profile" element={
             <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500">
-              <div className="top-safe-area"><PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={[]} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={() => { }} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} /></div>
+              <div className="top-safe-area"><PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} /></div>
             </div>
           } />
 
