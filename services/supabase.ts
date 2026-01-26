@@ -228,6 +228,13 @@ export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> 
         supabase.from('saved_routes').select('route_data').order('created_at', { ascending: false }).limit(limit)
       ]);
 
+      console.log('getAllRecentRoutes - Raw results:', {
+        curatedStatus: curatedRes.status,
+        savedStatus: savedRes.status,
+        curatedError: curatedRes.status === 'rejected' ? curatedRes.reason : null,
+        savedError: savedRes.status === 'rejected' ? savedRes.reason : null
+      });
+
       const curatedData = curatedRes.status === 'fulfilled' && curatedRes.value.data ? curatedRes.value.data : [];
       // For saved_routes: if RLS blocks it, we'll get an error or empty array. That's fine - just use curated.
       const savedData = savedRes.status === 'fulfilled' && savedRes.value.data ? savedRes.value.data : [];
@@ -239,9 +246,15 @@ export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> 
       const final: Route[] = [];
 
       for (const item of merged) {
-        if (!item.route_data) continue;
+        if (!item.route_data) {
+          console.warn('getAllRecentRoutes: Item without route_data:', item);
+          continue;
+        }
         const r = item.route_data as Route;
-        if (!r.name || !r.pois || r.pois.length === 0) continue;
+        if (!r.name || !r.pois || r.pois.length === 0) {
+          console.warn('getAllRecentRoutes: Invalid route:', r);
+          continue;
+        }
         const key = `${normalize(r.name)}-${normalize(r.city)}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -249,12 +262,9 @@ export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> 
         }
       }
 
-      // Don't cache if we got nothing - might be a temporary issue
-      if (final.length === 0) {
-        console.warn("getAllRecentRoutes returned 0 routes - not caching");
-        throw new Error("No routes found");
-      }
+      console.log(`getAllRecentRoutes: Returning ${final.length} routes`);
 
+      // Return whatever we got, even if empty - the UI will handle it
       return final;
     } catch (e) {
       console.error("Fetch recent routes failed:", e);
@@ -350,4 +360,11 @@ export const signOut = async () => {
   } catch (err) {
     console.error("Sign out error:", err);
   }
+};
+
+
+// Export cache clearing for debugging
+export const clearAllCache = () => {
+  globalCache.clear();
+  console.log('All cache cleared');
 };

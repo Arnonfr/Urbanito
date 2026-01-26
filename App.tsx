@@ -151,13 +151,23 @@ const App: React.FC = () => {
 
   const loadGlobalContent = async () => {
     try {
+      console.log('loadGlobalContent: Starting...');
       const global = await getAllRecentRoutes(30);
+      console.log('loadGlobalContent: Got routes:', global?.length || 0);
       setRecentGlobalRoutes(global || []);
     } catch (err) {
       console.error("Failed to load global routes:", err);
       setRecentGlobalRoutes([]);
     }
   };
+
+  // Refresh library content when navigating to library tab
+  useEffect(() => {
+    if (activeTab === 'library') {
+      console.log('Navigated to library - refreshing content');
+      loadGlobalContent();
+    }
+  }, [activeTab]);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
