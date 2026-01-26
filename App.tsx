@@ -823,7 +823,7 @@ const App: React.FC = () => {
     }
 
     try {
-      const saved = await saveRouteToSupabase(user.id, currentRoute);
+      const saved = await saveRouteToSupabase(user.id, currentRoute, preferences);
       if (saved) {
         showToast(isHe ? 'המסלול נשמר בהצלחה!' : 'Route saved successfully!');
         refreshSavedContent(user.id);

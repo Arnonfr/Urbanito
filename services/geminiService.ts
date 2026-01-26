@@ -95,16 +95,42 @@ const getGuidePrompt = (style: string, language: string, city: string, prefs: Us
  */
 async function aiCall(params: any, retries = 3): Promise<any> {
   const apiKey = getApiKey();
+  console.log('🔑 API Key check:', {
+    hasKey: !!apiKey,
+    keyLength: apiKey?.length || 0,
+    keyPrefix: apiKey?.substring(0, 10) || 'none'
+  });
+
   if (!apiKey) {
     console.error("CRITICAL ERROR: Gemini API Key is missing. Please check your environment variables (VITE_GEMINI_API_KEY).");
     throw new Error("An API Key must be set for Urbanito to function.");
   }
+
   const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-flash-preview';
 
+  console.log('🚀 Making Gemini API call:', {
+    model,
+    hasContents: !!params.contents,
+    contentsLength: params.contents?.length || 0,
+    retries
+  });
+
   try {
-    return await ai.models.generateContent({ ...params, model });
+    const response = await ai.models.generateContent({ ...params, model });
+    console.log('✅ Gemini API success:', {
+      hasText: !!response.text,
+      textLength: response.text?.length || 0
+    });
+    return response;
   } catch (error: any) {
+    console.error('❌ Gemini API error:', {
+      status: error.status,
+      message: error.message,
+      errorType: error.constructor.name,
+      fullError: error
+    });
+
     if (retries > 0 && (error.status === 503 || error.message?.includes('503'))) {
       console.warn(`Gemini 503 error, retrying... (${retries} left)`);
       await new Promise(resolve => setTimeout(resolve, 1500 * (4 - retries)));

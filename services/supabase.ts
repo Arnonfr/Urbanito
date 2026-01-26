@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../types';
 import { globalCache } from './cacheUtils';
+import { saveRouteToNewSchema, getUserRoutesFromNewSchema, deleteRouteFromNewSchema } from './supabaseRoutes';
+
+// Feature flag: Set to true to use new normalized schema
+const USE_NEW_SCHEMA = true;
 
 // @ts-ignore - import.meta is a Vite feature
 const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://xrawvyvcyewjmlzypnqc.supabase.co';
@@ -107,8 +111,21 @@ export const saveToCuratedRoutes = async (route: Route, theme: string = 'general
   }
 };
 
-export const saveRouteToSupabase = async (userId: string, route: Route) => {
+export const saveRouteToSupabase = async (userId: string, route: Route, preferences?: UserPreferences) => {
   try {
+    // Use new normalized schema if feature flag is enabled
+    if (USE_NEW_SCHEMA) {
+      console.log('Using NEW schema for route storage');
+      const result = await saveRouteToNewSchema(userId, route, preferences);
+      if (result) {
+        globalCache.invalidatePattern('all-recent-routes');
+        return { id: result.routeId, ...result };
+      }
+      return null;
+    }
+
+    // Fallback to old schema
+    console.log('Using OLD schema for route storage');
     const { data, error } = await supabase.from('saved_routes').insert([{
       user_id: userId,
       route_data: route,
@@ -134,13 +151,30 @@ export const updateSavedRouteData = async (dbId: string, userId: string, route: 
 
 export const getSavedRoutesFromSupabase = async (userId: string) => {
   try {
+    if (USE_NEW_SCHEMA) {
+      console.log('Fetching routes from NEW schema');
+      const routes = await getUserRoutesFromNewSchema(userId);
+      // Wrap in route_data format for backward compatibility
+      return routes.map(route => ({ route_data: route, id: route.id }));
+    }
+
+    // Fallback to old schema
     const { data } = await supabase.from('saved_routes').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     return data || [];
   } catch (e) { return []; }
 };
 
 export const deleteRouteFromSupabase = async (id: string, userId: string) => {
-  try { await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId); } catch (e) { }
+  try {
+    if (USE_NEW_SCHEMA) {
+      console.log('Deleting route from NEW schema');
+      await deleteRouteFromNewSchema(id, userId);
+      return;
+    }
+
+    // Fallback to old schema
+    await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId);
+  } catch (e) { }
 };
 
 export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route) => {
