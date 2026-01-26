@@ -218,12 +218,13 @@ export const RouteOverview: React.FC<Props> = ({
 
           <div className="space-y-2">
             {route.pois.map((poi, index) => {
+              // Parse name format: "Hebrew Name (Original Name)" or "English Name (Original Name)"
               const parenMatch = poi.name.match(/(.*?)\s*\((.*?)\)/);
               const translatedName = parenMatch ? parenMatch[1].trim() : poi.name;
               const originalName = parenMatch ? parenMatch[2].trim() : "";
               const isLoaded = poi.isFullyLoaded;
 
-              // Determine if we should show the original name
+              // Determine if we should show the original name (only if different from translated)
               const showOriginalName = originalName && originalName !== translatedName;
 
               return (
@@ -289,14 +290,14 @@ export const RouteOverview: React.FC<Props> = ({
                       </div>
                     </div>
 
-                    {/* Progress Line - Subtler */}
+                    {/* Progress Line - Shows loading progress */}
                     {(poi.isLoading || isLoaded) && (
-                      <div className="absolute bottom-0 inset-x-0 h-[1.5px] bg-slate-50">
+                      <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
                         {isLoaded ? (
-                          <div className="h-full bg-emerald-400/80 w-full" />
-                        ) : (
-                          <div className="h-full bg-emerald-300 w-full animate-pulse opacity-60" />
-                        )}
+                          <div className="h-full bg-emerald-500 w-full transition-all duration-500" />
+                        ) : poi.isLoading ? (
+                          <div className="h-full bg-emerald-400 w-1/3 animate-pulse" />
+                        ) : null}
                       </div>
                     )}
                   </div>

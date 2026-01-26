@@ -734,7 +734,8 @@ const App: React.FC = () => {
     setOpenRoutes(prev => [...prev, placeholderRoute]);
     setActiveRouteIndex(openRoutes.length);
     setGeneratingRouteIds(prev => new Set(prev).add(tempId));
-    setActiveTab('route');
+    // DON'T navigate to route tab yet - let user stay on map and see the tooltip
+    // setActiveTab('route'); // REMOVED - will navigate after route is ready (line 760)
     setIsAiMenuOpen(false);
     setShowGeneratingTooltip(true);
 
@@ -1188,17 +1189,22 @@ const App: React.FC = () => {
               {/* Spacer for the central button */}
               <div className="relative z-10 flex justify-center" />
 
-              <button onClick={() => navigate('/route')} className={`relative z-10 flex justify-center transition-all ${activeTab === 'route' ? 'text-white' : 'text-slate-400'}`}>{generatingRouteIds.size > 0 ? <RouteTravelIcon className="w-7 h-7" animated={true} /> : <RouteIcon size={22} />}</button>
+              <button onClick={() => navigate('/route')} className={`relative z-10 flex justify-center transition-all ${activeTab === 'route' ? 'text-white' : 'text-slate-400'}`}>{generatingRouteIds.size > 0 ? <RouteTravelIcon className={`w-7 h-7 ${activeTab === 'route' ? 'text-white' : 'text-slate-400'}`} animated={true} /> : <RouteIcon size={22} />}</button>
               <button onClick={() => navigate('/profile')} className={`relative z-10 flex justify-center ${activeTab === 'profile' ? 'text-white' : 'text-slate-400'}`}><UserIcon size={22} /></button>
             </div>
 
             {/* Central FAB - Handles both Open and Close states independently */}
-            <div className="absolute left-1/2 -translate-x-1/2 -top-10 z-20 pointer-events-auto">
+            <div className="absolute left-1/2 -translate-x-1/2 -top-7 z-20 pointer-events-auto">
               <button
                 onClick={handleToggleAiMenu}
-                className={`w-14 h-14 shadow-2xl flex items-center justify-center rounded-full border-[4px] disabled:opacity-50 transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isAiMenuOpen ? 'bg-white text-[#6366F1] border-slate-50 rotate-90' : 'bg-[#6366F1] text-white border-white rotate-0 hover:scale-105 active:scale-95'}`}
+                className={`w-14 h-14 shadow-2xl flex items-center justify-center rounded-full border-[4px] border-white disabled:opacity-50 transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isAiMenuOpen
+                  ? 'bg-white text-[#6366F1] rotate-45'
+                  : activeTab === 'route' && generatingRouteIds.size === 0
+                    ? 'bg-white text-[#6366F1] rotate-0 hover:scale-105 active:scale-95'
+                    : 'bg-[#6366F1] text-white rotate-0 hover:scale-105 active:scale-95'
+                  }`}
               >
-                <Plus size={32} className={`transition-transform duration-500 ${isAiMenuOpen ? 'rotate-45' : 'rotate-0'}`} />
+                <Plus size={32} className="transition-transform duration-500" />
               </button>
             </div>
 

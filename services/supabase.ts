@@ -229,7 +229,10 @@ export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> 
       ]);
 
       const curatedData = curatedRes.status === 'fulfilled' && curatedRes.value.data ? curatedRes.value.data : [];
+      // For saved_routes: if RLS blocks it, we'll get an error or empty array. That's fine - just use curated.
       const savedData = savedRes.status === 'fulfilled' && savedRes.value.data ? savedRes.value.data : [];
+
+      console.log(`getAllRecentRoutes: curated=${curatedData.length}, saved=${savedData.length}`);
 
       const merged = [...curatedData, ...savedData];
       const seen = new Set();
@@ -245,6 +248,13 @@ export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> 
           final.push(r);
         }
       }
+
+      // Don't cache if we got nothing - might be a temporary issue
+      if (final.length === 0) {
+        console.warn("getAllRecentRoutes returned 0 routes - not caching");
+        throw new Error("No routes found");
+      }
+
       return final;
     } catch (e) {
       console.error("Fetch recent routes failed:", e);
@@ -330,4 +340,14 @@ export const signInWithGoogle = async () => {
     console.error("Auth error:", err);
   }
 };
-export const signOut = async () => { await supabase.auth.signOut(); };
+export const signOut = async () => {
+  try {
+    await supabase.auth.signOut();
+    // Clear any cached data
+    window.localStorage.removeItem('urbanito-auth-v1');
+    // Reload to clear all state
+    window.location.reload();
+  } catch (err) {
+    console.error("Sign out error:", err);
+  }
+};

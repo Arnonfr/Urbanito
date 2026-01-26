@@ -168,10 +168,10 @@ export const generateWalkingRoute = async (city: string, location: any, preferen
 
     const constraintsText = constraints.length > 0 ? `\nADDITIONAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
 
-    // Bilingual naming instruction
+    // Bilingual naming instruction - CRITICAL: First line = target language, Second line = original language
     const namingFormat = isHe
-      ? 'For each POI name: First line in Hebrew, second line in original language if different (e.g., "מגדל אייפל\\nTour Eiffel")'
-      : 'POI names in English with original local name if different (e.g., "Eiffel Tower\\nTour Eiffel")';
+      ? 'CRITICAL POI NAME FORMAT: "Hebrew Translation (Original Name)" - Example: "כיכר הקפיטול (Place du Capitole)". The Hebrew name comes FIRST, then the original name in parentheses.'
+      : 'POI names in English with original local name in parentheses if different (e.g., "Capitol Square (Place du Capitole)")';
 
     const response = await aiCall({
       contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, city, preferences)}
@@ -184,8 +184,9 @@ ROUTE PARAMETERS:
 - User interests: ${interests}
 - Explanation depth: ${explanationDepth}${constraintsText}
 
-NAMING FORMAT:
+CRITICAL NAMING FORMAT (MUST FOLLOW EXACTLY):
 ${namingFormat}
+REMINDER: For Hebrew - format is "תרגום עברי (Original Name)" NOT "Original Name (תרגום עברי)"
 
 QUALITY REQUIREMENTS:
 1. ALL POIs must be REAL, verified locations in ${city}
@@ -202,7 +203,7 @@ JSON SCHEMA:
   "shareTeaser": "A fascinating, TRUE anecdote or surprising fact about one of the tour's locations (1-2 sentences max, in ${langName}). Make it curiosity-inducing and shareable. Example: 'Did you know that beneath the main square lies a 2000-year-old Roman bath that was only discovered in 1952?'",
   "pois": [
     {
-      "name": "Name in ${langName}\\nOriginal Name (if different)",
+      "name": ${isHe ? '"שם בעברית (Original Name)"' : '"English Name (Original Name if different)"'},
       "lat": <latitude>,
       "lng": <longitude>,
       "narrative": "3-4 detailed paragraphs in ${langName}",
@@ -247,10 +248,10 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
     const poiCount = preferences.desiredPoiCount || 4; // Fewer stops for street walks
     const interests = preferences.interests?.length > 0 ? preferences.interests.join(', ') : 'architecture and local history';
 
-    // Bilingual naming instruction
+    // Bilingual naming instruction - CRITICAL: First line = target language, Second line = original language
     const namingFormat = isHe
-      ? 'For each POI name: First line in Hebrew, second line in original language if different (e.g., "בית הראשונים\\nFirst Settlers House")'
-      : 'POI names in English with original local name if different (e.g., "First Settlers House\\nבית הראשונים")';
+      ? 'CRITICAL POI NAME FORMAT: "Hebrew Translation (Original Name)" - Example: "בית הראשונים (First Settlers House)". The Hebrew name comes FIRST, then the original name in parentheses.'
+      : 'POI names in English with original local name in parentheses if different (e.g., "First Settlers House (בית הראשונים)")';
 
     const response = await aiCall({
       contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, streetName, preferences)}
@@ -263,8 +264,9 @@ ROUTE PARAMETERS:
 - Focus: ${interests}
 - Language: ${langName}
 
-NAMING FORMAT:
+CRITICAL NAMING FORMAT (MUST FOLLOW EXACTLY):
 ${namingFormat}
+REMINDER: For Hebrew - format is "תרגום עברי (Original Name)" NOT "Original Name (תרגום עברי)"
 
 QUALITY REQUIREMENTS:
 1. ALL POIs must be REAL locations on ${streetName}
@@ -280,7 +282,7 @@ JSON SCHEMA:
   "shareTeaser": "A fascinating, TRUE anecdote or surprising fact about ${streetName} or one of its buildings (1-2 sentences max, in ${langName}). Make it curiosity-inducing and shareable. Example: 'This street was once the secret meeting place of revolutionaries in 1848, and you can still see their coded symbols on building #12.'",
   "pois": [
     {
-      "name": "Name in ${langName}\\nOriginal Name (if different)",
+      "name": ${isHe ? '"שם בעברית (Original Name)"' : '"English Name (Original Name if different)"'},
       "lat": <latitude>,
       "lng": <longitude>,
       "narrative": "3-4 detailed paragraphs in ${langName}",
