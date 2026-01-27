@@ -90,17 +90,59 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
 };
 
 /**
+ * Ensures there is a logged in user.
+ * Tries Anonymous login first. If disabled, creates a temporary "guest" account.
+ */
+export const ensureAuthenticatedUser = async (): Promise<string | null> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) return user.id;
+
+  console.log('User not logged in. Attempting auto-login...');
+
+  // 1. Try Anonymous
+  const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+  if (!anonError && anonData.user) {
+    console.log('Logged in anonymously:', anonData.user.id);
+    return anonData.user.id;
+  }
+
+  console.warn('Anonymous login failed (likely disabled). Trying fallback guest account...');
+
+  // 2. Fallback: Create a random guest account
+  // We use a specific prefix so we can identify them later if needed
+  const guestEmail = `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}@urbanito.local`;
+  const guestPassword = `GuestPass${Date.now()}!`;
+
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email: guestEmail,
+    password: guestPassword,
+  });
+
+  if (signUpData?.user) {
+    console.log('Created and logged in as temporary guest:', signUpData.user.id);
+    return signUpData.user.id;
+  }
+
+  // If signUp fails (maybe email confirmation required?), try to sign in (unlikely to work if signUp failed but let's try)
+  console.error('Guest login fallback failed:', signUpError);
+  return null;
+}
+
+/**
  * Save a route as a curated route (system-owned, public)
  */
 export const saveToCuratedRoutes = async (route: Route, theme: string = 'general') => {
   try {
     console.log('[saveToCuratedRoutes] Starting save for route:', route.name);
 
-    // Attempt to get current user to satisfy RLS
-    const { data: { user } } = await supabase.auth.getUser();
+    // Ensure we have a user to satisfy RLS
+    const userId = await ensureAuthenticatedUser();
 
-    // If we have a real user, use their ID. Otherwise fallback to system ID (might fail RLS, but better than nothing)
-    const userId = user?.id || '63a80fa9-b66d-42e6-af0e-26c10a2b3b40';
+    if (!userId) {
+      console.error('[saveToCuratedRoutes] CRITICAL: Could not authenticate user. Save will likely fail.');
+      return { data: null, error: 'Authentication failed' };
+    }
+
     console.log('[saveToCuratedRoutes] Saving using User ID:', userId);
 
     const result = await saveRouteToNewSchema(userId, route, { theme }, undefined, true);
