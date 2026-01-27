@@ -1193,7 +1193,7 @@ const App: React.FC = () => {
               </div>
             } />
             <Route path="/route/:routeId" element={
-              <div className="absolute inset-0 z-[3000] pointer-events-none">
+              <div className="h-full relative isolate">
                 {currentRoute && (
                   <Suspense fallback={null}>
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
