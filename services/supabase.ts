@@ -216,6 +216,7 @@ export const updateSavedRouteData = async (dbId: string, userId: string, route: 
 };
 
 export const getSavedRoutesFromSupabase = async (userId: string) => {
+  if (!userId) return [];
   const routes = await getUserRoutesFromNewSchema(userId);
   return routes.map(r => ({
     id: r.id,

@@ -177,6 +177,7 @@ export const getRouteFromNewSchema = async (routeId: string): Promise<Route | nu
  * Get all routes for a user from the new schema
  */
 export const getUserRoutesFromNewSchema = async (userId: string): Promise<Route[]> => {
+    if (!userId) return [];
     try {
         const { data: routes, error } = await supabase
             .from('routes')

@@ -78,6 +78,7 @@ const App: React.FC = () => {
 
   const [openRoutes, setOpenRoutes] = useState<RouteType[]>([]);
   const [activeRouteIndex, setActiveRouteIndex] = useState<number>(0);
+  const [areTabsExpanded, setAreTabsExpanded] = useState(false);
   const [generatingRouteIds, setGeneratingRouteIds] = useState<Set<string>>(new Set());
 
   const [selectedPoi, setSelectedPoi] = useState<POI | null>(null);
@@ -1231,7 +1232,30 @@ const App: React.FC = () => {
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
                   </Suspense>
                 )}
-                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? (
+                  <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
+                    <RouteOverview
+                      route={currentRoute}
+                      onPoiClick={setSelectedPoi}
+                      onRemovePoi={() => { }}
+                      onAddPoi={handleAddPoi}
+                      onSave={handleSaveRoute}
+                      preferences={preferences}
+                      onUpdatePreferences={setPreferences}
+                      onRequestRefine={() => { }}
+                      user={user}
+                      isSaved={isCurrentRouteSaved}
+                      onClose={() => navigate('/')}
+                      isExpanded={isCardExpanded}
+                      setIsExpanded={setIsCardExpanded}
+                      onRegenerate={handleActionCreateRoute}
+                      openRoutes={openRoutes}
+                      activeRouteIndex={activeRouteIndex}
+                      onSwitchRoute={(idx) => { setActiveRouteIndex(idx); renderRouteMarkers(openRoutes[idx]); }}
+                      onCloseRoute={handleCloseRoute}
+                    />
+                  </div>
+                ) : <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>}
               </div>
             } />
             <Route path="/route/:routeId" element={
@@ -1273,19 +1297,7 @@ const App: React.FC = () => {
           </Suspense>
         )}
 
-        {activeTab === 'route' && openRoutes.length > 0 && !streetConfirmData && (
-          <div className="absolute top-0 inset-x-0 z-[4000] top-safe-area px-6 pt-4 pointer-events-none">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pointer-events-auto py-2">
-              {openRoutes.map((r, i) => (
-                <button key={r.id} onClick={() => { setActiveRouteIndex(i); renderRouteMarkers(r); }} className={`shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-[8px] border shadow-xl transition-all ${activeRouteIndex === i ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-white text-slate-600 border-slate-100'}`}>
-                  {generatingRouteIds.has(r.id) && <Loader2 size={12} className="animate-spin text-[#6366F1]" />}
-                  <span className="text-[10px] font-medium truncate max-w-[120px]">{r.name.replace(/\s*\(.*?\)\s*/g, '')}</span>
-                  <X size={12} onClick={(e) => { e.stopPropagation(); handleCloseRoute(i); }} className="p-1 hover:bg-slate-500/20 rounded-full" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+
       </main>
 
       {!selectedPoi && (
@@ -1303,7 +1315,13 @@ const App: React.FC = () => {
               {/* Spacer for the central button */}
               <div className="relative z-10 flex justify-center" />
 
-              <button onClick={() => navigate('/route')} className={`relative z-10 flex justify-center transition-all ${activeTab === 'route' ? 'text-white' : 'text-slate-400'}`}>{generatingRouteIds.size > 0 ? <RouteTravelIcon className={`w-7 h-7 ${activeTab === 'route' ? 'text-white' : 'text-slate-400'}`} animated={true} /> : <RouteIcon size={22} />}</button>
+              <button onClick={() => navigate('/route')} className={`relative z-10 flex justify-center transition-all ${activeTab === 'route' ? 'text-white shadow-sm scale-110' : 'text-slate-400'}`}>
+                {generatingRouteIds.size > 0 ? (
+                  <RouteTravelIcon className="w-7 h-7 text-inherit" animated={true} />
+                ) : (
+                  <RouteIcon size={22} className="text-inherit" />
+                )}
+              </button>
               <button onClick={() => navigate('/profile')} className={`relative z-10 flex justify-center ${activeTab === 'profile' ? 'text-white' : 'text-slate-400'}`}><UserIcon size={22} /></button>
             </div>
 

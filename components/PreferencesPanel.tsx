@@ -170,7 +170,11 @@ export const PreferencesPanel: React.FC<Props> = ({
               {savedRoutes.map((row) => {
                 const isOffline = offlineRouteIds.includes(row.route_data.id);
                 return (
-                  <div key={row.id} className="bg-white rounded-[8px] p-4 border border-slate-100 shadow-sm flex items-center justify-between group">
+                  <div
+                    key={row.id}
+                    onClick={() => onLoadRoute(row.route_data.city, row.route_data)}
+                    className="bg-white rounded-[8px] p-4 border border-slate-100 shadow-sm flex items-center justify-between group cursor-pointer hover:bg-slate-50 transition-all active:scale-[0.99]"
+                  >
                     <div className="flex-1 text-right min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[9px] font-medium text-indigo-500 uppercase tracking-widest">{row.route_data?.city}</span>
@@ -184,14 +188,8 @@ export const PreferencesPanel: React.FC<Props> = ({
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => onLoadRoute(row.route_data.city, row.route_data)}
-                        className="w-11 h-11 bg-slate-900 text-white rounded-[8px] flex items-center justify-center hover:bg-indigo-600 transition-all active:scale-95 shadow-md"
-                      >
-                        <Navigation size={18} fill="currentColor" />
-                      </button>
-                      <button
-                        onClick={() => onDeleteRoute(row.id)}
-                        className="w-11 h-11 bg-white border border-slate-100 text-slate-300 hover:text-red-500 rounded-[8px] flex items-center justify-center transition-all active:scale-95 shadow-sm"
+                        onClick={(e) => { e.stopPropagation(); onDeleteRoute(row.id); }}
+                        className="w-11 h-11 bg-white border border-slate-100 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-[8px] flex items-center justify-center transition-all active:scale-95 shadow-sm"
                       >
                         <Trash2 size={18} />
                       </button>

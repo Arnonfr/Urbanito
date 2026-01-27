@@ -26,6 +26,10 @@ interface Props {
   isExpanded: boolean; setIsExpanded: (v: boolean) => void;
   onRegenerate: () => void;
   isRegenerating?: boolean;
+  openRoutes?: Route[];
+  activeRouteIndex?: number;
+  onSwitchRoute?: (index: number) => void;
+  onCloseRoute?: (index: number) => void;
 }
 
 export const CATEGORY_ICONS: Record<POICategoryType, React.ReactNode> = {
@@ -38,7 +42,8 @@ export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
 };
 
 export const RouteOverview: React.FC<Props> = ({
-  route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating
+  route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating,
+  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute
 }) => {
   const isHe = preferences.language === 'he';
   const parenMatch = route.name.match(/(.*?)\s*\((.*?)\)/);
@@ -130,11 +135,36 @@ export const RouteOverview: React.FC<Props> = ({
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
-      <div onClick={() => setIsExpanded(!isExpanded)} className="w-full h-10 flex items-center justify-center cursor-pointer relative shrink-0">
-        <div className="w-12 h-1 bg-slate-100 rounded-full" />
+      <div className="w-full bg-white shrink-0 pt-2 relative z-50">
+        <div onClick={() => setIsExpanded(!isExpanded)} className="w-full h-8 flex items-center justify-center cursor-pointer relative">
+          <div className="w-12 h-1 bg-slate-200 rounded-full" />
+        </div>
+
+        {/* Inline Tabs Integration */}
+        {openRoutes.length > 1 && (
+          <div className="flex gap-1.5 px-6 pb-2 overflow-x-auto no-scrollbar">
+            {openRoutes.map((r, i) => {
+              const isActive = activeRouteIndex === i;
+              return (
+                <button
+                  key={r.id}
+                  onClick={(e) => { e.stopPropagation(); onSwitchRoute?.(i); }}
+                  className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-[8px] border transition-all ${isActive
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-bold'
+                    : 'bg-slate-50 text-slate-500 border-slate-100'
+                    }`}
+                >
+                  <span className="text-[10px] truncate max-w-[70px]">{r.name.replace(/\s*\(.*?\)\s*/g, '')}</span>
+                  <X size={10} onClick={(e) => { e.stopPropagation(); onCloseRoute?.(i); }} className="hover:bg-indigo-100 rounded-full p-0.5" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <button
           onClick={(e) => { e.stopPropagation(); onClose?.(); }}
-          className={`absolute ${isHe ? 'left-4' : 'right-4'} top-2 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-slate-100 transition-colors`}
+          className={`absolute ${isHe ? 'left-4' : 'right-4'} top-2 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-slate-100 transition-colors z-50`}
         >
           <X size={18} />
         </button>
