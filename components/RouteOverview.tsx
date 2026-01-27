@@ -4,11 +4,12 @@ import { Route, POI, UserPreferences, POICategoryType } from '../types';
 import {
   Navigation, Building2, Utensils, Ship, Trees, ShoppingBag, Palette,
   Landmark, Church, Heart, X, ChevronLeft, Trash2, Settings2, MapPin,
-  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders
+  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical
 } from 'lucide-react';
 import { GoogleImage } from './GoogleImage';
 import { QuickRouteSetup } from './QuickRouteSetup';
 import { GoogleAd } from './GoogleAd';
+import { NearbyPOISuggestions } from './NearbyPOISuggestions';
 
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
@@ -37,10 +38,11 @@ export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
 };
 
 export const RouteOverview: React.FC<Props> = ({
-  route, onPoiClick, onRemovePoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating
+  route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating
 }) => {
   const isHe = preferences.language === 'he';
   const [isPrefsOpen, setIsPrefsOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   // Internal loading state for button feedback only (non-blocking)
   const [isUpdating, setIsUpdating] = useState(false);
   const [initialPrefs, setInitialPrefs] = useState<UserPreferences | null>(null);
@@ -170,6 +172,14 @@ export const RouteOverview: React.FC<Props> = ({
           </button>
 
           <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`flex-1 h-12 rounded-[8px] border text-[11px] font-medium flex items-center justify-center gap-2 transition-all ${isEditMode ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600'}`}
+          >
+            <Edit3 size={16} />
+            {isHe ? "עריכה" : "Edit"}
+          </button>
+
+          <button
             onClick={handlePrefsClick}
             disabled={isRegenerating || isUpdating}
             className={`flex-1 h-12 rounded-[8px] border text-[11px] font-medium flex items-center justify-center gap-2 transition-all overflow-hidden relative ${isPrefsOpen
@@ -229,7 +239,14 @@ export const RouteOverview: React.FC<Props> = ({
 
               return (
                 <React.Fragment key={poi.id}>
-                  <div onClick={() => !isRegenerating && onPoiClick(poi)} className="group bg-white p-3 rounded-[12px] flex items-center gap-4 cursor-pointer hover:shadow-md transition-all border border-slate-100 hover:border-indigo-200 relative overflow-hidden">
+                  <div onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)} className={`group bg-white p-3 rounded-[12px] flex items-center gap-4 transition-all border border-slate-100 relative overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-md hover:border-indigo-200'}`}>
+                    {/* Edit Mode: Drag Handle */}
+                    {isEditMode && (
+                      <div className="shrink-0 cursor-grab active:cursor-grabbing">
+                        <GripVertical size={20} className="text-slate-300" />
+                      </div>
+                    )}
+
                     {/* Category Icon on the right */}
                     <div className={`w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0 shadow-sm ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
                       poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
@@ -282,13 +299,22 @@ export const RouteOverview: React.FC<Props> = ({
                       </div>
                     </div>
 
-                    {/* Chevron Indicator - Subtle */}
-                    <div className="shrink-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
-                      {/* Using a subtle animated indicator or just a static one */}
-                      <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
-                        <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
+                    {/* Edit Mode: Delete Button */}
+                    {isEditMode ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
+                        className="shrink-0 w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    ) : (
+                      /* Normal Mode: Chevron Indicator */
+                      <div className="shrink-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+                        <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
+                          <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Progress Line - Shows loading progress */}
                     {(poi.isLoading || isLoaded) && (
@@ -321,6 +347,15 @@ export const RouteOverview: React.FC<Props> = ({
               );
             })}
           </div>
+
+          {/* Nearby Suggestions - Only show when not in edit mode and not regenerating */}
+          {!isEditMode && !isRegenerating && (
+            <NearbyPOISuggestions
+              route={route}
+              onAddPoi={onAddPoi}
+              isHe={isHe}
+            />
+          )}
         </div>
       </div>
     </div>

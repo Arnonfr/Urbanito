@@ -1,10 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../types';
 import { globalCache } from './cacheUtils';
-import { saveRouteToNewSchema, getUserRoutesFromNewSchema, deleteRouteFromNewSchema } from './supabaseRoutes';
-
-// Feature flag: Set to true to use new normalized schema
-const USE_NEW_SCHEMA = true;
+import { saveRouteToNewSchema, getRouteFromNewSchema, getUserRoutesFromNewSchema, deleteRouteFromNewSchema } from './supabaseRoutes';
 
 // @ts-ignore - import.meta is a Vite feature
 const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://xrawvyvcyewjmlzypnqc.supabase.co';
@@ -92,51 +89,38 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
   } catch (e) { }
 };
 
+/**
+ * Save a route as a curated route (system-owned, public)
+ */
 export const saveToCuratedRoutes = async (route: Route, theme: string = 'general') => {
   try {
-    const { data, error } = await supabase.from('curated_routes').insert([{
-      city: normalize(route.city),
-      theme: theme,
-      route_data: route
-    }]).select();
+    console.log('[saveToCuratedRoutes] Starting save for route:', route.name);
+    // This valid user ID exists in the DB and owns the system routes
+    const SYSTEM_USER_ID = '63a80fa9-b66d-42e6-af0e-26c10a2b3b40';
+    const result = await saveRouteToNewSchema(SYSTEM_USER_ID, route, { theme }, undefined, true);
 
-    if (error) {
-      console.error("Supabase insert error (curated_routes):", error);
-    } else {
-      console.log("Successfully saved to curated_routes:", data);
+    if (result?.success) {
+      console.log('[saveToCuratedRoutes] Route saved successfully with ID:', result.routeId);
       globalCache.invalidatePattern('all-recent-routes');
+      console.log('[saveToCuratedRoutes] Cache invalidated');
+      return { data: [{ route_data: route, id: result.routeId }], error: null };
     }
+    console.error('[saveToCuratedRoutes] Save failed - no success flag');
+    return { data: null, error: 'Save failed' };
   } catch (e) {
-    console.error("Auto-save to curated failed:", e);
+    console.error("[saveToCuratedRoutes] Auto-save failed:", e);
+    return { data: null, error: (e as Error).message };
   }
 };
 
 export const saveRouteToSupabase = async (userId: string, route: Route, preferences?: UserPreferences) => {
   try {
-    // Use new normalized schema if feature flag is enabled
-    if (USE_NEW_SCHEMA) {
-      console.log('Using NEW schema for route storage');
-      const result = await saveRouteToNewSchema(userId, route, preferences);
-      if (result) {
-        globalCache.invalidatePattern('all-recent-routes');
-        return { id: result.routeId, ...result };
-      }
-      return null;
+    const result = await saveRouteToNewSchema(userId, route, preferences);
+    if (result?.success) {
+      globalCache.invalidatePattern('all-recent-routes');
+      return { id: result.routeId, route_data: route, user_id: userId };
     }
-
-    // Fallback to old schema
-    console.log('Using OLD schema for route storage');
-    const { data, error } = await supabase.from('saved_routes').insert([{
-      user_id: userId,
-      route_data: route,
-      city: normalize(route.city)
-    }]).select();
-    if (error) {
-      console.error("Supabase insert error (saved_routes):", error);
-      throw error;
-    }
-    globalCache.invalidatePattern('all-recent-routes');
-    return data ? data[0] : null;
+    return null;
   } catch (e) {
     console.error("saveRouteToSupabase failed:", e);
     return null;
@@ -145,65 +129,33 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
 
 export const updateSavedRouteData = async (dbId: string, userId: string, route: Route) => {
   try {
-    await supabase.from('saved_routes').update({ route_data: route }).eq('id', dbId).eq('user_id', userId);
+    // Updates are handled by saveRouteToNewSchema (upsert logic)
+    await saveRouteToNewSchema(userId, route);
   } catch (e) { }
 };
 
 export const getSavedRoutesFromSupabase = async (userId: string) => {
-  try {
-    if (USE_NEW_SCHEMA) {
-      console.log('Fetching routes from NEW schema');
-      const routes = await getUserRoutesFromNewSchema(userId);
-      // Wrap in route_data format for backward compatibility
-      return routes.map(route => ({ route_data: route, id: route.id }));
-    }
-
-    // Fallback to old schema
-    const { data } = await supabase.from('saved_routes').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    return data || [];
-  } catch (e) { return []; }
+  const routes = await getUserRoutesFromNewSchema(userId);
+  return routes.map(r => ({
+    id: r.id,
+    user_id: userId,
+    route_data: r,
+    created_at: new Date().toISOString()
+  }));
 };
 
 export const deleteRouteFromSupabase = async (id: string, userId: string) => {
-  try {
-    if (USE_NEW_SCHEMA) {
-      console.log('Deleting route from NEW schema');
-      await deleteRouteFromNewSchema(id, userId);
-      return;
-    }
-
-    // Fallback to old schema
-    await supabase.from('saved_routes').delete().eq('id', id).eq('user_id', userId);
-  } catch (e) { }
+  return await deleteRouteFromNewSchema(id, userId);
 };
 
 export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route) => {
   try {
-    // 1. Prepare the new route object
-    const forkedRoute: Route = {
-      ...newRouteData,
-      id: `r-${Date.now()}`, // Generate new ID
-      creator: userId, // New owner
-      parent_route_id: originalRoute.id, // Link to parent
-      // Note: We keep the original city/name but they might be updated by AI logic before passing here
-    };
-
-    // 2. Save to Supabase (creating a new entry)
-    const { data, error } = await supabase.from('saved_routes').insert([{
-      user_id: userId,
-      route_data: forkedRoute,
-      city: normalize(forkedRoute.city),
-      parent_route_id: originalRoute.id // If DB has this column, otherwise rely on jsonb
-    }]).select();
-
-    if (error) {
-      console.error("Forking route failed (DB insert):", error);
-      throw error;
+    const result = await saveRouteToNewSchema(userId, newRouteData, {}, originalRoute.id);
+    if (result?.success) {
+      globalCache.invalidatePattern('all-recent-routes');
+      return { id: result.routeId, route_data: newRouteData, user_id: userId, created_at: new Date().toISOString() };
     }
-
-    globalCache.invalidatePattern('all-recent-routes');
-    return data ? data[0] : null;
-
+    throw new Error("Failed to fork route");
   } catch (e) {
     console.error("forkRoute failed:", e);
     return null;
@@ -254,59 +206,37 @@ export const submitFeedback = async (userId: string | null, feedback: FeedbackDa
 };
 
 export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> => {
+  console.log('[getAllRecentRoutes] Fetching routes with limit:', limit);
   return globalCache.fetch(`all-recent-routes-${limit}`, async () => {
     try {
-      // Separate calls to ensure one failure (like RLS for non-logged-in users) doesn't block the other
-      const [curatedRes, savedRes] = await Promise.allSettled([
-        supabase.from('curated_routes').select('route_data').order('created_at', { ascending: false }).limit(limit),
-        supabase.from('saved_routes').select('route_data').order('created_at', { ascending: false }).limit(limit)
-      ]);
+      console.log('[getAllRecentRoutes] Cache miss - fetching from DB');
+      const { data: routes, error } = await supabase
+        .from('routes')
+        .select('id')
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
-      console.log('getAllRecentRoutes - Raw results:', {
-        curatedStatus: curatedRes.status,
-        savedStatus: savedRes.status,
-        curatedError: curatedRes.status === 'rejected' ? curatedRes.reason : null,
-        savedError: savedRes.status === 'rejected' ? savedRes.reason : null
-      });
-
-      const curatedData = curatedRes.status === 'fulfilled' && curatedRes.value.data ? curatedRes.value.data : [];
-      // For saved_routes: if RLS blocks it, we'll get an error or empty array. That's fine - just use curated.
-      const savedData = savedRes.status === 'fulfilled' && savedRes.value.data ? savedRes.value.data : [];
-
-      console.log(`getAllRecentRoutes: curated=${curatedData.length}, saved=${savedData.length}`);
-
-      const merged = [...curatedData, ...savedData];
-      const seen = new Set();
-      const final: Route[] = [];
-
-      for (const item of merged) {
-        if (!item.route_data) {
-          console.warn('getAllRecentRoutes: Item without route_data:', item);
-          continue;
-        }
-        const r = item.route_data as Route;
-        if (!r.name || !r.pois || r.pois.length === 0) {
-          console.warn('getAllRecentRoutes: Invalid route:', r);
-          continue;
-        }
-        const key = `${normalize(r.name)}-${normalize(r.city)}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          final.push(r);
-        }
+      if (error || !routes) {
+        console.error('[getAllRecentRoutes] Error fetching routes:', error);
+        return [];
       }
 
-      console.log(`getAllRecentRoutes: Returning ${final.length} routes`);
+      console.log(`[getAllRecentRoutes] Found ${routes.length} route IDs`);
 
-      // Return whatever we got, even if empty - the UI will handle it
-      return final;
+      const fullRoutes = await Promise.all(
+        routes.map(r => getRouteFromNewSchema(r.id))
+      );
+
+      const filtered = fullRoutes.filter(r => r !== null) as Route[];
+      console.log(`[getAllRecentRoutes] Returning ${filtered.length} full routes`);
+      return filtered;
     } catch (e) {
-      console.error("Fetch recent routes failed:", e);
+      console.error("[getAllRecentRoutes] failure:", e);
       return [];
     }
-  }, { ttl: 60000 }); // 1 minute cache for recent routes
+  }, { ttl: 60000 });
 };
-
 
 export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[]> => {
   return await getAllRecentRoutes(limit);
@@ -314,57 +244,34 @@ export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[
 
 export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string): Promise<Route[]> => {
   const normHe = normalize(cityName);
-  const normEn = cityNameEn ? normalize(cityNameEn) : "";
+  const normEn = cityNameEn ? normalize(cityNameEn) : normHe;
   const cacheKey = `city-hub-${normHe}-${normEn}`;
 
   return globalCache.fetch(cacheKey, async () => {
     try {
-      // Fetch from curated and community tables
-      const [curatedRes, communityRes] = await Promise.allSettled([
-        supabase.from('curated_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30),
-        supabase.from('saved_routes').select('route_data').or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`).limit(30)
-      ]);
+      const { data: routes, error } = await supabase
+        .from('routes')
+        .select('id')
+        .or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`)
+        .eq('is_public', true)
+        .limit(30);
 
-      const curated = curatedRes.status === 'fulfilled' ? (curatedRes.value.data || []) : [];
-      const community = communityRes.status === 'fulfilled' ? (communityRes.value.data || []) : [];
+      if (error || !routes) return [];
 
-      const merged = [
-        ...curated.map(d => d.route_data as Route),
-        ...community.map(d => d.route_data as Route)
-      ];
+      const fullRoutes = await Promise.all(
+        routes.map(r => getRouteFromNewSchema(r.id))
+      );
 
-      const seen = new Set();
-      return merged.filter(r => {
-        if (!r || !r.name) return false;
-        const key = `${normalize(r.name)}-${normalize(r.city)}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      return fullRoutes.filter(r => r !== null) as Route[];
     } catch (e) {
       console.error("City hub fetch failed:", e);
       return [];
     }
-  }, { ttl: 300000 }); // 5 minutes cache for city hubs
+  }, { ttl: 300000 });
 };
 
 export const getRouteById = async (routeId: string): Promise<Route | null> => {
-  try {
-    // Check curated_routes first
-    const { data: curatedData } = await supabase.from('curated_routes').select('route_data').eq('route_data->>id', routeId).maybeSingle();
-    if (curatedData?.route_data) return curatedData.route_data as Route;
-
-    // Then check saved_routes
-    // Note: This might fail if the user is not the owner (RLS), 
-    // but curated routes are public.
-    const { data: savedData } = await supabase.from('saved_routes').select('route_data').eq('route_data->>id', routeId).maybeSingle();
-    if (savedData?.route_data) return savedData.route_data as Route;
-
-    return null;
-  } catch (e) {
-    console.error("Get route by ID failed:", e);
-    return null;
-  }
+  return await getRouteFromNewSchema(routeId);
 };
 
 export const signInWithGoogle = async () => {
@@ -380,25 +287,17 @@ export const signInWithGoogle = async () => {
       }
     });
     if (error) throw error;
-  } catch (err) {
-    console.error("Auth error:", err);
-  }
+  } catch (err) { }
 };
+
 export const signOut = async () => {
   try {
     await supabase.auth.signOut();
-    // Clear any cached data
     window.localStorage.removeItem('urbanito-auth-v1');
-    // Reload to clear all state
     window.location.reload();
-  } catch (err) {
-    console.error("Sign out error:", err);
-  }
+  } catch (err) { }
 };
 
-
-// Export cache clearing for debugging
 export const clearAllCache = () => {
   globalCache.clear();
-  console.log('All cache cleared');
 };

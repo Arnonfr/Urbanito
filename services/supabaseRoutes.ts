@@ -94,7 +94,8 @@ export const saveRouteToNewSchema = async (
     userId: string,
     route: Route,
     preferences?: any,
-    parentRouteId?: string
+    parentRouteId?: string,
+    isPublic: boolean = false
 ): Promise<{ routeId: string; success: boolean } | null> => {
     try {
         console.log(`Saving route "${route.name}" for user ${userId}`);
@@ -132,7 +133,7 @@ export const saveRouteToNewSchema = async (
                 name: route.name,
                 description: route.description,
                 preferences: preferences || {},
-                is_public: false, // Default to private
+                is_public: isPublic,
                 duration_minutes: route.durationMinutes
             }])
             .select('id')

@@ -280,7 +280,8 @@ const App: React.FC = () => {
 
   const startStreetConfirm = (type: 'area' | 'street') => {
     if (!googleMap.current) return;
-    const center = googleMap.current.getCenter();
+
+    // Clear existing circle if any
     if (selectionCircle.current) selectionCircle.current.setMap(null);
 
     setActiveTab('navigation');
@@ -289,8 +290,19 @@ const App: React.FC = () => {
 
     if (type === 'area') {
       setDynamicRadius(3);
-      // Ensure the zoom is appropriate for seeing a 3km radius circle (approx 3000m)
-      googleMap.current.setZoom(14);
+
+      // Use user's location if available, otherwise use map center
+      const centerPosition = location ?
+        new google.maps.LatLng(location.lat, location.lng) :
+        googleMap.current.getCenter();
+
+      // Move map to the center position first
+      googleMap.current.panTo(centerPosition);
+
+      // Set zoom level appropriate for 3km radius (zoom 13-14 shows ~3-5km radius well)
+      googleMap.current.setZoom(13);
+
+      // Create the circle
       selectionCircle.current = new google.maps.Circle({
         strokeColor: "#6366F1",
         strokeOpacity: 0.9,
@@ -298,12 +310,17 @@ const App: React.FC = () => {
         fillColor: "#6366F1",
         fillOpacity: 0.2,
         map: googleMap.current,
-        center: center,
-        radius: 3000,
+        center: centerPosition,
+        radius: 3000, // 3km in meters
         clickable: false,
-        zIndex: 1000 // Ensure it's above basic map features
+        zIndex: 9500 // Above dialog (9000) but below interactive elements (10000+)
       });
     }
+
+    // Get street/city info for the center position
+    const center = type === 'area' && location ?
+      new google.maps.LatLng(location.lat, location.lng) :
+      googleMap.current.getCenter();
 
     getStreetAtPosition(center, (data) => {
       setStreetConfirmData({ type, city: data.city, street: type === 'street' ? data.street : "" });
@@ -547,6 +564,25 @@ const App: React.FC = () => {
               });
             });
           }, 250);
+        }
+      });
+
+      // Update radius when zoom changes (for area tours)
+      googleMap.current.addListener('zoom_changed', () => {
+        const activeConfirm = streetConfirmDataRef.current;
+        if (activeConfirm && activeConfirm.type === 'area' && selectionCircle.current) {
+          const zoom = googleMap.current.getZoom();
+          // Calculate radius based on zoom level
+          // Zoom 13 = 3km, Zoom 14 = 2km, Zoom 15 = 1km, Zoom 12 = 5km, Zoom 11 = 8km
+          let newRadius = 3; // default 3km
+          if (zoom >= 15) newRadius = 1;
+          else if (zoom >= 14) newRadius = 2;
+          else if (zoom >= 13) newRadius = 3;
+          else if (zoom >= 12) newRadius = 5;
+          else newRadius = 8;
+
+          setDynamicRadius(newRadius);
+          selectionCircle.current.setRadius(newRadius * 1000); // Convert km to meters
         }
       });
     }
@@ -835,6 +871,29 @@ const App: React.FC = () => {
     }
   };
 
+
+  const handleAddPoi = async (poi: POI) => {
+    if (!currentRoute) return;
+
+    // Add the POI to the end of the current route
+    setOpenRoutes(prev => prev.map(route => {
+      if (route.id !== currentRoute.id) return route;
+
+      return {
+        ...route,
+        pois: [...route.pois, poi]
+      };
+    }));
+
+    // Enrich the newly added POI
+    enrichPoi(currentRoute.id, poi, currentRoute.city, preferences);
+
+    // Re-render markers to include the new POI
+    const updatedRoute = { ...currentRoute, pois: [...currentRoute.pois, poi] };
+    renderRouteMarkers(updatedRoute);
+
+    showToast(isHe ? 'התחנה נוספה למסלול!' : 'Stop added to route!');
+  };
 
   const renderRouteMarkers = (route: RouteType) => {
     clearMarkers();
@@ -1127,7 +1186,7 @@ const App: React.FC = () => {
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
                   </Suspense>
                 )}
-                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
               </div>
             } />
             <Route path="/route/:routeId" element={
@@ -1137,7 +1196,7 @@ const App: React.FC = () => {
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
                   </Suspense>
                 )}
-                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={() => { }} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
               </div>
             } />
 

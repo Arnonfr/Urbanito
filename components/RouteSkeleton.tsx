@@ -63,56 +63,34 @@ export const RouteSkeleton: React.FC<{ isHe: boolean }> = ({ isHe }) => {
             </div>
 
             {/* Main Map Area Skeleton */}
-            <div className="flex-1 relative bg-slate-100/50">
-               {/* Center Loader */}
-               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
-                  <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl mb-8">
-                     <RouteTravelIcon className="w-12 h-12" animated={true} />
+            <div className="flex-1 relative bg-gradient-to-br from-slate-50 to-slate-100">
+               {/* Center Loader - Simplified and Clean */}
+               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 pb-20">
+                  {/* Animated Icon */}
+                  <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl mb-6 animate-pulse">
+                     <RouteTravelIcon className="w-14 h-14" animated={true} />
                   </div>
-                  <h2 className="text-2xl font-normal text-slate-800 mb-2 animate-pulse">
-                     {isHe ? 'בונה את המסלול המושלם...' : 'Crafting your perfect route...'}
+
+                  {/* Loading Message */}
+                  <h2 className="text-2xl md:text-3xl font-light text-slate-800 mb-3 animate-pulse">
+                     {isHe ? 'המסלול בהכנה...' : 'Route in Progress...'}
                   </h2>
-                  <p className="text-slate-400 max-w-xs leading-relaxed text-sm font-light mb-8">
-                     {isHe ? 'ה-AI סורק את העיר, מחבר נקודות עניין ומתאים את הזמנים.' : 'AI is scanning the city, connecting points of interest, and optimizing timing.'}
+                  <p className="text-slate-400 max-w-md leading-relaxed text-sm mb-10 px-4">
+                     {isHe ? 'ה-AI בונה עבורך את המסלול המושלם' : 'AI is crafting your perfect route'}
                   </p>
 
-                  {/* Square Ad in the center of the loading screen */}
-                  <div className="w-full max-w-[300px] mx-auto overflow-hidden rounded-xl border border-slate-100 shadow-sm bg-white/50">
+                  {/* Large Prominent Ad */}
+                  <div className="w-full max-w-[336px] mx-auto overflow-hidden rounded-2xl border-2 border-slate-200 shadow-xl bg-white">
                      <GoogleAd
                         slot="4724021981"
                         format="rectangle"
                         responsive={true}
                         className="w-full h-auto"
-                        style={{ minHeight: '250px' }}
+                        style={{ minHeight: '280px' }}
                      />
-                     <div className="text-[10px] text-slate-300 py-1 bg-slate-50/50 uppercase tracking-widest">
+                     <div className="text-[9px] text-center text-slate-300 py-2 bg-slate-50 uppercase tracking-widest font-medium">
                         {isHe ? 'מודעה' : 'Advertisement'}
                      </div>
-                  </div>
-               </div>
-
-               {/* Mobile Bottom Sheet Skeleton */}
-               <div className="lg:hidden fixed inset-x-0 bottom-0 h-[45vh] bg-white rounded-t-[10px] p-6 space-y-4 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex flex-col">
-                  <div className="w-16 h-1 bg-slate-200 rounded-full mx-auto shrink-0" />
-                  <div className="flex items-center gap-4 shrink-0">
-                     <div className="w-14 h-14 rounded-[10px] bg-slate-200 animate-pulse" />
-                     <div className="space-y-2 flex-1">
-                        <div className="w-2/3 h-5 bg-slate-200 rounded animate-pulse" />
-                        <div className="w-1/3 h-3 bg-slate-100 rounded animate-pulse" />
-                     </div>
-                  </div>
-                  <div className="space-y-3 shrink-0">
-                     <div className="w-full h-12 bg-slate-100 rounded-[10px] animate-pulse" />
-                     <div className="w-full h-12 bg-slate-100 rounded-[10px] animate-pulse" />
-                  </div>
-
-                  {/* Ad Placeholder for Mobile Loading */}
-                  <div className="mt-auto pt-2">
-                     <GoogleAd
-                        slot="4724021981"
-                        className="rounded-[8px] overflow-hidden bg-slate-50"
-                        style={{ maxHeight: '100px' }}
-                     />
                   </div>
                </div>
             </div>
