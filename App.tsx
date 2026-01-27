@@ -1013,7 +1013,7 @@ const App: React.FC = () => {
       <main className="flex-1 relative h-full">
         <div ref={mapRef} className="w-full h-full" />
 
-        <Suspense fallback={<div className="absolute inset-0 bg-white z-[2000] flex items-center justify-center"><SuspenseLoader isHe={isHe} /></div>}>
+        <Suspense fallback={<div className="absolute inset-0 z-[2000] flex items-center justify-center pointer-events-none"><SuspenseLoader isHe={isHe} /></div>}>
           <Routes>
             <Route path="/" element={
               <>
@@ -1228,11 +1228,11 @@ const App: React.FC = () => {
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
                   </Suspense>
                 )}
-                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>}
               </div>
             } />
             <Route path="/route/:routeId" element={
-              <div className="h-full relative isolate">
+              <div className="absolute inset-0 z-[3000] pointer-events-none">
                 {currentRoute && (
                   <Suspense fallback={null}>
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
