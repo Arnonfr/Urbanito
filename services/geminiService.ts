@@ -148,21 +148,23 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
     const response = await aiCall({
-      contents: `Provide rich, engaging, and reliable historical context for "${poiName}" in ${city} (Location: ${lat}, ${lng}).
+      contents: `Provide rich, engaging, and highly reliable historical context for "${poiName}" in ${city} (Location: ${lat}, ${lng}).
       
       CRITICAL INSTRUCTIONS:
-      1. LANGUAGE: ALL content (titles, text, analysis) MUST be in ${langName} only.
-      2. DEPTH: Write 2-5 detailed paragraphs. Do not force information if it doesn't exist, but find 2-3 fascinating facts or historical anecdotes.
-      3. TONE: Professional yet engaging urban historian.
-      4. ACCURACY: STRICTLY NO HALLUCINATIONS. If specific details aren't known, focus on the general architectural/historical context of the area/street.
+      1. LANGUAGE: ALL content MUST be in ${langName} only.
+      2. DEPTH: Write 3-5 comprehensive, high-quality paragraphs.
+      3. ACCURACY & SOURCES: Use only verified historical facts. Include a "sources" array with 1-2 reliable reference names or types.
+      4. TONE: Professional yet engaging urban historian.
+      5. SENSORY & ATMOSPHERE: Gently incorporate 1-2 sensory details (e.g., the specific light, typical sounds, or the "feel" of the materials/stone) without being overly dramatic or "chatty".
+      6. COUNTER-FACTUAL (Optional): In 1 short sentence, you may mention a "what if" scenario only if it adds significant insight into the place's history.
       
       JSON SCHEMA: { 
-        "historicalAnalysis": "2-5 comprehensive paragraphs in ${langName} covering history, significance, and interesting anecdotes...", 
-        "architecturalAnalysis": "Detailed architectural style and features analysis in ${langName}...", 
+        "historicalAnalysis": "3-5 paragraphs in ${langName} with deep history and verified facts...", 
+        "architecturalAnalysis": "Detailed analysis of style and materials in ${langName}...", 
         "narrative": "A cohesive story of the place in ${langName}...", 
-        "sections": [{"title": "Meaningful Title in ${langName}", "content": "Specific detail/fact in ${langName}..."}], 
-        "sources": [{"title": "Reference Name", "url": "..."}],
-        "shareTeaser": "A very short (1 sentence) intriguing fact about this specific place for sharing."
+        "sections": [{"title": "Title in ${langName}", "content": "Content in ${langName}"}], 
+        "sources": [{"title": "Source name/Organization", "url": "..."}],
+        "shareTeaser": "One intriguing, TRUE sentence for sharing."
       }`,
       config: { responseMimeType: "application/json" }
     });
@@ -227,18 +229,18 @@ JSON SCHEMA:
   "name": "Engaging tour title in ${langName}",
   "description": "2-3 sentence introduction in ${langName}",
   "shareTeaser": "A fascinating, TRUE anecdote or surprising fact about one of the tour's locations (1-2 sentences max, in ${langName}). Make it curiosity-inducing and shareable. Example: 'Did you know that beneath the main square lies a 2000-year-old Roman bath that was only discovered in 1952?'",
-  "pois": [
+      "pois": [
     {
-      "name": ${isHe ? '"שם בעברית (Original Name)"' : '"English Name (Original Name if different)"'},
+      "name": ${isHe ? '"שם בעברית (Original Name)"' : '"Name (Original Name)"'},
       "lat": <latitude>,
       "lng": <longitude>,
-      "narrative": "3-4 detailed paragraphs in ${langName}",
+      "summary": "1-2 sentence summary in ${langName} (FAST RESPONSE)",
       "category": "history|architecture|culture|food|nature|art|religion"
     }
   ]
 }
-
-Return ONLY valid JSON.`,
+      
+NOTE: Only provide a short summary for each POI. Detailed narratives will be fetched in a follow-up step. Keep the response compact for maximum speed.`,
       config: { responseMimeType: "application/json" }
     });
 
@@ -306,18 +308,18 @@ JSON SCHEMA:
   "name": "Engaging street tour title in ${langName}",
   "description": "2-3 sentence introduction about ${streetName} in ${langName}",
   "shareTeaser": "A fascinating, TRUE anecdote or surprising fact about ${streetName} or one of its buildings (1-2 sentences max, in ${langName}). Make it curiosity-inducing and shareable. Example: 'This street was once the secret meeting place of revolutionaries in 1848, and you can still see their coded symbols on building #12.'",
-  "pois": [
+      "pois": [
     {
-      "name": ${isHe ? '"שם בעברית (Original Name)"' : '"English Name (Original Name if different)"'},
+      "name": ${isHe ? '"שם בעברית (Original Name)"' : '"Name (Original Name)"'},
       "lat": <latitude>,
       "lng": <longitude>,
-      "narrative": "3-4 detailed paragraphs in ${langName}",
+      "summary": "1-2 sentence summary in ${langName} (FAST RESPONSE)",
       "category": "architecture|history|culture|art"
     }
   ]
 }
-
-Return ONLY valid JSON.`,
+      
+NOTE: Keep POI descriptions to 1-2 sentences for speed. Full narratives are loaded later.`,
       config: { responseMimeType: "application/json" }
     });
 
@@ -353,7 +355,7 @@ export const generateSpeech = async (text: string, language: string) => {
     }
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],

@@ -142,9 +142,18 @@ export const UnifiedPoiCard: React.FC<Props> = ({
           </div>
           <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontSize === 'large' ? 'text-xl font-normal' : 'text-base font-normal'}`}>
             {isLoading ? (
-              <div className="flex flex-col items-center py-20 gap-4">
-                <Loader2 size={32} className="animate-spin text-[#6366F1]" />
-                <p className="text-[9px] font-medium uppercase text-slate-400 tracking-widest">{isHe ? 'מפיק הסברים...' : 'Generating Insight...'}</p>
+              <div className="flex flex-col gap-6">
+                {poi.summary && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
+                    <p className="text-lg text-slate-700 italic border-l-4 border-indigo-200 pl-4 py-1">
+                      {poi.summary}
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-col items-center py-10 gap-4 bg-slate-50/50 rounded-[12px] border border-slate-100 border-dashed">
+                  <Loader2 size={32} className="animate-spin text-[#6366F1]" />
+                  <p className="text-[9px] font-medium uppercase text-slate-400 tracking-widest">{isHe ? 'מפיק הסברים נוספים...' : 'Fetching deeper stories...'}</p>
+                </div>
               </div>
             ) : (
               <div className="space-y-8 animate-in fade-in duration-700">

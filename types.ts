@@ -46,6 +46,7 @@ export interface POI {
   lat: number;
   lng: number;
   category?: POICategoryType;
+  summary?: string;
   description: string;
   historicalContext?: string;
   architecturalStyle?: string;
