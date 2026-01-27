@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>בדיקת מסלולים</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .route {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .route-name {
+            font-weight: bold;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .route-city {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .route-date {
+            color: #999;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        #loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>בדיקת מסלולים אחרונים</h1>
+    <button onclick="loadRoutes()">טען מסלולים</button>
+    <div id="loading" style="display:none;">טוען...</div>
+    <div id="routes"></div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+        const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        window.loadRoutes = async function () {
+            const loading = document.getElementById('loading');
+            const routesDiv = document.getElementById('routes');
+
+            loading.style.display = 'block';
+            routesDiv.innerHTML = '';
+
+            try {
+                const { data: routes, error } = await supabase
+                    .from('routes')
+                    .select('id, name, city, created_at, is_public')
+                    .eq('is_public', true)
+                    .order('created_at', { ascending: false })
+                    .limit(30);
+
+                loading.style.display = 'none';
+
+                if (error) {
+                    routesDiv.innerHTML = `<div class="route" style="color:red;">שגיאה: ${error.message}</div>`;
+                    return;
+                }
+
+                if (!routes || routes.length === 0) {
+                    routesDiv.innerHTML = '<div class="route">לא נמצאו מסלולים</div>';
+                    return;
+                }
+
+                routesDiv.innerHTML = `<p>נמצאו ${routes.length} מסלולים:</p>`;
+
+                routes.forEach((route, i) => {
+                    const date = new Date(route.created_at);
+                    const div = document.createElement('div');
+                    div.className = 'route';
+                    div.innerHTML = `
+                        <div class="route-name">${i + 1}. ${route.name}</div>
+                        <div class="route-city">עיר: ${route.city}</div>
+                        <div class="route-date">נוצר: ${date.toLocaleString('he-IL')}</div>
+                    `;
+                    routesDiv.appendChild(div);
+                });
+            } catch (e) {
+                loading.style.display = 'none';
+                routesDiv.innerHTML = `<div class="route" style="color:red;">שגיאה: ${e.message}</div>`;
+            }
+        };
+
+        // Auto-load on page load
+        window.addEventListener('load', () => {
+            loadRoutes();
+        });
+    </script>
+</body>
+
+</html>
