@@ -18,9 +18,13 @@ const getApiKey = () => {
   const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
   if (viteKey) return viteKey;
 
-  // Fallback to process.env for legacy/other setups
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
+  // Fallback to strict process.env check to avoid ReferenceError in some browsers
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
+    }
+  } catch (e) {
+    // process is not defined
   }
 
   return "";
