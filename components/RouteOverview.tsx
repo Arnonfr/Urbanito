@@ -41,6 +41,9 @@ export const RouteOverview: React.FC<Props> = ({
   route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating
 }) => {
   const isHe = preferences.language === 'he';
+  const parenMatch = route.name.match(/(.*?)\s*\((.*?)\)/);
+  const mainTitle = parenMatch ? parenMatch[1].trim() : route.name;
+  const subTitle = parenMatch ? parenMatch[2].trim() : "";
   const [isPrefsOpen, setIsPrefsOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   // Internal loading state for button feedback only (non-blocking)
@@ -99,8 +102,8 @@ export const RouteOverview: React.FC<Props> = ({
 
     const title = 'Urbanito - Your Urban Guide';
     const text = isHe
-      ? `${teaser}\n\nבואו לטייל איתי במסלול "${cleanRouteName}":`
-      : `${teaser}\n\nJoin me on the "${cleanRouteName}" tour:`;
+      ? `${teaser}\n\nבואו לטייל איתי במסלול "${mainTitle}":`
+      : `${teaser}\n\nJoin me on the "${mainTitle}" tour:`;
 
     const url = `${window.location.origin}/route/${route.id}`;
 
@@ -121,12 +124,10 @@ export const RouteOverview: React.FC<Props> = ({
     alert(isHe ? 'הלינק והתיאור הועתקו! מוכן לשיתוף 🚀' : 'Link and teaser copied! Ready to share 🚀');
   };
 
-  const cleanRouteName = route.name.replace(/\s*\(.*?\)\s*/g, '');
-
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-[3500] flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[92dvh]' : 'h-[380px]'} bg-white overflow-hidden`}
-      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '8px 8px 0 0' }}
+      className={`fixed inset-x-0 bottom-0 z-[3500] flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[92dvh]' : 'h-[380px]'} bg-white/50 backdrop-blur-lg border-t border-white/40 overflow-hidden`}
+      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
       <div onClick={() => setIsExpanded(!isExpanded)} className="w-full h-10 flex items-center justify-center cursor-pointer relative shrink-0">
@@ -144,7 +145,10 @@ export const RouteOverview: React.FC<Props> = ({
           <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-transparent flex flex-col justify-end p-5">
             <span className="text-[10px] font-medium text-white/60 uppercase tracking-[0.2em] mb-1">{route.city}</span>
-            <h2 className="text-xl font-semibold text-white leading-tight">{cleanRouteName}</h2>
+            <h2 className="text-xl font-bold text-white leading-tight">{mainTitle}</h2>
+            {subTitle && (
+              <p className="text-[13px] font-medium text-white/50 mt-0.5 font-sans leading-none uppercase tracking-wide opacity-80">{subTitle}</p>
+            )}
             {route.parent_route_id && (
               <span className="text-[10px] font-medium text-indigo-300 mt-1 flex items-center gap-1">
                 <Share2 size={10} /> {isHe ? 'מבוסס על מסלול מקורי' : 'Based on original route'}

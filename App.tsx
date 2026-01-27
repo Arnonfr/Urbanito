@@ -735,11 +735,17 @@ const App: React.FC = () => {
       googleMap.current.panTo(pos);
       googleMap.current.setZoom(17);
 
-      // Offset center to account for bottom sheet could be done here with panBy if needed
-      // googleMap.current.panBy(0, 100); 
+      // Shift map view down by 200px (moving the content UP) so the POI is visible above the bottom sheet
+      // We use a small timeout to let the panTo start/finish smoothly
+      setTimeout(() => {
+        if (googleMap.current) {
+          googleMap.current.panBy(0, 200);
+        }
+      }, 400);
+
     } else {
+      // Reset view to full route
       if (currentRoute && activeTab === 'route' && !isGeneratingActive) {
-        // Return to full route view
         const bounds = new google.maps.LatLngBounds();
         if (currentRoute.pois && currentRoute.pois.length > 0) {
           currentRoute.pois.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));

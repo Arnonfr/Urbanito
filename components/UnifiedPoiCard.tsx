@@ -4,7 +4,7 @@ import { POI, UserPreferences, Route } from '../types';
 import { fetchExtendedPoiDetails } from '../services/geminiService';
 import {
   Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ArrowRight, ArrowLeft,
-  Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Sparkles, Building
+  Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Sparkles, Building, Footprints
 } from 'lucide-react';
 import { CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
@@ -63,8 +63,8 @@ export const UnifiedPoiCard: React.FC<Props> = ({
 
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[96dvh]' : 'h-[420px]'} bg-white overflow-hidden`}
-      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '8px 8px 0 0' }}
+      className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[96dvh]' : 'h-[420px]'} bg-white/50 backdrop-blur-xl border-t border-white/40 overflow-hidden`}
+      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
       <div className={`w-full shrink-0 relative transition-all duration-500 ${isExpanded ? 'h-64' : 'h-48'} bg-slate-900 group`}>
@@ -102,6 +102,16 @@ export const UnifiedPoiCard: React.FC<Props> = ({
         <div className="absolute bottom-6 inset-x-8 flex flex-col text-right">
           <span className="text-[#14B8A6] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1">
             {poi.category && CATEGORY_LABELS_HE[poi.category]}
+
+            {currentIndex > 0 && poi.travelFromPrevious && (
+              <>
+                <span className="mx-2 text-white/30">|</span>
+                <span className="text-white/80 flex items-center gap-1.5 inline-flex">
+                  <Footprints size={10} />
+                  {poi.travelFromPrevious.distance} • {poi.travelFromPrevious.duration}
+                </span>
+              </>
+            )}
           </span>
           <h2 className="text-2xl font-semibold text-white leading-tight">{mainTitle}</h2>
           {subTitle && <span className="text-[11px] font-normal text-white/50 mt-0.5 tracking-wide uppercase">{subTitle}</span>}
@@ -116,22 +126,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar px-8 py-8 space-y-12 pb-32">
-        {/* Distance from previous stop */}
-        {currentIndex > 0 && poi.travelFromPrevious && (
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-[8px] border border-indigo-100">
-            <div className="text-[9px] font-medium text-slate-400 uppercase tracking-widest mb-1">
-              {isHe ? 'מרחק מהתחנה הקודמת' : 'Distance from previous stop'}
-            </div>
-            <div className="flex items-center gap-3 text-indigo-700">
-              <div className="flex items-center gap-1.5">
-                <MapPin size={14} />
-                <span className="text-sm font-semibold">{poi.travelFromPrevious.distance}</span>
-              </div>
-              <span className="text-slate-300">•</span>
-              <div className="text-sm font-semibold">{poi.travelFromPrevious.duration}</div>
-            </div>
-          </div>
-        )}
+
 
         <section className="space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
