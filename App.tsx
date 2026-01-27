@@ -730,17 +730,14 @@ const App: React.FC = () => {
     if (!googleMap.current) return;
 
     if (selectedPoi) {
-      // Set padding so the map knows the bottom part is covered by the card
-      // This will make panTo() center the point in the VISIBLE area (top part)
-      googleMap.current.setPadding({ bottom: 400, top: 20, left: 0, right: 0 });
-
+      // Focus on specific POI
       const pos = { lat: selectedPoi.lat, lng: selectedPoi.lng };
       googleMap.current.panTo(pos);
       googleMap.current.setZoom(17);
-    } else {
-      // Reset padding when card is closed
-      googleMap.current.setPadding({ bottom: 0, top: 0, left: 0, right: 0 });
 
+      // Offset center to account for bottom sheet could be done here with panBy if needed
+      // googleMap.current.panBy(0, 100); 
+    } else {
       if (currentRoute && activeTab === 'route' && !isGeneratingActive) {
         // Return to full route view
         const bounds = new google.maps.LatLngBounds();
