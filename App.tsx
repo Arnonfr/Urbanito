@@ -725,6 +725,33 @@ const App: React.FC = () => {
 
   }, [selectedPoi?.id]); // Trigger when selected POI changes
 
+  // Effect to handle Map View based on selection (Route Overview vs Single POI)
+  useEffect(() => {
+    if (!googleMap.current) return;
+
+    if (selectedPoi) {
+      // Set padding so the map knows the bottom part is covered by the card
+      // This will make panTo() center the point in the VISIBLE area (top part)
+      googleMap.current.setPadding({ bottom: 400, top: 20, left: 0, right: 0 });
+
+      const pos = { lat: selectedPoi.lat, lng: selectedPoi.lng };
+      googleMap.current.panTo(pos);
+      googleMap.current.setZoom(17);
+    } else {
+      // Reset padding when card is closed
+      googleMap.current.setPadding({ bottom: 0, top: 0, left: 0, right: 0 });
+
+      if (currentRoute && activeTab === 'route' && !isGeneratingActive) {
+        // Return to full route view
+        const bounds = new google.maps.LatLngBounds();
+        if (currentRoute.pois && currentRoute.pois.length > 0) {
+          currentRoute.pois.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
+          googleMap.current.fitBounds(bounds);
+        }
+      }
+    }
+  }, [selectedPoi, activeTab]); // Re-run when selection changes or tab changes
+
   const handleActionCreateRoute = async () => {
     // 1. Fork/Update existing route logic
     if (!streetConfirmData && currentRoute && activeTab === 'route') {
@@ -812,8 +839,20 @@ const App: React.FC = () => {
 
         renderRouteMarkers(validatedRoute);
         logUsage(user?.id || null, finalCity);
-        await saveToCuratedRoutes(validatedRoute);
-        await loadGlobalContent();
+
+        // Optimistic UI Update: Show it immediately in the "Recent Routes" list
+        setRecentGlobalRoutes(prev => [validatedRoute, ...prev]);
+
+        // Try to save to server in background
+        saveToCuratedRoutes(validatedRoute).then(res => {
+          if (res.error) {
+            console.warn("Background save failed (likely Guest RLS/Rate Limit), but route is active locally:", res.error);
+            showToast(isHe ? 'שומר מקומית (בעיית חיבור לענן)' : 'Saved locally (Cloud sync issue)', 'error');
+          } else {
+            // Only reload from server if save was ACTUALLY successful
+            loadGlobalContent();
+          }
+        }).catch(e => console.error("Save crashed:", e));
 
         // Trigger enrichment for the first POI immediately
         if (validatedRoute.pois.length > 0) {
@@ -1189,7 +1228,7 @@ const App: React.FC = () => {
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
                   </Suspense>
                 )}
-                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'אין מסלול פעיל' : 'No active route'}</p></div>}
               </div>
             } />
             <Route path="/route/:routeId" element={
@@ -1199,7 +1238,7 @@ const App: React.FC = () => {
                     <VoiceGuideManager route={currentRoute} language={preferences.language} />
                   </Suspense>
                 )}
-                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className="pointer-events-auto h-full"><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
+                {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
               </div>
             } />
 
