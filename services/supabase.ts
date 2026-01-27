@@ -95,14 +95,19 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
 export const saveToCuratedRoutes = async (route: Route, theme: string = 'general') => {
   try {
     console.log('[saveToCuratedRoutes] Starting save for route:', route.name);
-    // This valid user ID exists in the DB and owns the system routes
-    const SYSTEM_USER_ID = '63a80fa9-b66d-42e6-af0e-26c10a2b3b40';
-    const result = await saveRouteToNewSchema(SYSTEM_USER_ID, route, { theme }, undefined, true);
+
+    // Attempt to get current user to satisfy RLS
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // If we have a real user, use their ID. Otherwise fallback to system ID (might fail RLS, but better than nothing)
+    const userId = user?.id || '63a80fa9-b66d-42e6-af0e-26c10a2b3b40';
+    console.log('[saveToCuratedRoutes] Saving using User ID:', userId);
+
+    const result = await saveRouteToNewSchema(userId, route, { theme }, undefined, true);
 
     if (result?.success) {
       console.log('[saveToCuratedRoutes] Route saved successfully with ID:', result.routeId);
-      globalCache.invalidatePattern('all-recent-routes');
-      console.log('[saveToCuratedRoutes] Cache invalidated');
+      // Invalidate cache implicitly by fetching fresh next time (since we disabled cache)
       return { data: [{ route_data: route, id: result.routeId }], error: null };
     }
     console.error('[saveToCuratedRoutes] Save failed - no success flag');
