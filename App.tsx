@@ -151,12 +151,15 @@ const App: React.FC = () => {
 
   const loadGlobalContent = async () => {
     try {
-      console.log('loadGlobalContent: Starting...');
+      console.log('🔄 loadGlobalContent v2.0: Starting... (CODE UPDATED 27.1.2026 12:45)');
       const global = await getAllRecentRoutes(30);
-      console.log('loadGlobalContent: Got routes:', global?.length || 0);
+      console.log('✅ loadGlobalContent: Got routes:', global?.length || 0);
+      if (global && global.length > 0) {
+        console.log('📍 First 3 routes:', global.slice(0, 3).map(r => r.name));
+      }
       setRecentGlobalRoutes(global || []);
     } catch (err) {
-      console.error("Failed to load global routes:", err);
+      console.error("❌ Failed to load global routes:", err);
       setRecentGlobalRoutes([]);
     }
   };
