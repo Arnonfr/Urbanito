@@ -36,7 +36,7 @@ const generateContentHash = async (poi: POI): Promise<string> => {
  * 3. Link them via route_pois junction table
  */
 export const saveRouteToNewSchema = async (
-    userId: string,
+    userId: string | null,
     route: Route,
     preferences?: any,
     parentRouteId?: string,

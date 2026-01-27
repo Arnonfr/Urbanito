@@ -93,23 +93,53 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
  * Ensures there is a logged in user.
  * Tries Anonymous login first. If disabled, creates a temporary "guest" account.
  */
+/**
+ * Ensures there is a logged in user.
+ * Tries Anonymous login first. If disabled, uses cached guest credentials or creates a new "guest" account.
+ * Prevents hitting rate limits by reusing guest accounts.
+ */
 export const ensureAuthenticatedUser = async (): Promise<string | null> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (user) return user.id;
 
   console.log('User not logged in. Attempting auto-login...');
 
-  // 1. Try Anonymous
+  // 1. Try Anonymous (if enabled in Supabase)
   const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
   if (!anonError && anonData.user) {
     console.log('Logged in anonymously:', anonData.user.id);
     return anonData.user.id;
   }
 
-  console.warn('Anonymous login failed (likely disabled). Trying fallback guest account...');
+  console.warn('Anonymous login failed (likely disabled). Using persistent guest strategy...');
 
-  // 2. Fallback: Create a random guest account
-  // We use a specific prefix so we can identify them later if needed
+  // 2. Strategy: Reuse Guest Credentials from LocalStorage
+  // This prevents 'Email Rate Limit Exceeded' errors by avoiding constant SignUps.
+  const STORAGE_KEY = 'urbanito_guest_creds';
+  const storedCreds = localStorage.getItem(STORAGE_KEY);
+
+  if (storedCreds) {
+    try {
+      const { email, password } = JSON.parse(storedCreds);
+      console.log('Found cached guest credentials. Attempting login...');
+
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (!signInError && signInData.user) {
+        console.log('✅ Successfully reused guest account:', signInData.user.id);
+        return signInData.user.id;
+      }
+
+      console.warn('Cached guest login failed (auth revoked or invalid). generating new identity...', signInError);
+    } catch (e) {
+      console.error('Error parsing stored credentials', e);
+    }
+  }
+
+  // 3. Fallback: Create a NEW random guest account
   const guestEmail = `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}@urbanito.local`;
   const guestPassword = `GuestPass${Date.now()}!`;
 
@@ -119,12 +149,16 @@ export const ensureAuthenticatedUser = async (): Promise<string | null> => {
   });
 
   if (signUpData?.user) {
-    console.log('Created and logged in as temporary guest:', signUpData.user.id);
+    console.log('✅ Created and logged in as NEW temporary guest:', signUpData.user.id);
+
+    // Cache the credentials for next time
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ email: guestEmail, password: guestPassword }));
+
     return signUpData.user.id;
   }
 
-  // If signUp fails (maybe email confirmation required?), try to sign in (unlikely to work if signUp failed but let's try)
-  console.error('Guest login fallback failed:', signUpError);
+  // If signUp fails, we are likely rate limited or blocked.
+  console.error('Guest login fallback failed (Rate Limit/Error):', signUpError);
   return null;
 }
 
@@ -139,8 +173,8 @@ export const saveToCuratedRoutes = async (route: Route, theme: string = 'general
     const userId = await ensureAuthenticatedUser();
 
     if (!userId) {
-      console.error('[saveToCuratedRoutes] CRITICAL: Could not authenticate user. Save will likely fail.');
-      return { data: null, error: 'Authentication failed' };
+      console.warn('[saveToCuratedRoutes] Could not authenticate user. Falling back to System User (public save).');
+      // Continue execution with userId = null
     }
 
     console.log('[saveToCuratedRoutes] Saving using User ID:', userId);
