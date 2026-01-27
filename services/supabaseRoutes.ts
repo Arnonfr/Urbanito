@@ -27,61 +27,6 @@ const generateContentHash = async (poi: POI): Promise<string> => {
  * Save or retrieve a POI from the pois table
  * Returns the UUID of the POI in the database
  */
-const upsertPoi = async (poi: POI): Promise<string | null> => {
-    try {
-        const contentHash = await generateContentHash(poi);
-
-        // Check if POI already exists
-        const { data: existing } = await supabase
-            .from('pois')
-            .select('id')
-            .eq('content_hash', contentHash)
-            .maybeSingle();
-
-        if (existing) {
-            console.log(`POI already exists: ${poi.name} (${existing.id})`);
-            return existing.id;
-        }
-
-        // Insert new POI
-        const { data, error } = await supabase
-            .from('pois')
-            .insert([{
-                content_hash: contentHash,
-                name: poi.name,
-                lat: poi.lat,
-                lng: poi.lng,
-                data: {
-                    category: poi.category,
-                    description: poi.description,
-                    narrative: poi.narrative,
-                    historicalContext: poi.historicalContext,
-                    architecturalStyle: poi.architecturalStyle,
-                    historicalAnalysis: poi.historicalAnalysis,
-                    architecturalAnalysis: poi.architecturalAnalysis,
-                    tourScript: poi.tourScript,
-                    imageUrl: poi.imageUrl,
-                    additionalImages: poi.additionalImages,
-                    sections: poi.sections,
-                    sources: poi.sources,
-                    externalUrl: poi.externalUrl
-                }
-            }])
-            .select('id')
-            .single();
-
-        if (error) {
-            console.error('Error inserting POI:', error);
-            return null;
-        }
-
-        console.log(`POI created: ${poi.name} (${data.id})`);
-        return data.id;
-    } catch (e) {
-        console.error('upsertPoi failed:', e);
-        return null;
-    }
-};
 
 /**
  * Save a complete route to the new schema
@@ -98,79 +43,57 @@ export const saveRouteToNewSchema = async (
     isPublic: boolean = false
 ): Promise<{ routeId: string; success: boolean } | null> => {
     try {
-        console.log(`Saving route "${route.name}" for user ${userId}`);
+        console.log(`[saveRouteToNewSchema] Using RPC for user ${userId}`);
 
-        // Step 1: Upsert all POIs and collect their database IDs
-        const poiIds: { frontendId: string; dbId: string; order: number }[] = [];
-
-        for (let i = 0; i < route.pois.length; i++) {
-            const poi = route.pois[i];
-            const dbId = await upsertPoi(poi);
-
-            if (dbId) {
-                poiIds.push({
-                    frontendId: poi.id,
-                    dbId,
-                    order: i
-                });
-            } else {
-                console.warn(`Failed to save POI: ${poi.name}`);
-            }
-        }
-
-        if (poiIds.length === 0) {
-            console.error('No POIs were saved successfully');
-            return null;
-        }
-
-        // Step 2: Create route entry
-        const { data: routeData, error: routeError } = await supabase
-            .from('routes')
-            .insert([{
-                user_id: userId,
-                parent_route_id: parentRouteId || null,
-                city: normalize(route.city),
-                name: route.name,
-                description: route.description,
-                preferences: preferences || {},
-                is_public: isPublic,
-                duration_minutes: route.durationMinutes
-            }])
-            .select('id')
-            .single();
-
-        if (routeError || !routeData) {
-            console.error('Error creating route:', routeError);
-            return null;
-        }
-
-        const routeId = routeData.id;
-        console.log(`Route created with ID: ${routeId}`);
-
-        // Step 3: Link POIs to route via junction table
-        const junctionInserts = poiIds.map(({ dbId, order }) => ({
-            route_id: routeId,
-            poi_id: dbId,
-            order_index: order,
-            travel_data: route.pois[order].travelFromPrevious || null
+        // Prepare POIs for RPC
+        const poisForRpc = await Promise.all(route.pois.map(async (poi, index) => {
+            const contentHash = await generateContentHash(poi);
+            return {
+                id: contentHash, // We send the hash as the ID for deduplication logic on server
+                name: poi.name,
+                lat: poi.lat,
+                lng: poi.lng,
+                order_index: index,
+                travel_data: poi.travelFromPrevious || null,
+                data: {
+                    category: poi.category,
+                    description: poi.description,
+                    narrative: poi.narrative,
+                    historicalContext: poi.historicalContext,
+                    architecturalStyle: poi.architecturalStyle,
+                    historicalAnalysis: poi.historicalAnalysis,
+                    architecturalAnalysis: poi.architecturalAnalysis,
+                    tourScript: poi.tourScript,
+                    imageUrl: poi.imageUrl,
+                    additionalImages: poi.additionalImages,
+                    sections: poi.sections,
+                    sources: poi.sources,
+                    externalUrl: poi.externalUrl
+                }
+            };
         }));
 
-        const { error: junctionError } = await supabase
-            .from('route_pois')
-            .insert(junctionInserts);
+        const { data: routeId, error } = await supabase.rpc('save_generated_route', {
+            p_city: normalize(route.city),
+            p_name: route.name,
+            p_description: route.description || '',
+            p_duration: route.durationMinutes || 0,
+            p_preferences: preferences || {},
+            p_pois: poisForRpc
+        });
 
-        if (junctionError) {
-            console.error('Error linking POIs to route:', junctionError);
-            // Try to clean up the route entry
-            await supabase.from('routes').delete().eq('id', routeId);
+        if (error) {
+            console.error('[saveRouteToNewSchema] RPC Error:', error);
+            // Fallback for debugging - remove later
+            // return { routeId: 'temp-' + Date.now(), success: false }; 
             return null;
         }
 
-        console.log(`Successfully saved route with ${poiIds.length} POIs`);
+        console.log(`[saveRouteToNewSchema] RPC Success! Route ID: ${routeId}`);
         return { routeId, success: true };
 
     } catch (e) {
-        console.error('saveRouteToNewSchema failed:', e);
+        console.error('[saveRouteToNewSchema] CRITICAL FAILURE:', e);
         return null;
     }
 };
