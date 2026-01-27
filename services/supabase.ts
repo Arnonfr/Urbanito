@@ -56,8 +56,12 @@ export const getCachedPoiDetails = async (poiName: string, city: string, lat?: n
   try {
     const normName = normalize(poiName);
     const normCity = normalize(city);
-    const { data } = await supabase.from('poi_details').select('details_data, image_url').eq('poi_name', normName).eq('city', normCity).maybeSingle();
-    if (data) return { ...data.details_data, imageUrl: data.image_url || data.details_data.imageUrl };
+    const { data } = await supabase.from('poi_details').select('details_data, image_url, google_place_id').eq('poi_name', normName).eq('city', normCity).maybeSingle();
+    if (data) return {
+      ...data.details_data,
+      imageUrl: data.image_url || data.details_data.imageUrl,
+      googlePlaceId: data.google_place_id || data.details_data.googlePlaceId
+    };
     return null;
   } catch (e) { return null; }
 };
@@ -71,12 +75,13 @@ export const cachePoiDetails = async (poiName: string, city: string, details: an
       city: normCity,
       details_data: details,
       image_url: details.imageUrl || null,
+      google_place_id: details.googlePlaceId || null,
       updated_at: new Date().toISOString()
     }, { onConflict: 'poi_name,city' });
   } catch (e) { }
 };
 
-export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl: string) => {
+export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl: string, googlePlaceId?: string) => {
   try {
     const normName = normalize(poiName);
     const normCity = normalize(city);
@@ -84,6 +89,7 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
       poi_name: normName,
       city: normCity,
       image_url: imageUrl,
+      google_place_id: googlePlaceId || null,
       updated_at: new Date().toISOString()
     }, { onConflict: 'poi_name,city' });
   } catch (e) { }

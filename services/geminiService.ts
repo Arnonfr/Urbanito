@@ -215,6 +215,7 @@ ROUTE PARAMETERS:
 - Maximum walking distance: ${walkingDistanceKm} km total
 - User interests: ${interests}
 - Explanation depth: ${explanationDepth}${constraintsText}
+${preferences.customPrompt ? `- SPECIAL USER REQUEST: "${preferences.customPrompt}" (Prioritize this theme/request!)` : ''}
 
 CRITICAL NAMING FORMAT (MUST FOLLOW EXACTLY):
 ${namingFormat}
@@ -239,7 +240,11 @@ JSON SCHEMA:
       "lat": <latitude>,
       "lng": <longitude>,
       "summary": "1-2 sentence summary in ${langName} (FAST RESPONSE)",
-      "category": "history|architecture|culture|food|nature|art|religion"
+      "category": "history|architecture|culture|food|nature|art|religion",
+      "travelFromPrevious": {
+        "distance": "e.g., 400m",
+        "duration": "e.g., 5 mins"
+      }
     }
   ]
 }
@@ -285,6 +290,13 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
       ? 'CRITICAL POI NAME FORMAT: "Hebrew Translation (Original Name)" - Example: "בית הראשונים (First Settlers House)". The Hebrew name comes FIRST, then the original name in parentheses.'
       : 'POI names in English with original local name in parentheses if different (e.g., "First Settlers House (בית הראשונים)")';
 
+    // Build constraints based on preferences
+    const constraints: string[] = [];
+    if (preferences.religiousFriendly) constraints.push('suitable for religious visitors');
+    if (preferences.veganFriendly) constraints.push('include vegan-friendly locations');
+    if (preferences.accessibleOnly) constraints.push('wheelchair accessible');
+    const constraintsText = constraints.length > 0 ? `\nADDITIONAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
+
     const response = await aiCall({
       contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, streetName, preferences)}
       
@@ -294,7 +306,8 @@ ROUTE PARAMETERS:
 - Number of stops: EXACTLY ${poiCount} POIs
 - ALL POIs must be located ON or IMMEDIATELY ADJACENT to ${streetName}
 - Focus: ${interests}
-- Language: ${langName}
+- Language: ${langName}${constraintsText}
+${preferences.customPrompt ? `- SPECIAL USER REQUEST: "${preferences.customPrompt}" (Prioritize this theme/request!)` : ''}
 
 CRITICAL NAMING FORMAT (MUST FOLLOW EXACTLY):
 ${namingFormat}
@@ -318,7 +331,11 @@ JSON SCHEMA:
       "lat": <latitude>,
       "lng": <longitude>,
       "summary": "1-2 sentence summary in ${langName} (FAST RESPONSE)",
-      "category": "architecture|history|culture|art"
+      "category": "architecture|history|culture|art",
+      "travelFromPrevious": {
+        "distance": "e.g., 50m",
+        "duration": "e.g., 1 min"
+      }
     }
   ]
 }

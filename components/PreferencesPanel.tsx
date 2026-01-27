@@ -252,21 +252,23 @@ export const PreferencesPanel: React.FC<Props> = ({
           </div>
         </section>
 
+
+
         <section className="pt-2">
-          <div className="bg-indigo-600 text-white p-7 rounded-[8px] shadow-2xl relative overflow-hidden group">
+          <div className="bg-slate-900 text-white p-7 rounded-[8px] shadow-2xl relative overflow-hidden group">
             <div className="relative z-10 flex items-center justify-between gap-6">
               <div className="flex-1 text-right">
-                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-indigo-200 mb-1">{isHe ? 'בקרוב באורבניטו' : 'COMING SOON'}</h4>
+                <h4 className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500 mb-1">{isHe ? 'עוד בפיתוח' : 'ALSO IN DEV'}</h4>
                 <h3 className="text-xl font-medium tracking-tight">{isHe ? 'גירסת פרימיום' : 'Premium Version'}</h3>
-                <p className="text-[11px] text-indigo-50 mt-2 leading-relaxed opacity-90">
+                <p className="text-[11px] text-slate-400 mt-2 leading-relaxed opacity-90">
                   {isHe ? 'יותר תמונות היסטוריות, הסברים מעמיקים, קריינות קולית חיה ועוד הרבה פנינים.' : 'More historical photos, deep insights, live voice narration and more gems.'}
                 </p>
               </div>
               <button
                 onClick={handlePremiumInterest}
-                className={`w-16 h-16 rounded-[8px] flex items-center justify-center text-2xl transition-all active:scale-90 shadow-xl ${premiumLiked ? 'bg-white text-indigo-600 scale-110' : 'bg-white/20 text-white hover:bg-white/30'}`}
+                className={`w-12 h-12 rounded-[8px] flex items-center justify-center text-xl transition-all active:scale-90 shadow-xl ${premiumLiked ? 'bg-white text-rose-500 scale-110' : 'bg-white/10 text-white hover:bg-white/20'}`}
               >
-                {premiumLiked ? <Heart size={24} fill="#4f46e5" /> : <Heart size={24} />}
+                {premiumLiked ? <Heart size={20} fill="#f43f5e" /> : <Heart size={20} />}
               </button>
             </div>
           </div>

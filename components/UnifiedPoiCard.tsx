@@ -4,7 +4,8 @@ import { POI, UserPreferences, Route } from '../types';
 import { fetchExtendedPoiDetails } from '../services/geminiService';
 import {
   Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ArrowRight, ArrowLeft,
-  Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Sparkles, Building, Footprints
+  Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Sparkles, Building, Footprints,
+  Play, Pause
 } from 'lucide-react';
 import { CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
@@ -22,8 +23,8 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast
 }) => {
   const isHe = preferences.language === 'he';
-  const { playText, stop, isPlaying, currentItem } = useAudio();
-  const isCurrentPoiPlaying = isPlaying && currentItem?.poiId === poi.id;
+  const { playText, stop, pause, resume, isPlaying, currentItem, progress, playbackRate } = useAudio();
+  const isCurrentPoiPlaying = isPlaying && (currentItem?.poiId === poi.id || currentItem?.id === poi.id);
 
   const [fontSize, setFontSize] = useState<'normal' | 'large'>('normal');
   const [isImageFullscreen, setIsImageFullscreen] = useState(false);
@@ -42,7 +43,13 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   };
 
   const openInGoogleMaps = () => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`;
+    let url = `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`;
+
+    // If we have a Google Place ID, use it for a much better experience (shows the place card)
+    if (poi.googlePlaceId) {
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(poi.name)}&query_place_id=${poi.googlePlaceId}`;
+    }
+
     window.open(url, '_blank');
   };
 
@@ -52,8 +59,8 @@ export const UnifiedPoiCard: React.FC<Props> = ({
       return;
     }
 
-    // Play audio
-    const text = poi.narrative || poi.description || poi.name;
+    // Play audio - sync with visible content in the UI
+    const text = poi.historicalAnalysis || poi.description || poi.summary || poi.narrative || poi.name;
     playText(text, preferences.language, poi.id, 'high');
   };
 
@@ -90,8 +97,14 @@ export const UnifiedPoiCard: React.FC<Props> = ({
             <button onClick={openInGoogleMaps} className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white rounded-[8px]">
               <MapPin size={18} />
             </button>
-            <button onClick={handleAudioClick} className="w-10 h-10 flex items-center justify-center text-white/90 hover:text-white rounded-[8px] relative active:bg-white/10 transition-colors">
-              <Headphones size={18} />
+            <button onClick={handleAudioClick} className={`w-10 h-10 flex items-center justify-center rounded-[8px] relative transition-all active:scale-95 ${isCurrentPoiPlaying ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/90 hover:text-white'}`}>
+              <Headphones size={18} className={isCurrentPoiPlaying ? 'animate-pulse' : ''} />
+              {isCurrentPoiPlaying && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                </span>
+              )}
             </button>
             <button className="w-10 h-10 flex items-center justify-center text-rose-400 hover:text-rose-300 rounded-[8px]">
               <Heart size={18} />
@@ -227,62 +240,6 @@ export const UnifiedPoiCard: React.FC<Props> = ({
       </div>
 
       <footer className="shrink-0 bg-white border-t border-slate-100 p-4 grid grid-cols-2 gap-3 h-24 mb-[env(safe-area-inset-bottom)] relative z-30">
-        {/* Mini Player Floating above buttons */}
-        {currentItem && (
-          <div className="absolute -top-16 inset-x-4 h-14 bg-slate-900/95 backdrop-blur-md text-white rounded-[12px] shadow-xl border border-white/10 flex items-center justify-between px-4 animate-in slide-in-from-bottom-4 duration-300 z-50">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isPlaying ? 'bg-indigo-500' : 'bg-white/10'}`}>
-                <Headphones size={14} className={isPlaying ? 'animate-pulse' : ''} />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-[12px] font-bold leading-tight truncate">
-                  {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing') : (isHe ? 'מושהה' : 'Paused')}
-                </span>
-                <span className="text-[10px] text-white/60 truncate max-w-[150px]">
-                  {poi.name}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1">
-              {/* Play/Pause Toggle */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isPlaying) {
-                    try { stop(); } catch (e) { } // Using stop for now as pause might hold the context
-                  } else {
-                    // If we have text, play it again or resume? 
-                    // Context resume() resumes the whole context. 
-                    // Ideally we play again if stopped, or resume if suspended.
-                    // For simplicity in this "speech" context, we might just replay if lost.
-                    // But if we just want to toggle:
-                    handleAudioClick();
-                  }
-                }}
-                className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10 transition-colors"
-              >
-                {isPlaying ? (
-                  <div className="flex gap-1">
-                    <div className="w-1 h-3 bg-white rounded-full animate-[music-bar_1s_ease-in-out_infinite]" />
-                    <div className="w-1 h-3 bg-white rounded-full animate-[music-bar_1s_ease-in-out_infinite_0.2s]" />
-                  </div>
-                ) : (
-                  <div className="w-0 h-0 border-t-[6px] border-t-transparent border-l-[10px] border-l-white border-b-[6px] border-b-transparent ml-1" />
-                )}
-              </button>
-
-              {/* Close / Stop */}
-              <button
-                onClick={(e) => { e.stopPropagation(); stop(); }}
-                className="w-10 h-10 flex items-center justify-center text-white/50 hover:text-white rounded-full transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-
         <button
           onClick={onPrev}
           disabled={currentIndex <= 0}

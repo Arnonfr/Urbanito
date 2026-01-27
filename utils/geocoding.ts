@@ -49,6 +49,24 @@ export function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: 
     return d * 1000;
 }
 
-function deg2rad(deg: number) {
+export function deg2rad(deg: number) {
     return deg * (Math.PI / 180)
+}
+
+function rad2deg(rad: number) {
+    return rad * (180 / Math.PI);
+}
+
+export function getBearing(startLat: number, startLng: number, destLat: number, destLng: number) {
+    const startLatRad = deg2rad(startLat);
+    const startLngRad = deg2rad(startLng);
+    const destLatRad = deg2rad(destLat);
+    const destLngRad = deg2rad(destLng);
+
+    const y = Math.sin(destLngRad - startLngRad) * Math.cos(destLatRad);
+    const x = Math.cos(startLatRad) * Math.sin(destLatRad) -
+        Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(destLngRad - startLngRad);
+
+    let brng = rad2deg(Math.atan2(y, x));
+    return (brng + 360) % 360;
 }

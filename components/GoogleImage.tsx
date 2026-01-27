@@ -20,7 +20,7 @@ interface SmartImageProps {
 
 const memoryCache = new Map<string, string>();
 const STORAGE_PREFIX = 'urbanito-img-v5-';
-const CACHE_TTL = 86400000 * 7; 
+const CACHE_TTL = 86400000 * 7;
 
 const SIZES = {
   small: { maxWidthPx: 400 },
@@ -28,8 +28,8 @@ const SIZES = {
   large: { maxWidthPx: 1200 }
 };
 
-export const GoogleImage: React.FC<SmartImageProps> = ({ 
-  query, poiName, cityName, lat, lng, size = 'medium', priority = false, className = '', fallbackUrl, existingUrl 
+export const GoogleImage: React.FC<SmartImageProps> = ({
+  query, poiName, cityName, lat, lng, size = 'medium', priority = false, className = '', fallbackUrl, existingUrl
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(existingUrl || null);
   const [isLoading, setIsLoading] = useState(!existingUrl);
@@ -80,14 +80,14 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
       }
 
       setIsLoading(true);
-      
+
       try {
         if (!google?.maps?.importLibrary) {
           throw new Error("Google Maps API not loaded");
         }
 
         const { Place } = await google.maps.importLibrary("places") as any;
-        
+
         const request = {
           textQuery: searchQuery,
           fields: ['photos', 'displayName', 'id'],
@@ -103,12 +103,12 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
           const photoUrl = places[0].photos[0].getURI({
             maxWidthPx: SIZES[size].maxWidthPx
           });
-          
+
           setImageUrl(photoUrl);
           memoryCache.set(cacheKey, photoUrl);
-          
+
           if (poiName && cityName) {
-            updatePoiImageInDb(poiName, cityName, photoUrl);
+            updatePoiImageInDb(poiName, cityName, photoUrl, places[0].id);
           }
 
           try {
@@ -116,8 +116,8 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
               url: photoUrl,
               timestamp: Date.now()
             }));
-          } catch (e) {}
-          
+          } catch (e) { }
+
           setIsLoading(false);
         } else {
           setImageUrl(fallbackUrl || `https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80&auto=format`);
@@ -140,13 +140,13 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
     <div className={`relative overflow-hidden bg-slate-100 ${className}`}>
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-200/50">
-           <Loader2 size={18} className="text-indigo-500 animate-spin" />
+          <Loader2 size={18} className="text-indigo-500 animate-spin" />
         </div>
       )}
       {imageUrl && (
-        <img 
-          src={imageUrl} 
-          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`} 
+        <img
+          src={imageUrl}
+          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
           alt={query}
           onLoad={() => setIsLoading(false)}
           onError={() => {

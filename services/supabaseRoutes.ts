@@ -68,7 +68,8 @@ export const saveRouteToNewSchema = async (
                     additionalImages: poi.additionalImages,
                     sections: poi.sections,
                     sources: poi.sources,
-                    externalUrl: poi.externalUrl
+                    externalUrl: poi.externalUrl,
+                    googlePlaceId: poi.googlePlaceId
                 }
             };
         }));
@@ -79,6 +80,7 @@ export const saveRouteToNewSchema = async (
             p_description: route.description || '',
             p_duration: route.durationMinutes || 0,
             p_preferences: preferences || {},
+            p_directions_data: route.directionsData || null,
             p_pois: poisForRpc,
             p_user_id: userId,
             p_is_public: isPublic,
@@ -162,6 +164,7 @@ export const getRouteFromNewSchema = async (routeId: string): Promise<Route | nu
             description: routeData.description || '',
             durationMinutes: routeData.duration_minutes || 0,
             creator: routeData.user_id,
+            directionsData: routeData.directions_data,
             pois
         };
 
@@ -224,5 +227,52 @@ export const deleteRouteFromNewSchema = async (routeId: string, userId: string):
     } catch (e) {
         console.error('deleteRouteFromNewSchema failed:', e);
         return false;
+    }
+};
+
+/**
+ * Find nearby POIs using a bounding box approximation for efficiency
+ * @param lat Current latitude
+ * @param lng Current longitude
+ * @param radiusMeters Search radius in meters
+ */
+export const findNearbyPois = async (lat: number, lng: number, radiusMeters: number): Promise<POI[]> => {
+    try {
+        // 1 degree of latitude is approx 111km (111,000 meters)
+        const degRadius = (radiusMeters / 111000) * 1.5; // 1.5x buffer factor
+
+        const minLat = lat - degRadius;
+        const maxLat = lat + degRadius;
+        const minLng = lng - degRadius;
+        const maxLng = lng + degRadius;
+
+        const { data: pois, error } = await supabase
+            .from('pois')
+            .select('*')
+            .gte('lat', minLat)
+            .lte('lat', maxLat)
+            .gte('lng', minLng)
+            .lte('lng', maxLng)
+            .limit(50); // Limit to avoid massive payloads
+
+        if (error) {
+            console.error('findNearbyPois error:', error);
+            return [];
+        }
+
+        if (!pois) return [];
+
+        // Normalize data structure to match POI type
+        return pois.map((p: any) => ({
+            id: p.id || generateStableId(p.name, p.lat, p.lng),
+            name: p.name,
+            lat: p.lat,
+            lng: p.lng,
+            ...p.data // Spread the JSONB data field
+        }));
+
+    } catch (e) {
+        console.error('findNearbyPois failed:', e);
+        return [];
     }
 };

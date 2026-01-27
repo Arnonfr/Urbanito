@@ -11,6 +11,8 @@ export interface UserPreferences {
   routeStyle?: 'classic' | 'street';
   explanationStyle: 'simple' | 'standard' | 'deep';
   fontSize?: number;
+  customPrompt?: string;
+  audioMode?: 'free' | 'premium';
 }
 
 export interface POICategory {
@@ -65,6 +67,8 @@ export interface POI {
   externalUrl?: string;
   isFullyLoaded?: boolean;
   isLoading?: boolean;
+  googlePlaceId?: string;
+  content?: any;
 }
 
 export interface Route {
@@ -81,6 +85,7 @@ export interface Route {
   style?: 'street' | 'area';
   dist?: number; // Distance from center, used for nearby discovery
   parent_route_id?: string; // ID of the route this was forked from
+  directionsData?: any; // Cached directions result
 }
 
 export interface AudioState {

@@ -2,14 +2,15 @@
 import React, { useRef, useState } from 'react';
 import { Route, POI, UserPreferences, POICategoryType } from '../types';
 import {
-  Navigation, Building2, Utensils, Ship, Trees, ShoppingBag, Palette,
-  Landmark, Church, Heart, X, ChevronLeft, Trash2, Settings2, MapPin,
-  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical
+  Landmark, Building2, Utensils, Ship, Trees, ShoppingBag, Palette,
+  Church, Heart, X, ChevronLeft, Trash2, Settings2, MapPin,
+  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical, Building
 } from 'lucide-react';
 import { GoogleImage } from './GoogleImage';
 import { QuickRouteSetup } from './QuickRouteSetup';
 import { GoogleAd } from './GoogleAd';
 import { NearbyPOISuggestions } from './NearbyPOISuggestions';
+import { useAudio } from '../contexts/AudioContext';
 
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
@@ -34,7 +35,7 @@ interface Props {
 
 export const CATEGORY_ICONS: Record<POICategoryType, React.ReactNode> = {
   history: <Landmark size={20} />, food: <Utensils size={20} />, architecture: <Building2 size={20} />, nature: <Trees size={20} />,
-  shopping: <ShoppingBag size={20} />, sailing: <Ship size={20} />, culture: <Palette size={20} />, religion: <Church size={20} />, art: <Landmark size={20} />
+  shopping: <ShoppingBag size={20} />, sailing: <Ship size={20} />, culture: <Palette size={20} />, religion: <Building size={20} />, art: <Palette size={20} />
 };
 
 export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
@@ -54,17 +55,30 @@ export const RouteOverview: React.FC<Props> = ({
   // Internal loading state for button feedback only (non-blocking)
   const [isUpdating, setIsUpdating] = useState(false);
   const [initialPrefs, setInitialPrefs] = useState<UserPreferences | null>(null);
+
   const touchStart = useRef<number | null>(null);
+  const { playText, queueText, stop, isPlaying } = useAudio();
+
+  const handlePlayPoi = async (poiToPlay: POI, idx: number) => {
+    stop();
+    const currentText = (poiToPlay as any).audioText || poiToPlay.description || "";
+    if (currentText) {
+      await playText(currentText, preferences.language as 'he' | 'en', poiToPlay.id);
+    }
+    const nextPois = route.pois.slice(idx + 1);
+    nextPois.forEach(nextPoi => {
+      const nextText = (nextPoi as any).audioText || nextPoi.description || "";
+      if (nextText) {
+        queueText(nextText, preferences.language as 'he' | 'en', nextPoi.id);
+      }
+    });
+  };
 
   const handlePrefsClick = async () => {
     if (isPrefsOpen) {
-      // Check if preferences actually changed
       const hasChanges = JSON.stringify(initialPrefs) !== JSON.stringify(preferences);
-
       if (hasChanges) {
-        // Act as "Confirm/Update" button
         setIsUpdating(true);
-        // Wait a bit to ensure UI updates before heavy work (optional, but good for UX)
         try {
           await onRegenerate();
         } finally {
@@ -72,11 +86,9 @@ export const RouteOverview: React.FC<Props> = ({
           setIsPrefsOpen(false);
         }
       } else {
-        // Just close if no changes
         setIsPrefsOpen(false);
       }
     } else {
-      // Open Prefs and save current state
       setInitialPrefs(preferences);
       setIsPrefsOpen(true);
     }
@@ -90,14 +102,10 @@ export const RouteOverview: React.FC<Props> = ({
   };
 
   const handleShare = () => {
-    // Use AI-generated teaser if available, otherwise create a fallback
     let teaser = route.shareTeaser || "";
-
-    // Fallback: Generate a basic teaser from POIs if no AI teaser exists
     if (!teaser && route.pois && route.pois.length > 0) {
       const firstPoi = route.pois[0];
       const cleanFirst = firstPoi.name.replace(/\s*\(.*?\)\s*/g, '').trim();
-
       if (isHe) {
         teaser = `גלו את ${cleanFirst} ועוד ${route.pois.length - 1} מקומות מיוחדים ב${route.city}! 🗺️`;
       } else {
@@ -125,120 +133,81 @@ export const RouteOverview: React.FC<Props> = ({
 
   const copyToClipboard = (content: string) => {
     navigator.clipboard.writeText(content);
-    // showToast is not available here directly, but we can use alert or a simple feedback
     alert(isHe ? 'הלינק והתיאור הועתקו! מוכן לשיתוף 🚀' : 'Link and teaser copied! Ready to share 🚀');
   };
 
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-[3500] flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[92dvh]' : 'h-[380px]'} bg-white/50 backdrop-blur-lg border-t border-white/40 overflow-hidden`}
+      className={`fixed inset-x-0 bottom-0 ${isExpanded ? 'z-[7000]' : 'z-[3500]'} flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[92dvh]' : 'h-[380px]'} bg-white/50 backdrop-blur-lg border-t border-white/40 overflow-hidden`}
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
-      <div className="w-full bg-white shrink-0 pt-2 relative z-50">
-        <div onClick={() => setIsExpanded(!isExpanded)} className="w-full h-8 flex items-center justify-center cursor-pointer relative">
-          <div className="w-12 h-1 bg-slate-200 rounded-full" />
+      <div className={`w-full shrink-0 relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group`}>
+        <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
+
+        <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
+          <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
         </div>
 
-        {/* Inline Tabs Integration */}
-        {openRoutes.length > 1 && (
-          <div className="flex gap-1.5 px-6 pb-2 overflow-x-auto no-scrollbar">
-            {openRoutes.map((r, i) => {
-              const isActive = activeRouteIndex === i;
-              return (
-                <button
-                  key={r.id}
-                  onClick={(e) => { e.stopPropagation(); onSwitchRoute?.(i); }}
-                  className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-[8px] border transition-all ${isActive
-                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-bold'
-                    : 'bg-slate-50 text-slate-500 border-slate-100'
-                    }`}
-                >
-                  <span className="text-[10px] truncate max-w-[70px]">{r.name.replace(/\s*\(.*?\)\s*/g, '')}</span>
-                  <X size={10} onClick={(e) => { e.stopPropagation(); onCloseRoute?.(i); }} className="hover:bg-indigo-100 rounded-full p-0.5" />
-                </button>
-              );
-            })}
+        {/* Action Buttons */}
+        <div className={`absolute top-8 inset-x-6 flex items-center justify-between z-10 pointer-events-none`}>
+          <div className={isHe ? "order-1" : "order-2"}>
           </div>
-        )}
 
-        <button
-          onClick={(e) => { e.stopPropagation(); onClose?.(); }}
-          className={`absolute ${isHe ? 'left-4' : 'right-4'} top-2 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-slate-100 transition-colors z-50`}
-        >
-          <X size={18} />
-        </button>
+          <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto ${isHe ? "order-2" : "order-1"}`}>
+            <button
+              onClick={(e) => { e.stopPropagation(); handlePrefsClick(); }}
+              disabled={isRegenerating || isUpdating}
+              className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all relative overflow-hidden ${isPrefsOpen
+                ? 'bg-indigo-600 text-white shadow-lg'
+                : 'text-white/80 hover:text-white active:bg-white/10'
+                }`}
+            >
+              {(isRegenerating || isUpdating) ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : isPrefsOpen ? (
+                <Check size={18} />
+              ) : (
+                <Settings2 size={18} />
+              )}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsEditMode(!isEditMode); }}
+              className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isEditMode ? 'bg-amber-500 text-white' : 'text-white/80 hover:text-white active:bg-white/10'}`}
+            >
+              <Edit3 size={18} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleShare(); }}
+              className="w-10 h-10 flex items-center justify-center text-white/80 hover:text-white active:bg-white/10 rounded-[8px] transition-all"
+            >
+              <Share2 size={18} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onSave?.(); }}
+              className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white/80 hover:text-white active:bg-white/10'}`}
+            >
+              <Heart size={18} className={isSaved ? 'fill-current' : ''} />
+            </button>
+          </div>
+        </div>
+
+        <div className="absolute bottom-6 inset-x-8 flex flex-col text-right z-10 pointer-events-none">
+          <span className="text-[#6366F1] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1 drop-shadow-md">
+            {route.city}
+          </span>
+          <h2 className="text-2xl font-semibold text-white leading-tight drop-shadow-lg">{mainTitle}</h2>
+          {subTitle && <span className="text-[11px] font-normal text-white/70 mt-0.5 tracking-wide uppercase drop-shadow-md">{subTitle}</span>}
+          {route.parent_route_id && (
+            <span className="text-[10px] font-medium text-white/40 mt-2 flex items-center gap-1 justify-end">
+              <Share2 size={10} /> {isHe ? 'מבוסס על מסלול מקורי' : 'Based on original route'}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="px-6 pb-4 shrink-0">
-        <div className={`w-full overflow-hidden bg-slate-900 relative rounded-[8px] ${isExpanded ? 'h-48' : 'h-32'}`}>
-          <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-60" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-transparent flex flex-col justify-end p-5">
-            <span className="text-[10px] font-medium text-white/60 uppercase tracking-[0.2em] mb-1">{route.city}</span>
-            <h2 className="text-xl font-bold text-white leading-tight">{mainTitle}</h2>
-            {subTitle && (
-              <p className="text-[13px] font-medium text-white/50 mt-0.5 font-sans leading-none uppercase tracking-wide opacity-80">{subTitle}</p>
-            )}
-            {route.parent_route_id && (
-              <span className="text-[10px] font-medium text-indigo-300 mt-1 flex items-center gap-1">
-                <Share2 size={10} /> {isHe ? 'מבוסס על מסלול מקורי' : 'Based on original route'}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto no-scrollbar px-6 space-y-6 pb-32">
-        <div className="flex gap-3">
-          <button
-            onClick={onSave}
-            className={`flex-1 h-12 rounded-[8px] border text-[11px] font-medium flex items-center justify-center gap-2 transition-all ${isSaved ? 'bg-rose-50 text-rose-500 border-rose-100' : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600'}`}
-          >
-            <Heart size={16} className={isSaved ? 'fill-current' : ''} />
-            {isHe ? (isSaved ? "שמור" : "שמירה") : "Save"}
-          </button>
-          <button
-            onClick={handleShare}
-            className="flex-1 h-12 rounded-[8px] border border-slate-100 bg-white text-slate-400 hover:text-slate-600 text-[11px] font-medium flex items-center justify-center gap-2 transition-all"
-          >
-            <Share2 size={16} />
-            {isHe ? "שיתוף" : "Share"}
-          </button>
-
-          <button
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`flex-1 h-12 rounded-[8px] border text-[11px] font-medium flex items-center justify-center gap-2 transition-all ${isEditMode ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600'}`}
-          >
-            <Edit3 size={16} />
-            {isHe ? "עריכה" : "Edit"}
-          </button>
-
-          <button
-            onClick={handlePrefsClick}
-            disabled={isRegenerating || isUpdating}
-            className={`flex-1 h-12 rounded-[8px] border text-[11px] font-medium flex items-center justify-center gap-2 transition-all overflow-hidden relative ${isPrefsOpen
-              ? 'bg-indigo-50 border-indigo-100 text-indigo-600 shadow-sm'
-              : 'bg-white border-slate-100 text-slate-400 hover:text-slate-600'
-              }`}
-          >
-            {(isRegenerating || isUpdating) ? (
-              <div className="animate-in fade-in zoom-in duration-300 w-full h-full flex items-center justify-center bg-indigo-50">
-                <RouteTravelIcon className="w-8 h-8" animated={true} />
-              </div>
-            ) : isPrefsOpen ? (
-              <>
-                <Check size={16} />
-                {isHe ? "עדכן מסלול" : "Update Tour"}
-              </>
-            ) : (
-              <>
-                <Sliders size={16} />
-                {isHe ? "העדפות" : "Prefs"}
-              </>
-            )}
-          </button>
-        </div>
-
+      <div className="flex-1 overflow-y-auto no-scrollbar px-6 pt-6 space-y-6 pb-32">
         {isPrefsOpen && (
           <div className="animate-in slide-in-from-top duration-300">
             <QuickRouteSetup
@@ -262,27 +231,21 @@ export const RouteOverview: React.FC<Props> = ({
 
           <div className="space-y-2">
             {route.pois.map((poi, index) => {
-              // Parse name format: "Hebrew Name (Original Name)" or "English Name (Original Name)"
               const parenMatch = poi.name.match(/(.*?)\s*\((.*?)\)/);
               const translatedName = parenMatch ? parenMatch[1].trim() : poi.name;
               const originalName = parenMatch ? parenMatch[2].trim() : "";
               const isLoaded = poi.isFullyLoaded;
-
-              // Determine if we should show the original name (only if different from translated)
               const showOriginalName = originalName && originalName !== translatedName;
 
               return (
                 <React.Fragment key={poi.id}>
                   <div onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)} className={`group bg-white p-3 rounded-[12px] flex items-center gap-4 transition-all border border-slate-100 relative overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-md hover:border-indigo-200'}`}>
-                    {/* Edit Mode: Drag Handle */}
                     {isEditMode && (
                       <div className="shrink-0 cursor-grab active:cursor-grabbing">
                         <GripVertical size={20} className="text-slate-300" />
                       </div>
                     )}
-
-                    {/* Category Icon on the right */}
-                    <div className={`w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0 shadow-sm ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
+                    <div className={`w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0 shadow-sm transition-colors ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
                       poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
                         poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-600' :
                           poi.category === 'nature' ? 'bg-emerald-50 text-emerald-600' :
@@ -290,36 +253,32 @@ export const RouteOverview: React.FC<Props> = ({
                               poi.category === 'culture' ? 'bg-purple-50 text-purple-600' :
                                 poi.category === 'religion' ? 'bg-blue-50 text-blue-600' :
                                   poi.category === 'art' ? 'bg-rose-50 text-rose-600' :
-                                    'bg-slate-50 text-slate-600'
+                                    'bg-slate-50 text-slate-500'
                       }`}>
-                      {poi.category ? CATEGORY_ICONS[poi.category] : <MapPin size={20} />}
+                      {poi.category ? CATEGORY_ICONS[poi.category as POICategoryType] : <MapPin size={22} />}
                     </div>
-
-                    {/* Content */}
                     <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
-                      {/* Main name (translated) */}
                       <div className="flex items-center gap-2">
                         <h4 className="text-[15px] font-bold text-slate-800 leading-tight truncate">
                           {translatedName}
                         </h4>
-                        {isLoaded && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
+                        {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
+                          <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                            <Check size={8} className="stroke-[4]" />
+                          </div>
+                        )}
                       </div>
-
-                      {/* Original name if different */}
                       {showOriginalName && (
                         <div className="text-[12px] font-normal text-slate-500 leading-tight truncate opacity-80">
                           {originalName}
                         </div>
                       )}
-
-                      {/* Meta info row: Category + Distance */}
                       <div className="flex items-center gap-2 mt-1.5 min-w-0">
                         {poi.category && (
                           <div className="text-[10px] font-medium text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded text-nowrap">
                             {CATEGORY_LABELS_HE[poi.category]}
                           </div>
                         )}
-
                         {index > 0 && poi.travelFromPrevious && (
                           <>
                             <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
@@ -332,8 +291,6 @@ export const RouteOverview: React.FC<Props> = ({
                         )}
                       </div>
                     </div>
-
-                    {/* Edit Mode: Delete Button */}
                     {isEditMode ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
@@ -342,15 +299,18 @@ export const RouteOverview: React.FC<Props> = ({
                         <Trash2 size={16} />
                       </button>
                     ) : (
-                      /* Normal Mode: Chevron Indicator */
-                      <div className="shrink-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+                      <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
+                          className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-colors"
+                        >
+                          <Play size={16} />
+                        </button>
                         <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
                           <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
                         </div>
                       </div>
                     )}
-
-                    {/* Progress Line - Shows loading progress */}
                     {(poi.isLoading || isLoaded) && (
                       <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
                         {isLoaded ? (
@@ -361,8 +321,6 @@ export const RouteOverview: React.FC<Props> = ({
                       </div>
                     )}
                   </div>
-
-                  {/* Insert Ad after every 3 items (but not the last one) */}
                   {(index + 1) % 3 === 0 && index !== route.pois.length - 1 && (
                     <div className="py-2">
                       <GoogleAd
@@ -382,7 +340,6 @@ export const RouteOverview: React.FC<Props> = ({
             })}
           </div>
 
-          {/* Nearby Suggestions - Only show when not in edit mode and not regenerating */}
           {!isEditMode && !isRegenerating && (
             <NearbyPOISuggestions
               route={route}
@@ -392,6 +349,6 @@ export const RouteOverview: React.FC<Props> = ({
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 };

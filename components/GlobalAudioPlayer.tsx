@@ -1,214 +1,196 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Headphones, Play, Pause, SkipForward, SkipBack, ChevronDown, Loader2, MapPin, Maximize2 } from 'lucide-react';
-import { AudioState, POI } from '../types';
-import { generateSpeech, decodeAudioData, decode } from '../services/geminiService';
+import React, { useState } from 'react';
+import { useAudio } from '../contexts/AudioContext';
+import { Headphones, Pause, Play, X, RotateCcw, RotateCw, FastForward, SkipBack, SkipForward } from 'lucide-react';
+import { Route } from '../types';
 
 interface Props {
-  audioState: AudioState;
-  setAudioState: (s: AudioState | ((prev: AudioState) => AudioState)) => void;
-  onGoToPoi: (id: string) => void;
-  pois: POI[];
   isHe: boolean;
-  navHidden: boolean;
-  isExpanded: boolean;
-  setIsExpanded: (v: boolean) => void;
+  currentRoute: Route | null;
+  isVisible?: boolean;
 }
 
-export const GlobalAudioPlayer: React.FC<Props> = ({ 
-  audioState, setAudioState, onGoToPoi, pois, isHe, navHidden, isExpanded, setIsExpanded 
-}) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const audioContext = useRef<AudioContext | null>(null);
-  const sourceNode = useRef<AudioBufferSourceNode | null>(null);
-  const isPlayingRef = useRef(audioState.isPlaying);
-  const currentPoi = pois.find(p => p.id === audioState.currentPoiId);
+export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisible = true }) => {
+  const { currentItem, isPlaying, pause, resume, stop, progress, playbackRate, setPlaybackRate, skip, seek, currentTime, duration } = useAudio();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekValue, setSeekValue] = useState(0);
 
-  // Sync ref with state to prevent playback starting if user paused during async generation
-  useEffect(() => {
-    isPlayingRef.current = audioState.isPlaying;
-  }, [audioState.isPlaying]);
-
-  const stopAudio = () => {
-    if (sourceNode.current) {
-      try {
-        sourceNode.current.onended = null;
-        sourceNode.current.stop();
-      } catch (e) {}
-      sourceNode.current = null;
-    }
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return "0:00";
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const playChapter = async (index: number) => {
-    stopAudio();
-    const chapter = audioState.chapters[index];
-    if (!chapter) return;
-    
-    setIsLoading(true);
-    setAudioState(prev => ({ ...prev, currentChapterIndex: index }));
+  if (!currentItem || !isVisible) return null;
 
-    try {
-      if (!audioContext.current) {
-        audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-      
-      const base64Audio = await generateSpeech(chapter.script, isHe ? 'he' : 'en');
-      
-      // CRITICAL CHECK: If user paused while we were generating, don't start playback
-      if (!isPlayingRef.current) {
-        setIsLoading(false);
-        return;
-      }
+  // Find POI name if it belongs to a route
+  const poiName = currentRoute?.pois.find(p => p.id === currentItem.poiId)?.name || currentItem.text.slice(0, 30);
 
-      const audioBuffer = await decodeAudioData(decode(base64Audio), audioContext.current, 24000, 1);
-      const source = audioContext.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.playbackRate.value = audioState.playbackRate;
-      source.connect(audioContext.current.destination);
-      sourceNode.current = source;
-      
-      source.start();
-      
-      source.onended = () => {
-        sourceNode.current = null;
-        if (index + 1 < audioState.chapters.length && isPlayingRef.current) {
-          playChapter(index + 1);
-        } else {
-          setAudioState(prev => ({ ...prev, isPlaying: false }));
-        }
-      };
-    } catch (e) {
-      console.error("Playback error:", e);
-      setAudioState(prev => ({ ...prev, isPlaying: false }));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Manage playback based on state
-  useEffect(() => {
-    if (audioState.isPlaying) {
-      if (!sourceNode.current && !isLoading) {
-        playChapter(audioState.currentChapterIndex);
-      }
-    } else {
-      stopAudio();
-    }
-  }, [audioState.isPlaying, audioState.currentPoiId]);
-
-  // Handle manual chapter changes while playing
-  useEffect(() => {
-    if (audioState.isPlaying && isPlayingRef.current) {
-      playChapter(audioState.currentChapterIndex);
-    }
-  }, [audioState.currentChapterIndex]);
-
-  // Sync playback rate
-  useEffect(() => {
-    if (sourceNode.current) {
-      sourceNode.current.playbackRate.value = audioState.playbackRate;
-    }
-  }, [audioState.playbackRate]);
-
-  // Audio cleanup on unmount
-  useEffect(() => {
-    return () => stopAudio();
-  }, []);
-
-  if (!audioState.currentPoiId || audioState.chapters.length === 0 || !isExpanded) return null;
+  const rates = [0.75, 1, 1.25, 1.5, 2];
 
   return (
-    <div 
-      dir={isHe ? 'rtl' : 'ltr'}
-      className="fixed inset-x-0 bottom-0 h-[85vh] bg-white rounded-t-[3.5rem] shadow-[0_-20px_100px_rgba(0,0,0,0.25)] z-[1000] transition-all duration-500 p-8 flex flex-col pointer-events-auto animate-in slide-in-from-bottom-full"
+    <div
+      className={`fixed inset-x-4 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-white/10 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-[10000] 
+        ${isExpanded
+          ? 'bottom-[20px] h-[40dvh]'
+          : 'bottom-[calc(100px+env(safe-area-inset-bottom))] h-20 active:scale-[0.98]'
+        }`}
     >
-       <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8 cursor-pointer" onClick={() => setIsExpanded(false)} />
-       
-       <header className="flex items-start justify-between mb-10">
-          <div className="flex-1 min-w-0">
-             <div className="flex items-center gap-2 text-emerald-500 mb-2">
-                <Headphones size={18} />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{isHe ? "לוח הבקרה" : "AUDIO DASHBOARD"}</span>
-             </div>
-             <h2 className="text-3xl font-bold text-slate-900 leading-tight truncate">{currentPoi?.name}</h2>
-          </div>
-          <button onClick={() => setIsExpanded(false)} className="p-4 bg-slate-50 rounded-full text-slate-400 hover:text-slate-900 shadow-sm transition-all active:scale-95">
-            <ChevronDown size={28} />
-          </button>
-       </header>
+      {/* Progress Bar (Visible ONLY when collapsed) */}
+      {!isExpanded && (
+        <div className="h-1.5 w-full bg-white/10 relative">
+          <div
+            className="h-full bg-indigo-500 transition-all duration-300 relative"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
 
-       <div className="flex flex-col items-center gap-8 mb-12">
-          <div className="flex items-center gap-10">
-            <button 
-              onClick={() => {
-                if (isHe) {
-                  if (audioState.currentChapterIndex < audioState.chapters.length - 1) playChapter(audioState.currentChapterIndex + 1);
-                } else {
-                  if (audioState.currentChapterIndex > 0) playChapter(audioState.currentChapterIndex - 1);
-                }
-              }}
-              className="p-4 text-slate-200 hover:text-slate-900 disabled:opacity-10 transition-colors" 
-              disabled={isHe ? audioState.currentChapterIndex === audioState.chapters.length - 1 : audioState.currentChapterIndex === 0}
+      <div className={`flex-1 flex flex-col ${isExpanded ? 'p-6' : 'px-4 justify-center'}`}>
+        {/* Top Header - Compact or Expanded */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${isPlaying ? 'bg-indigo-600 shadow-lg shadow-indigo-500/20' : 'bg-white/10'}`}
             >
-              <SkipBack size={40} fill="currentColor" />
+              <Headphones size={24} className={isPlaying ? 'animate-pulse' : ''} />
             </button>
-            <button 
-              onClick={() => setAudioState(prev => ({ ...prev, isPlaying: !prev.isPlaying }))}
-              className="w-28 h-28 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-2xl transition-all active:scale-90 hover:bg-emerald-600"
-            >
-              {isLoading ? <Loader2 size={48} className="animate-spin" /> : audioState.isPlaying ? <Pause size={48} fill="currentColor" /> : <Play size={48} fill="currentColor" className={isHe ? "rotate-180" : "ml-2"} />}
-            </button>
-            <button 
-              onClick={() => {
-                if (isHe) {
-                  if (audioState.currentChapterIndex > 0) playChapter(audioState.currentChapterIndex - 1);
-                } else {
-                  if (audioState.currentChapterIndex < audioState.chapters.length - 1) playChapter(audioState.currentChapterIndex + 1);
-                }
-              }}
-              className="p-4 text-slate-200 hover:text-slate-900 disabled:opacity-10 transition-colors" 
-              disabled={isHe ? audioState.currentChapterIndex === 0 : audioState.currentChapterIndex === audioState.chapters.length - 1}
-            >
-              <SkipForward size={40} fill="currentColor" />
-            </button>
-          </div>
-
-          <div className="flex bg-slate-50 p-1.5 rounded-2xl gap-1 shadow-inner">
-             {[1, 1.25, 1.5, 2].map(rate => (
-               <button 
-                key={rate} 
-                onClick={() => setAudioState(prev => ({ ...prev, playbackRate: rate }))}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all ${audioState.playbackRate === rate ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-               >
-                 {rate}x
-               </button>
-             ))}
-          </div>
-       </div>
-
-       <div className="flex-1 overflow-y-auto no-scrollbar space-y-3 pb-10">
-          {audioState.chapters.map((ch, idx) => (
-            <button 
-              key={idx}
-              onClick={() => playChapter(idx)}
-              className={`w-full text-right p-5 rounded-2xl border transition-all flex items-center gap-5 ${audioState.currentChapterIndex === idx ? 'bg-emerald-50 border-emerald-100' : 'bg-white border-slate-100 hover:border-slate-200'}`}
-            >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${audioState.currentChapterIndex === idx ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-50 text-slate-300'}`}>
-                {audioState.currentChapterIndex === idx && isLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-sm font-bold">{idx + 1}</span>}
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-bold leading-tight truncate">
+                  {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing') : (isHe ? 'מושהה' : 'Paused')}
+                </span>
+                {!isExpanded && (
+                  <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-white/60 font-medium">{playbackRate}x</span>
+                )}
               </div>
-              <h4 className={`text-base font-bold flex-1 truncate ${audioState.currentChapterIndex === idx ? 'text-emerald-700' : 'text-slate-700'}`}>{ch.title}</h4>
-              {audioState.currentChapterIndex === idx && audioState.isPlaying && <div className="flex gap-0.5 items-end h-3"><div className="w-0.5 bg-emerald-500 animate-[bounce_0.6s_infinite_alternate]" /><div className="w-0.5 bg-emerald-500 animate-[bounce_0.8s_infinite_alternate]" /><div className="w-0.5 bg-emerald-500 animate-[bounce_0.4s_infinite_alternate]" /></div>}
-            </button>
-          ))}
-       </div>
+              <span className={`text-white/60 truncate transition-all ${isExpanded ? 'text-sm mt-1' : 'text-[11px] max-w-[180px]'}`}>
+                {poiName}
+              </span>
+            </div>
+          </div>
 
-       <button 
-        onClick={() => { setIsExpanded(false); onGoToPoi(audioState.currentPoiId!); }}
-        className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-bold flex items-center justify-center gap-3 transition-all hover:bg-emerald-600 shadow-2xl active:scale-95"
-       >
-         <MapPin size={20} />
-         <span>{isHe ? "חזרה למידע על המקום" : "Back to Station Info"}</span>
-       </button>
+          {!isExpanded && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPlaying) pause();
+                  else resume();
+                }}
+                className="w-12 h-12 flex items-center justify-center rounded-full active:bg-white/10 transition-colors"
+                title={isHe ? (isPlaying ? 'השהה' : 'נגן') : (isPlaying ? 'Pause' : 'Play')}
+              >
+                {isPlaying ? <Pause size={24} className="fill-current" /> : <Play size={24} className="fill-current ml-1" />}
+              </button>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); stop(); }}
+                className="w-10 h-10 flex items-center justify-center text-white/50 hover:text-white rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          )}
+
+          {isExpanded && (
+            <button onClick={() => setIsExpanded(false)} className="p-2 text-white/40 hover:text-white">
+              <X size={24} />
+            </button>
+          )}
+        </div>
+
+        {/* Expanded Controls */}
+        {isExpanded && (
+          <div className="flex-1 flex flex-col justify-center animate-in fade-in zoom-in-95 duration-300 px-2" dir={isHe ? 'rtl' : 'ltr'}>
+
+            {/* Seeker / Slider */}
+            <div className="mb-6 px-1" dir="ltr">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="0.1"
+                value={isSeeking ? seekValue : (progress || 0)}
+                onChange={(e) => {
+                  setSeekValue(parseFloat(e.target.value));
+                  if (!isSeeking) setIsSeeking(true);
+                }}
+                onMouseUp={() => {
+                  seek(seekValue);
+                  setTimeout(() => setIsSeeking(false), 100);
+                }}
+                onTouchEnd={() => {
+                  seek(seekValue);
+                  setTimeout(() => setIsSeeking(false), 100);
+                }}
+                className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500 [&::-webkit-slider-thumb]:shadow-lg active:[&::-webkit-slider-thumb]:scale-125 transition-all outline-none"
+                style={{
+                  background: `linear-gradient(to right, #6366F1 0%, #6366F1 ${isSeeking ? seekValue : progress}%, rgba(255,255,255,0.1) ${isSeeking ? seekValue : progress}%, rgba(255,255,255,0.1) 100%)`
+                }}
+              />
+              <div className="flex justify-between text-[10px] text-white/40 mt-2 font-medium tracking-wide" dir="ltr">
+                <span>{formatTime(isSeeking ? (seekValue / 100) * duration : currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+
+            {/* Playback Controls */}
+            <div className="flex items-center justify-center gap-8 mb-8" dir="ltr">
+              <button
+                onClick={() => skip(-10)}
+                className="relative p-3 text-white/80 active:scale-90 transition-all flex flex-col items-center justify-center group"
+              >
+                <RotateCcw size={28} className="group-active:-rotate-45 transition-transform" />
+                <span className="absolute text-[8px] font-bold mt-[2px]">10</span>
+              </button>
+
+              <button
+                onClick={() => isPlaying ? pause() : resume()}
+                className="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-500/40 active:scale-95 transition-all hover:bg-indigo-500"
+              >
+                {isPlaying ? <Pause size={36} className="fill-current" /> : <Play size={36} className="fill-current ml-1" />}
+              </button>
+
+              <button
+                onClick={() => skip(10)}
+                className="relative p-3 text-white/80 active:scale-90 transition-all flex flex-col items-center justify-center group"
+              >
+                <RotateCw size={28} className="group-active:rotate-45 transition-transform" />
+                <span className="absolute text-[8px] font-bold mt-[2px]">10</span>
+              </button>
+            </div>
+
+            {/* Speed Selector */}
+            <div className="flex flex-col gap-3 mb-6">
+              <label className={`text-[10px] font-bold text-white/40 uppercase tracking-widest ${isHe ? 'text-right' : 'text-left'}`}>
+                {isHe ? 'מהירות נגינה' : 'Playback Speed'}
+              </label>
+              <div className="flex bg-white/5 p-1 rounded-xl" dir="ltr">
+                {rates.map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setPlaybackRate(r)}
+                    className={`flex-1 py-3 rounded-lg text-xs font-bold transition-all active:scale-95 ${playbackRate === r ? 'bg-white text-slate-900 shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                  >
+                    {r}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Disclaimer */}
+            <div className="text-center pb-2 opacity-50">
+              <p className="text-[9px] text-white/60 font-medium">
+                {isHe ? 'כן, הנגן הזה לא מושלם עדיין, אבל אנחנו עובדים על זה ;)' : 'Yeah, this player isn\'t perfect yet, but we\'re working on it ;)'}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
