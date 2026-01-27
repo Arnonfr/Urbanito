@@ -206,36 +206,34 @@ export const submitFeedback = async (userId: string | null, feedback: FeedbackDa
 };
 
 export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> => {
-  console.log('[getAllRecentRoutes] Fetching routes with limit:', limit);
-  return globalCache.fetch(`all-recent-routes-${limit}`, async () => {
-    try {
-      console.log('[getAllRecentRoutes] Cache miss - fetching from DB');
-      const { data: routes, error } = await supabase
-        .from('routes')
-        .select('id')
-        .eq('is_public', true)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+  console.log('[getAllRecentRoutes] Fetching routes with limit (NO CACHE):', limit);
 
-      if (error || !routes) {
-        console.error('[getAllRecentRoutes] Error fetching routes:', error);
-        return [];
-      }
+  try {
+    const { data: routes, error } = await supabase
+      .from('routes')
+      .select('id')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-      console.log(`[getAllRecentRoutes] Found ${routes.length} route IDs`);
-
-      const fullRoutes = await Promise.all(
-        routes.map(r => getRouteFromNewSchema(r.id))
-      );
-
-      const filtered = fullRoutes.filter(r => r !== null) as Route[];
-      console.log(`[getAllRecentRoutes] Returning ${filtered.length} full routes`);
-      return filtered;
-    } catch (e) {
-      console.error("[getAllRecentRoutes] failure:", e);
+    if (error || !routes) {
+      console.error('[getAllRecentRoutes] Error fetching routes:', error);
       return [];
     }
-  }, { ttl: 60000 });
+
+    console.log(`[getAllRecentRoutes] Found ${routes.length} route IDs`);
+
+    const fullRoutes = await Promise.all(
+      routes.map(r => getRouteFromNewSchema(r.id))
+    );
+
+    const filtered = fullRoutes.filter(r => r !== null) as Route[];
+    console.log(`[getAllRecentRoutes] Returning ${filtered.length} full routes`);
+    return filtered;
+  } catch (e) {
+    console.error("[getAllRecentRoutes] failure:", e);
+    return [];
+  }
 };
 
 export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[]> => {
