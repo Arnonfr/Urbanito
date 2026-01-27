@@ -72,9 +72,23 @@ export const RouteSkeleton: React.FC<{ isHe: boolean }> = ({ isHe }) => {
                   <h2 className="text-2xl font-normal text-slate-800 mb-2 animate-pulse">
                      {isHe ? 'בונה את המסלול המושלם...' : 'Crafting your perfect route...'}
                   </h2>
-                  <p className="text-slate-400 max-w-xs leading-relaxed text-sm font-light">
+                  <p className="text-slate-400 max-w-xs leading-relaxed text-sm font-light mb-8">
                      {isHe ? 'ה-AI סורק את העיר, מחבר נקודות עניין ומתאים את הזמנים.' : 'AI is scanning the city, connecting points of interest, and optimizing timing.'}
                   </p>
+
+                  {/* Square Ad in the center of the loading screen */}
+                  <div className="w-full max-w-[300px] mx-auto overflow-hidden rounded-xl border border-slate-100 shadow-sm bg-white/50">
+                     <GoogleAd
+                        slot="4724021981"
+                        format="rectangle"
+                        responsive={true}
+                        className="w-full h-auto"
+                        style={{ minHeight: '250px' }}
+                     />
+                     <div className="text-[10px] text-slate-300 py-1 bg-slate-50/50 uppercase tracking-widest">
+                        {isHe ? 'מודעה' : 'Advertisement'}
+                     </div>
+                  </div>
                </div>
 
                {/* Mobile Bottom Sheet Skeleton */}
