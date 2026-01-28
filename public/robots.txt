@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://urbanito.live/sitemap.xml
