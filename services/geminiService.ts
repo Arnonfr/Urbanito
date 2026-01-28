@@ -86,9 +86,14 @@ const getGuidePrompt = (style: string, language: string, city: string, prefs: Us
   4. NO HALLUCINATIONS: Do not invent names of buildings or fictional events. 
   5. STORYTELLING: Use professional historian style.`;
 
+  const context = prefs.jewishHistory
+    ? "FOCUS: The user is specifically interested in Jewish History, heritage, synagogues, and Holocaust memorials where relevant. Prioritize these sites."
+    : "FOCUS: Unless specifically requested otherwise, prioritize secular landmarks, architecture, local culture, and hidden urban gems. Avoid focusing heavily on religious sites (unless they are major secular architectural landmarks) or tragic historical events (like the Holocaust) unless explicitly part of the user's request. Keep the tone uplifting and curious.";
+
   return `You are a world-class urban historian for the city of ${city}. 
   MANDATORY: ALL output must be in ${langName}.
   ${qualityRule}
+  ${context}
   NAME FORMATTING: ${isHe ? '"שם בעברית (Original Name)"' : '"Name"'}.
   Return valid JSON only.`;
 };
@@ -194,11 +199,23 @@ export const generateWalkingRoute = async (city: string, location: any, preferen
 
     // Build constraints based on preferences
     const constraints: string[] = [];
-    if (preferences.religiousFriendly) constraints.push('suitable for religious visitors');
+    if (preferences.jewishHistory) {
+      constraints.push('Include Jewish heritage sites, synagogues, and relevant historical locations');
+    }
+
+    if (!preferences.religiousFriendly) {
+      if (preferences.jewishHistory) {
+        constraints.push('EXCLUDE churches and mosques, but INCLUDE Synagogues and Jewish sites');
+      } else {
+        constraints.push('STRICTLY EXCLUDE ALL religious sites (churches, synagogues, mosques, monasteries). Do not include them unless they are secular architectural icons (like Notre Dame).');
+      }
+    } else {
+      constraints.push('suitable for religious visitors');
+    }
     if (preferences.veganFriendly) constraints.push('include vegan-friendly locations');
     if (preferences.accessibleOnly) constraints.push('wheelchair accessible');
 
-    const constraintsText = constraints.length > 0 ? `\nADDITIONAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
+    const constraintsText = constraints.length > 0 ? `\nCRITICAL CONSTRAINTS (MUST FOLLOW): ${constraints.join(', ')}.` : '';
 
     // Bilingual naming instruction - CRITICAL: First line = target language, Second line = original language
     const namingFormat = isHe
@@ -292,10 +309,20 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
 
     // Build constraints based on preferences
     const constraints: string[] = [];
-    if (preferences.religiousFriendly) constraints.push('suitable for religious visitors');
+    if (preferences.jewishHistory) {
+      constraints.push('Include Jewish heritage sites and history');
+    }
+
+    if (!preferences.religiousFriendly) {
+      if (preferences.jewishHistory) {
+        constraints.push('EXCLUDE churches/mosques, INCLUDE Jewish sites');
+      } else {
+        constraints.push('STRICTLY EXCLUDE religious sites unless they are major secular landmarks');
+      }
+    }
     if (preferences.veganFriendly) constraints.push('include vegan-friendly locations');
     if (preferences.accessibleOnly) constraints.push('wheelchair accessible');
-    const constraintsText = constraints.length > 0 ? `\nADDITIONAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
+    const constraintsText = constraints.length > 0 ? `\nCRITICAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
 
     const response = await aiCall({
       contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, streetName, preferences)}

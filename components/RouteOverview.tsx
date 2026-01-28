@@ -59,6 +59,40 @@ export const RouteOverview: React.FC<Props> = ({
   const touchStart = useRef<number | null>(null);
   const { playText, queueText, stop, isPlaying } = useAudio();
 
+  // Optimizing AdSense Targeting by updating page context
+  React.useEffect(() => {
+    if (route) {
+      // 1. Update Page Title
+      const originalTitle = document.title;
+      document.title = `${route.name} in ${route.city} | Urbanito`;
+
+      // 2. Update Meta Keywords for Contextual Targeting
+      let keywordsMeta = document.querySelector('meta[name="keywords"]');
+      if (!keywordsMeta) {
+        keywordsMeta = document.createElement('meta');
+        keywordsMeta.setAttribute('name', 'keywords');
+        document.head.appendChild(keywordsMeta);
+      }
+      // Create keywords from route data (e.g., "Tel Aviv, History, Tourism, Travel")
+      const categories = Array.from(new Set(route.pois.map(p => p.category).filter(Boolean)));
+      const keywords = [route.city, route.name, 'travel', 'tourism', 'guide', ...categories].join(', ');
+      keywordsMeta.setAttribute('content', keywords);
+
+      // 3. Update Description
+      let descriptionMeta = document.querySelector('meta[name="description"]');
+      if (!descriptionMeta) {
+        descriptionMeta = document.createElement('meta');
+        descriptionMeta.setAttribute('name', 'description');
+        document.head.appendChild(descriptionMeta);
+      }
+      descriptionMeta.setAttribute('content', `Explore ${route.name} in ${route.city}. A curated tour featuring ${route.pois.length} stops including ${route.pois.slice(0, 3).map(p => p.name).join(', ')}.`);
+
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [route]);
+
   const handlePlayPoi = async (poiToPlay: POI, idx: number) => {
     stop();
     const currentText = (poiToPlay as any).audioText || poiToPlay.description || "";
@@ -75,6 +109,10 @@ export const RouteOverview: React.FC<Props> = ({
   };
 
   const handlePrefsClick = async () => {
+    if (!isPrefsOpen && !isExpanded) {
+      setIsExpanded(true);
+    }
+
     if (isPrefsOpen) {
       const hasChanges = JSON.stringify(initialPrefs) !== JSON.stringify(preferences);
       if (hasChanges) {

@@ -12,6 +12,7 @@ export interface UserPreferences {
   explanationStyle: 'simple' | 'standard' | 'deep';
   fontSize?: number;
   customPrompt?: string;
+  jewishHistory?: boolean;
   audioMode?: 'free' | 'premium';
 }
 

@@ -926,17 +926,58 @@ const App: React.FC = () => {
     }
 
     try {
-      const saved = await saveRouteToSupabase(user.id, currentRoute, preferences);
-      if (saved) {
-        showToast(isHe ? 'המסלול נשמר בהצלחה!' : 'Route saved successfully!');
-        refreshSavedContent(user.id);
+      if (isCurrentRouteSaved) {
+        // Try finding by ID first
+        let savedEntry = savedRoutes.find(r => r.id === currentRoute.id);
+
+        // If not found by ID, find by Name+City logic (which is what drives the UI state isCurrentRouteSaved)
+        if (!savedEntry) {
+          savedEntry = savedRoutes.find(r =>
+            normalize(r.route_data.name) === normalize(currentRoute.name) &&
+            normalize(r.route_data.city) === normalize(currentRoute.city)
+          );
+        }
+
+        if (savedEntry) {
+          await deleteRouteFromSupabase(savedEntry.id, user.id);
+          showToast(isHe ? 'המסלול הוסר מהמועדפים' : 'Route removed from favorites');
+        } else {
+          // Fallback if ID mismatch but logic says saved
+          await deleteRouteFromSupabase(currentRoute.id, user.id);
+          showToast(isHe ? 'המסלול הוסר מהמועדפים' : 'Route removed from favorites');
+        }
       } else {
-        showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
+        const saved = await saveRouteToSupabase(user.id, currentRoute, preferences);
+        if (saved) {
+          showToast(isHe ? 'המסלול נשמר בהצלחה!' : 'Route saved successfully!');
+        } else {
+          showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
+        }
       }
+      // Wait a moment for DB propagation then refresh
+      setTimeout(() => refreshSavedContent(user.id), 100);
     } catch (err) {
-      showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
+      showToast(isHe ? 'שגיאה בפעולה' : 'Action failed', 'error');
     }
   };
+
+  const handleTogglePoiSave = async (poi: POI) => {
+    if (!user) {
+      showToast(isHe ? 'יש להתחבר כדי לשמור מקומות' : 'Please login to save places', 'error');
+      return;
+    }
+    const isSaved = savedPois.some(p => p.id === poi.id);
+    if (isSaved) {
+      await deletePoiFromSupabase(poi.id, user.id);
+      showToast(isHe ? 'המקום הוסר מהשמורים' : 'Place removed from saved');
+    } else {
+      await savePoiToSupabase(user.id, poi);
+      showToast(isHe ? 'המקום נשמר!' : 'Place saved!');
+    }
+    refreshSavedContent(user.id);
+  };
+
+
 
   // Update map selection circle when radius preference changes
   useEffect(() => {
@@ -1058,7 +1099,7 @@ const App: React.FC = () => {
         <Suspense fallback={null}>
           {showOnboarding && <UserGuide isHe={isHe} onClose={() => { setShowOnboarding(false); localStorage.setItem('urbanito_onboarding_v2', 'true'); }} />}
         </Suspense>
-        {toast && <div className={`fixed top-[calc(env(safe-area-inset-top)+12px)] left-1/2 -translate-x-1/2 z-[10000] px-6 py-3 rounded-[8px] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}><CheckCircle size={18} /><span className="text-sm font-medium">{toast.message}</span></div>}
+        {toast && <div className={`fixed top-[calc(env(safe-area-inset-top)+12px)] left-1/2 -translate-x-1/2 z-[10000] px-6 py-3 rounded-[12px] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}><CheckCircle size={18} /><span className="text-sm font-medium whitespace-nowrap">{toast.message}</span></div>}
         {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
         {isSearchingNearby && <div className="fixed inset-0 z-[8000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-[8px] shadow-2xl flex flex-col items-center gap-4"><Loader2 size={40} className="animate-spin text-indigo-500" /><p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים בסביבה...' : 'Searching nearby...'}</p></div></div>}
 
@@ -1432,7 +1473,22 @@ const App: React.FC = () => {
 
           {selectedPoi && currentRoute && (
             <Suspense fallback={<div className="fixed inset-x-0 bottom-0 h-[400px] bg-white z-[5000] rounded-t-lg flex items-center justify-center border-t shadow-2xl"><Loader2 className="animate-spin text-indigo-500 w-8 h-8" /></div>}>
-              <UnifiedPoiCard poi={selectedPoi} route={currentRoute} currentIndex={currentRoute.pois.findIndex(p => p.id === selectedPoi.id)} totalCount={currentRoute.pois.length} preferences={preferences} onUpdatePreferences={setPreferences} onClose={() => setSelectedPoi(null)} onNext={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]); }} onPrev={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]); }} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} showToast={showToast} />
+              <UnifiedPoiCard
+                poi={selectedPoi}
+                route={currentRoute}
+                currentIndex={currentRoute.pois.findIndex(p => p.id === selectedPoi.id)}
+                totalCount={currentRoute.pois.length}
+                preferences={preferences}
+                onUpdatePreferences={setPreferences}
+                onClose={() => setSelectedPoi(null)}
+                onNext={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]); }}
+                onPrev={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]); }}
+                isExpanded={isCardExpanded}
+                setIsExpanded={setIsCardExpanded}
+                showToast={showToast}
+                isSaved={savedPois.some(p => p.id === selectedPoi.id)}
+                onSave={() => handleTogglePoiSave(selectedPoi)}
+              />
             </Suspense>
           )}
 

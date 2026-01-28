@@ -15,14 +15,16 @@ interface Props {
   currentIndex: number; totalCount: number; preferences: UserPreferences; onUpdatePreferences: (p: UserPreferences) => void;
   isExpanded: boolean; setIsExpanded: (v: boolean) => void;
   showToast?: (m: string, t?: 'success' | 'error') => void;
+  isSaved?: boolean; onSave?: () => void;
 }
 
 import { useAudio } from '../contexts/AudioContext';
 
 export const UnifiedPoiCard: React.FC<Props> = ({
-  poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast
+  poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast, isSaved, onSave
 }) => {
   const isHe = preferences.language === 'he';
+
   const { playText, stop, pause, resume, isPlaying, currentItem, progress, playbackRate } = useAudio();
   const isCurrentPoiPlaying = isPlaying && (currentItem?.poiId === poi.id || currentItem?.id === poi.id);
 
@@ -106,8 +108,8 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                 </span>
               )}
             </button>
-            <button className="w-10 h-10 flex items-center justify-center text-rose-400 hover:text-rose-300 rounded-[8px]">
-              <Heart size={18} />
+            <button onClick={(e) => { e.stopPropagation(); onSave?.(); }} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white/70 hover:text-white'}`}>
+              <Heart size={18} className={isSaved ? 'fill-current' : ''} />
             </button>
           </div>
         </div>

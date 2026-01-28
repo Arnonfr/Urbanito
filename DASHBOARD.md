@@ -1,32 +1,49 @@
 # Urbanito Project Dashboard
 
 ## Status: Active Development
-**Last Updated:** 2026-01-25
+**Last Updated:** 2026-01-28
 
-### ✅ Completed Today (2026-01-25)
-- **Database Infrastructure:**
-  - Integrated **Supabase MCP** for database management.
-  - Applied necessary database migrations and schema updates.
-- **Components & UI:**
-  - **Station Display:** Updated logic to ensure every station appears with its Hebrew title.
-  - **Animations:** Iterated on "tightening" animations (Remotion workflows).
-  - **Design Feedback:** Reviewed button hierarchy ("two purple buttons" issue) and share icon.
-- **Feature Planning:**
-  - **Google AdSense:** Created implementation plan (`implementation_plan_google_ads.md`) and began integration steps.
-  - **Voice AI:** Initiated planning for a "Reading Plan" feature using Voice AI agents.
-- **System & Process:**
-  - Refined system prompts for better AI agent alignment.
-  - Investigated capabilities for an autonomous testing agent.
+### ✅ Completed Today (2026-01-28)
+- **UI Redesign:**
+  - **RouteOverview:** Complete overhaul of the header to match `UnifiedPoiCard` aesthetics (Full-width image, glassmorphism).
+  - **Route Tabs:** Implemented smart tab management (Autohide on non-route pages, "Shrink" logic for >3 routes).
+- **UX Enhancements:**
+  - **Contextual Actions:** "Regenerate" button now correctly says "Update Route" when editing.
+  - **Visual Polish:** Fixed Z-index layering, padded scroll areas, and standardized the central FAB button.
+- **Infrastructure:**
+  - **Git:** Pushed all recent changes to `main`.
+  - **Documentation:** Created `CHANGELOG.md` to track version history.
 
-### 🚧 Suggestions Not Yet Implemented
-1. **UI/UX Improvements:**
-   - [ ] **Share Button Icon:** Replace the current icon with a standard/universal share icon for better recognizability.
-   - [ ] **Button Styling:** Resolve the "two purple buttons" visual conflict to establish clear primary/secondary action hierarchy.
-   - [ ] **Animation Finalization:** Verify the "tightened" animations meet the final desired quality.
+### 📊 Progress Metrics
+- **Core Functionality:** 90% (Routes, POIs, Audio, Map are stable).
+- **UI Polish:** 85% (Main flows are polished, edge cases being refined).
+- **Mobile Responsiveness:** 95% (Optimized for mobile-first).
+- **Monetization:** 40% (AdSense implementation started/planned).
 
-2. **New Features:**
-   - [ ] **Voice AI Integration:** Execute the "Reading Plan" implementation (Text-to-Speech integration).
-   - [ ] **AdSense Completion:** Finalize the script integration and verify ad rendering.
+### 📱 Roadmap to iOS App (Delivery Estimate: ~1 Week)
+Current Stack: React (Vite) + Tailwind + Supabase.
+**Recommended Approach:** Capacitor (Wrapper).
 
-3. **Infrastructure:**
-   - [ ] **Testing Suite:** Establish a dedicated testing workflow or agent to debug and verify stability.
+**Remaining Tasks:**
+1.  **Capacitor Integration (1-2 Days):**
+    - [ ] Install `@capacitor/core`, `@capacitor/cli`, `@capacitor/ios`.
+    - [ ] Initialize Capacitor config.
+    - [ ] Build web assets (`npm run build`).
+2.  **Native Configuration (1 Day):**
+    - [ ] Add iOS platform (`npx cap add ios`).
+    - [ ] Configure `Info.plist` (Permissions descriptions for Geolocation).
+    - [ ] Set up deep linking (if needed for authentication callbacks).
+3.  **Testing & Refinement (2-3 Days):**
+    - [ ] Test on iOS Simulator.
+    - [ ] Verify native plugins (Geolocation, Audio background mode).
+    - [ ] Adjust "Safe Area" insets (notch/home bar) if needed.
+4.  **App Store Prep (1-2 Days):**
+    - [ ] Generate App Icons and Splash Screens.
+    - [ ] Create Apple Developer Account (if not exists).
+    - [ ] Archive and Submit to TestFlight/App Store.
+
+### 🚧 Pending items
+- [ ] **AdSense:** Finalize implementation.
+- [ ] **Voice/Reading Plan:** Finalize "Reading Plan" feature features.
+- [ ] **Tests:** Set up automated testing workflow.
+

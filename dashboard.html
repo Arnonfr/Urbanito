@@ -155,60 +155,58 @@
         const activeAgents = [
             {
                 role: 'Product Manager',
-                status: 'active', // active, idle, waiting
-                currentTask: 'AdSense Integration Plan',
-                lastUpdate: 'Created implementation_plan_google_ads.md. Prioritizing Voice features.',
+                status: 'active',
+                currentTask: 'iOS Delivery Roadmap',
+                lastUpdate: 'Defined Capacitor integration steps. Estimated 1 week for App Store submission.',
                 icon: 'briefcase',
                 color: 'text-blue-600',
                 bg: 'bg-blue-50'
             },
             {
                 role: 'Full Stack Developer',
-                status: 'busy',
-                currentTask: 'Supabase & Stations',
-                lastUpdate: 'Integrated Supabase MCP. Fixed Hebrew station titles display.',
+                status: 'active',
+                currentTask: 'UI Polish & Refactoring',
+                lastUpdate: 'Redesigned RouteOverview header, fixed tabs logic, and consolidated UI styles.',
                 icon: 'code-2',
                 color: 'text-emerald-600',
                 bg: 'bg-emerald-50'
             },
             {
                 role: 'UI/UX Designer',
-                status: 'active',
-                currentTask: 'Animation & Hierarchy',
-                lastUpdate: 'Refining Remotion animations. Reviewing "two purple buttons" conflict.',
+                status: 'idle',
+                currentTask: 'Visual Review',
+                lastUpdate: 'Approved glassmorphic header and new tab aesthetics. Waiting for ad mocks.',
                 icon: 'palette',
                 color: 'text-purple-600',
                 bg: 'bg-purple-50'
             },
             {
-                role: 'DevOps & QA',
-                status: 'idle',
-                currentTask: 'System Health Check',
-                lastUpdate: 'Monitoring build status. Investigating autonomous testing agents.',
-                icon: 'server',
-                color: 'text-slate-600',
-                bg: 'bg-slate-50'
+                role: 'Prompt Engineer',
+                status: 'active',
+                currentTask: 'Content Bias Tuning',
+                lastUpdate: 'Adjusting system prompts to reduce Holocaust/Jewish focus in general tourist contexts.',
+                icon: 'message-square', // Changed icon for prompt engineer
+                color: 'text-amber-600',
+                bg: 'bg-amber-50'
             }
         ];
 
         const pendingSuggestions = [
-            { text: 'Replace share icon with standard icon', type: 'design' },
-            { text: 'Resolve "Two Purple Buttons" conflict', type: 'design' },
-            { text: 'Implement Voice AI / Reading Plan', type: 'feature' },
-            { text: 'Finalize Google AdSense script', type: 'feature' },
+            { text: 'iOS: Install Capacitor & Platforms', type: 'infra' },
+            { text: 'iOS: Configure Info.plist & Permissions', type: 'infra' },
+            { text: 'iOS: Test on Simulator & Device', type: 'qa' },
+            { text: 'Reduce "Jewish/Holocaust" bias in generic prompts', type: 'content' },
         ];
 
         const screenshots = [
-            { id: 'landing', title: 'Map Exploration', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/landing_page_map_1769286842708.png' },
-            { id: 'library', title: 'Route Library', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/library_page_1769286861696.png' },
-            { id: 'route', title: 'Tour Overview', path: '.gemini/antigravity/brain/ad96530d-5362-444d-8c56-b9f8d8720023/route_overview_1769287028769.png' },
+            { id: 'route', title: 'New Route Header', path: 'https://placehold.co/600x400/1e293b/ffffff?text=New+Route+Header' }, // Placeholder for now or previous paths
+             // ... keeping existing or placeholders
         ];
 
         const commits = [
-            { h: 'HEAD', a: 'System', t: 'Just now', m: 'docs: Update DASHBOARD.md with today\'s progress' },
-            { h: 'd385781', a: 'Arnonfr', t: 'Today', m: 'feat: Add Supabase MCP integration' },
-            { h: '9ba00eb', a: 'Arnonfr', t: 'Today', m: 'fix: Hebrew station titles not showing' },
-            { h: 'b7be093', a: 'Arnonfr', t: 'Today', m: 'docs: Create AdSense implementation plan' },
+            { h: 'HEAD', a: 'System', t: 'Just now', m: 'docs: Update web dashboard with iOS roadmap' },
+            { h: '4f39323', a: 'Arnonfr', t: 'Today', m: 'feat: Redesign RouteOverview & Tabs' },
+            { h: 'e1a857f', a: 'Arnonfr', t: 'Today', m: 'feat: Update route editing implementation' },
         ];
 
 
