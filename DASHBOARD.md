@@ -20,18 +20,18 @@
 - **Mobile Responsiveness:** 95% (Optimized for mobile-first).
 - **Monetization:** 40% (AdSense implementation started/planned).
 
-### 📱 Roadmap to iOS App (Delivery Estimate: ~1 Week)
-Current Stack: React (Vite) + Tailwind + Supabase.
-**Recommended Approach:** Capacitor (Wrapper).
+### 📱 Roadmap to iOS App
+**[👉 לחץ כאן למעבר ללוח הבקרה המלא של iOS (עברית)](./IOS_DASHBOARD.md)**
+Current Stack: React (Vite) + Tailwind + Supabase + Capacitor.
 
 **Remaining Tasks:**
 1.  **Capacitor Integration (1-2 Days):**
-    - [ ] Install `@capacitor/core`, `@capacitor/cli`, `@capacitor/ios`.
-    - [ ] Initialize Capacitor config.
-    - [ ] Build web assets (`npm run build`).
+    - [x] Install `@capacitor/core`, `@capacitor/cli`, `@capacitor/ios`.
+    - [x] Initialize Capacitor config.
+    - [x] Build web assets (`npm run build`).
 2.  **Native Configuration (1 Day):**
-    - [ ] Add iOS platform (`npx cap add ios`).
-    - [ ] Configure `Info.plist` (Permissions descriptions for Geolocation).
+    - [x] Add iOS platform (`npx cap add ios`).
+    - [x] Configure `Info.plist` (Permissions descriptions for Geolocation).
     - [ ] Set up deep linking (if needed for authentication callbacks).
 3.  **Testing & Refinement (2-3 Days):**
     - [ ] Test on iOS Simulator.

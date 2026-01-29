@@ -5,6 +5,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/ios": "^8.0.2",
     "@google-cloud/secret-manager": "^5.0.0",
     "@google/genai": "^1.38.0",
     "@supabase/supabase-js": "^2.91.1",

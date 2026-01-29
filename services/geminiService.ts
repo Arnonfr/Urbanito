@@ -1,5 +1,7 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
+// Fallback manual definition since SchemaType export is missing in this version
+const SchemaType = { OBJECT: "OBJECT", STRING: "STRING", ARRAY: "ARRAY" };
 import { UserPreferences, Route, POI } from "../types";
 import {
   getCachedPoiDetails,
@@ -263,10 +265,20 @@ JSON SCHEMA:
         "duration": "e.g., 5 mins"
       }
     }
+    }
+  ],
+  "suggested_detours": [
+    {
+       "name": ${isHe ? '"שם בעברית (Original Name)"' : '"Name (Original Name)"'},
+       "lat": <latitude>,
+       "lng": <longitude>,
+       "summary": "Why it's worth a quick detour (1 sentence)",
+       "category": "hidden_gem"
+    }
   ]
 }
       
-NOTE: Only provide a short summary for each POI. Detailed narratives will be fetched in a follow-up step. Keep the response compact for maximum speed.`,
+NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby (cafes, viewpoints, hidden stats) that are NOT in the main route list.`,
       config: { responseMimeType: "application/json" }
     });
 
@@ -286,9 +298,15 @@ NOTE: Only provide a short summary for each POI. Detailed narratives will be fet
       name: data.name || city,
       description: data.description || "",
       shareTeaser: data.shareTeaser || "",
+
       durationMinutes: estimatedDuration,
       creator: "Urbanito AI",
-      pois
+      pois,
+      suggested_detours: (data.suggested_detours || []).map((p: any) => ({
+        ...p,
+        id: generateStableId(p.name, p.lat, p.lng),
+        isFullyLoaded: isHe // Pre-load language flag, but content is minimal
+      }))
     };
   } catch (err) { throw err; }
 };
@@ -365,9 +383,20 @@ JSON SCHEMA:
       }
     }
   ]
+    }
+  ],
+  "suggested_detours": [
+    {
+       "name": ${isHe ? '"שם בעברית (Original Name)"' : '"Name (Original Name)"'},
+       "lat": <latitude>,
+       "lng": <longitude>,
+       "summary": "Why it's worth a quick detour (1 sentence)",
+       "category": "hidden_gem"
+    }
+  ]
 }
       
-NOTE: Keep POI descriptions to 1-2 sentences for speed. Full narratives are loaded later.`,
+NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby (cafe, viewpoint, hidden courtyard) that are NOT in the main route list. Keep POI descriptions to 1-2 sentences for speed.`,
       config: { responseMimeType: "application/json" }
     });
 
@@ -419,3 +448,64 @@ export const generateSpeech = async (text: string, language: string) => {
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
   } catch (e) { return ""; }
 };
+
+/**
+ * Orchestrator Agent Logic
+ * Parses natural language into structured commands for the virtual team.
+ */
+/**
+ * Orchestrator Simulation (Mini-Me)
+ * Simulates intelligent delegation without external API keys.
+ */
+export async function runOrchestrator(userMessage: string): Promise<{ reply: string, delegations: { agentId: string, taskDescription: string }[] }> {
+
+  // Artificial delay to simulate "thinking"
+  await new Promise(resolve => setTimeout(resolve, 1500));
+
+  const msg = userMessage.toLowerCase();
+  const delegations: { agentId: string, taskDescription: string }[] = [];
+  let reply = "";
+
+  // 1. ATLAS (Maps & Routes)
+  if (msg.includes('route') || msg.includes('map') || msg.includes('place') || msg.includes('find') || msg.includes('go to') || msg.includes('מסלול') || msg.includes('מפה')) {
+    delegations.push({
+      agentId: 'atlas',
+      taskDescription: `Analyzing geospatial data for: "${userMessage}"`
+    });
+    if (!reply) reply = "Accessing navigation systems. Atlas is calculating coordinates.";
+  }
+
+  // 2. SCRIBE (Content & Writing)
+  if (msg.includes('write') || msg.includes('desc') || msg.includes('story') || msg.includes('post') || msg.includes('blog') || msg.includes('תכתוב') || msg.includes('תיאור')) {
+    delegations.push({
+      agentId: 'scribe',
+      taskDescription: `Drafting creative content for: "${userMessage}"`
+    });
+    if (!reply) reply = "Creative directive received. Scribe is composing the narrative.";
+  }
+
+  // 3. BUILDER (Tech & UI)
+  if (msg.includes('fix') || msg.includes('bug') || msg.includes('color') || msg.includes('button') || msg.includes('ui') || msg.includes('code') || msg.includes('תקן') || msg.includes('באג')) {
+    delegations.push({
+      agentId: 'builder',
+      taskDescription: `Diagnostics running. Patching system for: "${userMessage}"`
+    });
+    if (!reply) reply = "System anomaly detected. Builder is deploying a hotfix.";
+  }
+
+  // Fallback / General Conversation
+  if (delegations.length === 0) {
+    if (msg.includes('hello') || msg.includes('hi') || msg.includes('help') || msg.includes('status')) {
+      reply = "Alpha System v2.1 active. All agents on standby. Awaiting your directive.";
+    } else {
+      reply = `Command "${userMessage}" acknowledged. No specific agent protocol found, but logged for review.`;
+    }
+  }
+
+  // Combine multiple agents response if needed
+  if (delegations.length > 1) {
+    reply = `Multi-agent protocol initiated. Synchronizing ${delegations.map(d => d.agentId).join(' and ')} for execution.`;
+  }
+
+  return { reply, delegations };
+}

@@ -87,6 +87,8 @@ export interface Route {
   dist?: number; // Distance from center, used for nearby discovery
   parent_route_id?: string; // ID of the route this was forked from
   directionsData?: any; // Cached directions result
+  suggested_detours?: POI[]; // Optional nearby gems
+  originalPoiCount?: number; // Track original count to detect content changes for public saving logic
 }
 
 export interface AudioState {

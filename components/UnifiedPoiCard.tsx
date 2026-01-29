@@ -28,9 +28,13 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const { playText, stop, pause, resume, isPlaying, currentItem, progress, playbackRate } = useAudio();
   const isCurrentPoiPlaying = isPlaying && (currentItem?.poiId === poi.id || currentItem?.id === poi.id);
 
-  const [fontSize, setFontSize] = useState<'normal' | 'large'>('normal');
+  const [fontLevel, setFontLevel] = useState<0 | 1 | 2>(0);
   const [isImageFullscreen, setIsImageFullscreen] = useState(false);
   const touchStart = useRef<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartScrollTop = useRef(0);
 
   // Data comes fully from props now (managed by App.tsx pre-fetching)
   const isLoading = !poi.isFullyLoaded;
@@ -44,14 +48,43 @@ export const UnifiedPoiCard: React.FC<Props> = ({
     touchStart.current = null;
   };
 
-  const openInGoogleMaps = () => {
-    let url = `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`;
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    isDragging.current = true;
+    dragStartY.current = e.clientY;
+    dragStartScrollTop.current = scrollRef.current?.scrollTop || 0;
+  };
 
-    // If we have a Google Place ID, use it for a much better experience (shows the place card)
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current || !scrollRef.current) return;
+    e.preventDefault();
+    const dy = e.clientY - dragStartY.current;
+    scrollRef.current.scrollTop = dragStartScrollTop.current - dy;
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+
+    const totalDy = e.clientY - dragStartY.current;
+    if (Math.abs(totalDy) > 60) {
+      if (totalDy < -60 && !isExpanded) setIsExpanded(true);
+      if (totalDy > 60 && isExpanded && (!scrollRef.current || scrollRef.current.scrollTop <= 10)) setIsExpanded(false);
+    }
+  };
+
+  const openInGoogleMaps = () => {
+    // Priority 1: Google Place ID (Best precision + Business Card)
     if (poi.googlePlaceId) {
-      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(poi.name)}&query_place_id=${poi.googlePlaceId}`;
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(poi.name)}&query_place_id=${poi.googlePlaceId}`;
+      window.open(url, '_blank');
+      return;
     }
 
+    // Priority 2: Place Name + City (Good precision, shows business card usually)
+    // We append the city/route-city context to disambiguate
+    const query = `${poi.name}, ${route.city || ''}`;
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
     window.open(url, '_blank');
   };
 
@@ -66,179 +99,218 @@ export const UnifiedPoiCard: React.FC<Props> = ({
     playText(text, preferences.language, poi.id, 'high');
   };
 
-  const parenMatch = poi.name.match(/(.*?)\s*\((.*?)\)/);
-  const mainTitle = parenMatch ? parenMatch[1].trim() : poi.name;
-  const subTitle = parenMatch ? parenMatch[2].trim() : "";
+  // Localization Logic
+  let translatedName = poi.name;
+  let originalName = "";
+
+  if (isHe) {
+    if (poi.content?.name_he) translatedName = poi.content.name_he;
+    else if ((poi as any).data?.name_he) translatedName = (poi as any).data.name_he;
+
+    if (poi.content?.name_en) originalName = poi.content.name_en;
+    else if ((poi as any).data?.name_en) originalName = (poi as any).data.name_en;
+    else if (poi.name !== translatedName) originalName = poi.name;
+  } else {
+    if (poi.content?.name_en) translatedName = poi.content.name_en;
+    else if ((poi as any).data?.name_en) translatedName = (poi as any).data.name_en;
+  }
+
+  const parenMatch = translatedName.match(/(.*?)\s*\((.*?)\)/);
+  const mainTitle = parenMatch ? parenMatch[1].trim() : translatedName;
+  const subTitle = parenMatch ? parenMatch[2].trim() : (originalName !== mainTitle ? originalName : "");
+
+  const fontClasses = {
+    0: 'text-base font-normal',
+    1: 'text-xl font-normal leading-relaxed',
+    2: 'text-3xl font-normal leading-loose'
+  };
 
   return (
     <div
       className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[96dvh]' : 'h-[420px]'} bg-white/50 backdrop-blur-xl border-t border-white/40 overflow-hidden`}
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
     >
-      <div className={`w-full shrink-0 relative transition-all duration-500 ${isExpanded ? 'h-64' : 'h-48'} bg-slate-900 group`}>
-        <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
+      <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar relative pb-32">
+        <div className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-72' : 'h-48'} bg-slate-900 group`}>
+          <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
-        <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
-          <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
-        </div>
-
-        <div className="absolute top-8 inset-x-6 flex items-center justify-between z-10">
-          <div className={isHe ? "order-1" : "order-2"}>
-            <button onClick={onClose} className="h-12 px-4 flex items-center gap-2 bg-black/40 backdrop-blur-md text-white rounded-[8px] border border-white/10 transition-transform active:scale-90 text-[11px] font-medium uppercase tracking-widest">
-              {isHe ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}
-              <span>{isHe ? "חזרה" : "Back"}</span>
-            </button>
+          <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
+            <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
           </div>
 
-          <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 ${isHe ? "order-2" : "order-1"}`}>
-            <button onClick={() => setFontSize(prev => prev === 'normal' ? 'large' : 'normal')} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${fontSize === 'large' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'}`}>
-              <TypeIcon size={18} />
-            </button>
-            <button onClick={openInGoogleMaps} className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white rounded-[8px]">
-              <MapPin size={18} />
-            </button>
-            <button onClick={handleAudioClick} className={`w-10 h-10 flex items-center justify-center rounded-[8px] relative transition-all active:scale-95 ${isCurrentPoiPlaying ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/90 hover:text-white'}`}>
-              <Headphones size={18} className={isCurrentPoiPlaying ? 'animate-pulse' : ''} />
-              {isCurrentPoiPlaying && (
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
-                </span>
-              )}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); onSave?.(); }} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white/70 hover:text-white'}`}>
-              <Heart size={18} className={isSaved ? 'fill-current' : ''} />
-            </button>
-          </div>
-        </div>
+          <div className="absolute top-8 inset-x-6 flex items-center justify-between z-10">
+            <div className={isHe ? "order-1" : "order-2"}>
+              <button onClick={onClose} className="h-12 px-4 flex items-center gap-2 bg-black/40 backdrop-blur-md text-white rounded-[8px] border border-white/10 transition-transform active:scale-90 text-[11px] font-medium uppercase tracking-widest">
+                {isHe ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}
+                <span>{isHe ? "חזרה" : "Back"}</span>
+              </button>
+            </div>
 
-        <div className="absolute bottom-6 inset-x-8 flex flex-col text-right">
-          <span className="text-[#14B8A6] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1">
-            {poi.category && CATEGORY_LABELS_HE[poi.category]}
-
-            {currentIndex > 0 && poi.travelFromPrevious && (
-              <>
-                <span className="mx-2 text-white/30">|</span>
-                <span className="text-white/80 flex items-center gap-1.5 inline-flex">
-                  <Footprints size={10} />
-                  {poi.travelFromPrevious.distance} • {poi.travelFromPrevious.duration}
-                </span>
-              </>
-            )}
-          </span>
-          <h2 className="text-2xl font-semibold text-white leading-tight">{mainTitle}</h2>
-          {subTitle && <span className="text-[11px] font-normal text-white/50 mt-0.5 tracking-wide uppercase">{subTitle}</span>}
-        </div>
-
-        <button
-          onClick={() => setIsImageFullscreen(true)}
-          className="absolute bottom-4 left-6 w-9 h-9 bg-black/40 text-white rounded-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Maximize2 size={16} />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto no-scrollbar px-8 py-8 space-y-12 pb-32">
-
-
-        <section className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <h3 className="text-[11px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <ScrollText size={18} className="text-[#6366F1]" />
-              {isHe ? "סיפור המקום המלא" : "The Full Story"}
-            </h3>
-          </div>
-          <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontSize === 'large' ? 'text-xl font-normal' : 'text-base font-normal'}`}>
-            {isLoading ? (
-              <div className="flex flex-col gap-6">
-                {poi.summary && (
-                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
-                    <p className="text-lg text-slate-700 italic border-l-4 border-indigo-200 pl-4 py-1">
-                      {poi.summary}
-                    </p>
-                  </div>
+            <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 ${isHe ? "order-2" : "order-1"}`}>
+              <button onClick={() => setFontLevel(prev => (prev + 1) % 3 as 0 | 1 | 2)} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${fontLevel > 0 ? 'bg-white text-slate-900' : 'text-white hover:text-white/80'}`}>
+                {fontLevel === 0 && <TypeIcon size={18} />}
+                {fontLevel === 1 && <span className="text-lg font-bold">A+</span>}
+                {fontLevel === 2 && <span className="text-xl font-bold">A++</span>}
+              </button>
+              <button onClick={openInGoogleMaps} className="w-10 h-10 flex items-center justify-center text-white hover:text-white/80 rounded-[8px]">
+                <MapPin size={18} />
+              </button>
+              <button onClick={handleAudioClick} className={`w-10 h-10 flex items-center justify-center rounded-[8px] relative transition-all active:scale-95 ${isCurrentPoiPlaying ? 'bg-indigo-600 text-white shadow-lg' : 'text-white hover:text-white/80'}`}>
+                <Headphones size={18} className={isCurrentPoiPlaying ? 'animate-pulse' : ''} />
+                {isCurrentPoiPlaying && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                  </span>
                 )}
-                <div className="flex flex-col items-center py-10 gap-4 bg-slate-50/50 rounded-[12px] border border-slate-100 border-dashed">
-                  <Loader2 size={32} className="animate-spin text-[#6366F1]" />
-                  <p className="text-[9px] font-medium uppercase text-slate-400 tracking-widest">{isHe ? 'מפיק הסברים נוספים...' : 'Fetching deeper stories...'}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-8 animate-in fade-in duration-700">
-                {/* Main content with improved paragraph structure */}
-                {(() => {
-                  const mainContent = extendedData?.historicalAnalysis || poi.description;
-                  const paragraphs = mainContent.split('\n').filter((p: string) => p.trim());
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onSave?.(); }} className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white hover:text-white/80'}`}>
+                <Heart size={18} className={isSaved ? 'fill-current' : ''} />
+              </button>
+            </div>
+          </div>
 
-                  return paragraphs.map((paragraph: string, idx: number) => {
-                    // Check if paragraph looks like a heading (short, ends with :, or all caps)
-                    const isHeading = paragraph.length < 60 && (
-                      paragraph.endsWith(':') ||
-                      paragraph === paragraph.toUpperCase() ||
-                      /^[\u0590-\u05FF\s]{3,40}:$/.test(paragraph)
-                    );
+          <div className="absolute bottom-6 inset-x-8 flex flex-col text-right">
+            <span className="text-[#14B8A6] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1">
+              {poi.category && CATEGORY_LABELS_HE[poi.category]}
 
-                    if (isHeading) {
-                      return (
-                        <h4 key={idx} className="text-lg font-bold text-slate-900 mt-8 mb-3 flex items-center gap-2">
-                          <span className="w-1 h-6 bg-indigo-500 rounded-full"></span>
-                          {paragraph.replace(/:$/, '')}
-                        </h4>
-                      );
-                    }
+              {currentIndex > 0 && poi.travelFromPrevious && (
+                <>
+                  <span className="mx-2 text-white/30">|</span>
+                  <span className="text-white/80 flex items-center gap-1.5 inline-flex">
+                    <Footprints size={10} />
+                    {poi.travelFromPrevious.distance} • {poi.travelFromPrevious.duration}
+                  </span>
+                </>
+              )}
+            </span>
+            <h2 className="text-2xl font-semibold text-white leading-tight">{mainTitle}</h2>
+            {subTitle && <span className="text-[11px] font-normal text-white/50 mt-0.5 tracking-wide uppercase">{subTitle}</span>}
+          </div>
 
-                    return (
-                      <p key={idx} className="opacity-90 leading-relaxed">
-                        {paragraph}
+          <button
+            onClick={() => setIsImageFullscreen(true)}
+            className="absolute bottom-4 left-6 w-9 h-9 bg-black/40 text-white rounded-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Maximize2 size={16} />
+          </button>
+        </div>
+
+        <div className="px-8 py-8 space-y-12">
+          <section className="space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <h3 className="text-[11px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <ScrollText size={18} className="text-[#6366F1]" />
+                {isHe ? "סיפור המקום המלא" : "The Full Story"}
+              </h3>
+            </div>
+            <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontClasses[fontLevel]}`}>
+              {(poi as any).isLoading ? (
+                <div className="flex flex-col gap-6">
+                  {(poi.summary || poi.description) && (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
+                      <p className="text-lg text-slate-700 italic border-l-4 border-indigo-200 pl-4 py-1">
+                        {poi.summary || poi.description}
                       </p>
-                    );
-                  });
-                })()}
-
-                {/* Additional sections */}
-                {extendedData?.sections?.map((section: any, idx: number) => (
-                  <div key={idx} className="space-y-4 pt-8 border-t border-slate-100">
-                    <h4 className="text-sm font-bold text-indigo-600 flex items-center gap-2">
-                      {idx % 3 === 0 ? <Building size={16} /> : idx % 3 === 1 ? <Sparkles size={16} /> : <Info size={16} />}
-                      {section.title}
-                    </h4>
-                    {section.content.split('\n').filter((p: string) => p.trim()).map((para: string, pIdx: number) => (
-                      <p key={pIdx} className="opacity-90 leading-relaxed">
-                        {para}
-                      </p>
-                    ))}
+                    </div>
+                  )}
+                  <div className="flex flex-col items-center py-10 gap-4 bg-slate-50/50 rounded-[12px] border border-slate-100 border-dashed">
+                    <Loader2 size={32} className="animate-spin text-[#6366F1]" />
+                    <p className="text-[9px] font-medium uppercase text-slate-400 tracking-widest">{isHe ? 'מפיק הסברים נוספים...' : 'Fetching deeper stories...'}</p>
                   </div>
-                ))}
+                </div>
+              ) : !poi.isFullyLoaded ? (
+                <div className="space-y-6">
+                  <p className="opacity-90 leading-relaxed text-lg">
+                    {poi.description || (isHe ? 'אין מידע זמין כרגע.' : 'No details available.')}
+                  </p>
 
-                {/* Sources */}
-                {extendedData?.sources && extendedData.sources.length > 0 && (
-                  <div className="pt-10 border-t-2 border-slate-100">
-                    <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <BookOpen size={14} className="text-indigo-500" />
-                      {isHe ? "מקורות להרחבה" : "Sources for Further Reading"}
-                    </h4>
-                    <div className="space-y-2">
-                      {extendedData.sources.map((source: any, sIdx: number) => (
-                        <a
-                          key={sIdx}
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block px-4 py-3 bg-slate-50 hover:bg-indigo-50 text-[12px] text-slate-700 hover:text-indigo-700 font-medium rounded-[8px] transition-all border border-slate-100 hover:border-indigo-200 flex items-center justify-between group"
-                        >
-                          <span className="flex-1">{source.title}</span>
-                          <ExternalLink size={12} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                        </a>
-                      ))}
+                  <div className="p-4 bg-amber-50 text-amber-700 text-xs rounded-lg border border-amber-100 flex items-start gap-2">
+                    <Info size={14} className="mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-bold mb-1">{isHe ? 'טעינת תוכן מורחב נכשלה' : 'Extended Content Load Failed'}</p>
+                      <p>{isHe ? 'לא הצלחנו לייצר את הסיפור המלא כרגע. אנא נסה שוב מאוחר יותר.' : 'We couldn\'t generate the full story right now. Please try again later.'}</p>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
+                </div>
+              ) : (
+                <div className="space-y-8 animate-in fade-in duration-700">
+                  {/* Main content with improved paragraph structure */}
+                  {(() => {
+                    const mainContent = extendedData?.historicalAnalysis || poi.description;
+                    const paragraphs = mainContent.split('\n').filter((p: string) => p.trim());
+
+                    return paragraphs.map((paragraph: string, idx: number) => {
+                      // Check if paragraph looks like a heading (short, ends with :, or all caps)
+                      const isHeading = paragraph.length < 60 && (
+                        paragraph.endsWith(':') ||
+                        paragraph === paragraph.toUpperCase() ||
+                        /^[\u0590-\u05FF\s]{3,40}:$/.test(paragraph)
+                      );
+
+                      if (isHeading) {
+                        return (
+                          <h4 key={idx} className="text-lg font-bold text-slate-900 mt-8 mb-3 flex items-center gap-2">
+                            <span className="w-1 h-6 bg-indigo-500 rounded-full"></span>
+                            {paragraph.replace(/:$/, '')}
+                          </h4>
+                        );
+                      }
+
+                      return (
+                        <p key={idx} className="opacity-90 leading-relaxed">
+                          {paragraph}
+                        </p>
+                      );
+                    });
+                  })()}
+
+                  {/* Additional sections */}
+                  {extendedData?.sections?.map((section: any, idx: number) => (
+                    <div key={idx} className="space-y-4 pt-8 border-t border-slate-100">
+                      <h4 className="text-sm font-bold text-indigo-600 flex items-center gap-2">
+                        {idx % 3 === 0 ? <Building size={16} /> : idx % 3 === 1 ? <Sparkles size={16} /> : <Info size={16} />}
+                        {section.title}
+                      </h4>
+                      {section.content.split('\n').filter((p: string) => p.trim()).map((para: string, pIdx: number) => (
+                        <p key={pIdx} className="opacity-90 leading-relaxed">
+                          {para}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+
+                  {/* Sources */}
+                  {extendedData?.sources && extendedData.sources.length > 0 && (
+                    <div className="pt-10 border-t-2 border-slate-100">
+                      <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <BookOpen size={14} className="text-indigo-500" />
+                        {isHe ? "מקורות להרחבה" : "Sources for Further Reading"}
+                      </h4>
+                      <div className="space-y-2">
+                        {extendedData.sources.map((source: any, sIdx: number) => (
+                          <a
+                            key={sIdx}
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block px-4 py-3 bg-slate-50 hover:bg-indigo-50 text-[12px] text-slate-700 hover:text-indigo-700 font-medium rounded-[8px] transition-all border border-slate-100 hover:border-indigo-200 flex items-center justify-between group"
+                          >
+                            <span className="flex-1">{source.title}</span>
+                            <ExternalLink size={12} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
 
       <footer className="shrink-0 bg-white border-t border-slate-100 p-4 grid grid-cols-2 gap-3 h-24 mb-[env(safe-area-inset-bottom)] relative z-30">

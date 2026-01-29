@@ -200,9 +200,16 @@ export const saveToCuratedRoutes = async (route: Route, theme: string = 'general
   }
 };
 
-export const saveRouteToSupabase = async (userId: string, route: Route, preferences?: UserPreferences) => {
+// Update saveRouteToSupabase to accept options
+export const saveRouteToSupabase = async (
+  userId: string,
+  route: Route,
+  preferences?: UserPreferences,
+  isPublic: boolean = false,
+  parentRouteId?: string
+) => {
   try {
-    const result = await saveRouteToNewSchema(userId, route, preferences);
+    const result = await saveRouteToNewSchema(userId, route, preferences, parentRouteId, isPublic);
     if (result?.success) {
       globalCache.invalidatePattern('all-recent-routes');
       return { id: result.routeId, route_data: route, user_id: userId };
@@ -217,6 +224,8 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
 export const updateSavedRouteData = async (dbId: string, userId: string, route: Route) => {
   try {
     // Updates are handled by saveRouteToNewSchema (upsert logic)
+    // If updating an existing route, we keep its public status unless specified? 
+    // Ideally we should read current RLS, but for now we assume Private for simple updates unless it's a Fork
     await saveRouteToNewSchema(userId, route);
   } catch (e) { }
 };
@@ -236,11 +245,12 @@ export const deleteRouteFromSupabase = async (id: string, userId: string) => {
   return await deleteRouteFromNewSchema(id, userId);
 };
 
-export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route) => {
+export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route, isPublic: boolean = false) => {
   try {
-    const result = await saveRouteToNewSchema(userId, newRouteData, {}, originalRoute.id);
+    const result = await saveRouteToNewSchema(userId, newRouteData, {}, originalRoute.id, isPublic);
     if (result?.success) {
       globalCache.invalidatePattern('all-recent-routes');
+      // If public, we might want to log it or do something else
       return { id: result.routeId, route_data: newRouteData, user_id: userId, created_at: new Date().toISOString() };
     }
     throw new Error("Failed to fork route");

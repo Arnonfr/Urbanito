@@ -47,8 +47,31 @@ export const RouteOverview: React.FC<Props> = ({
   openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute
 }) => {
   const isHe = preferences.language === 'he';
-  const parenMatch = route.name.match(/(.*?)\s*\((.*?)\)/);
-  const mainTitle = parenMatch ? parenMatch[1].trim() : route.name;
+
+  // Localization Logic for Title
+  let displayTitle = route.name;
+  let displayDescription = route.description;
+
+  // Check new localization structure in preferences (from seed logic) or dedicated fields
+  // Logic: preferences?.names?.he > route.name_he > route.name (if hebrew)
+  if (isHe) {
+    const prefsNames = (route as any).preferences?.names;
+    if (prefsNames?.he) displayTitle = prefsNames.he;
+    else if ((route as any).name_he) displayTitle = (route as any).name_he;
+
+    const prefsDesc = (route as any).preferences?.descriptions;
+    if (prefsDesc?.he) displayDescription = prefsDesc.he;
+  } else {
+    // Fallback for English if saved in "he" originally but user is "en"
+    const prefsNames = (route as any).preferences?.names;
+    if (prefsNames?.en) displayTitle = prefsNames.en;
+
+    const prefsDesc = (route as any).preferences?.descriptions;
+    if (prefsDesc?.en) displayDescription = prefsDesc.en;
+  }
+
+  const parenMatch = displayTitle.match(/(.*?)\s*\((.*?)\)/);
+  const mainTitle = parenMatch ? parenMatch[1].trim() : displayTitle;
   const subTitle = parenMatch ? parenMatch[2].trim() : "";
   const [isPrefsOpen, setIsPrefsOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -116,12 +139,12 @@ export const RouteOverview: React.FC<Props> = ({
     if (isPrefsOpen) {
       const hasChanges = JSON.stringify(initialPrefs) !== JSON.stringify(preferences);
       if (hasChanges) {
+        setIsPrefsOpen(false);
         setIsUpdating(true);
         try {
           await onRegenerate();
         } finally {
           setIsUpdating(false);
-          setIsPrefsOpen(false);
         }
       } else {
         setIsPrefsOpen(false);
@@ -180,211 +203,236 @@ export const RouteOverview: React.FC<Props> = ({
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
-      <div className={`w-full shrink-0 relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group`}>
-        <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
+      <div className="flex-1 overflow-y-auto no-scrollbar relative pb-32">
+        <div className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group`}>
+          <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
-        <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
-          <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
-        </div>
-
-        {/* Action Buttons */}
-        <div className={`absolute top-8 inset-x-6 flex items-center justify-between z-10 pointer-events-none`}>
-          <div className={isHe ? "order-1" : "order-2"}>
+          <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
+            <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
           </div>
 
-          <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto ${isHe ? "order-2" : "order-1"}`}>
-            <button
-              onClick={(e) => { e.stopPropagation(); handlePrefsClick(); }}
-              disabled={isRegenerating || isUpdating}
-              className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all relative overflow-hidden ${isPrefsOpen
-                ? 'bg-indigo-600 text-white shadow-lg'
-                : 'text-white/80 hover:text-white active:bg-white/10'
-                }`}
-            >
-              {(isRegenerating || isUpdating) ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : isPrefsOpen ? (
-                <Check size={18} />
-              ) : (
-                <Settings2 size={18} />
-              )}
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setIsEditMode(!isEditMode); }}
-              className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isEditMode ? 'bg-amber-500 text-white' : 'text-white/80 hover:text-white active:bg-white/10'}`}
-            >
-              <Edit3 size={18} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleShare(); }}
-              className="w-10 h-10 flex items-center justify-center text-white/80 hover:text-white active:bg-white/10 rounded-[8px] transition-all"
-            >
-              <Share2 size={18} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onSave?.(); }}
-              className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white/80 hover:text-white active:bg-white/10'}`}
-            >
-              <Heart size={18} className={isSaved ? 'fill-current' : ''} />
-            </button>
-          </div>
-        </div>
+          {/* Action Buttons */}
+          <div className={`absolute top-8 inset-x-6 flex items-center justify-between z-10 pointer-events-none`}>
+            <div className={isHe ? "order-1" : "order-2"}>
+            </div>
 
-        <div className="absolute bottom-6 inset-x-8 flex flex-col text-right z-10 pointer-events-none">
-          <span className="text-[#6366F1] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1 drop-shadow-md">
-            {route.city}
-          </span>
-          <h2 className="text-2xl font-semibold text-white leading-tight drop-shadow-lg">{mainTitle}</h2>
-          {subTitle && <span className="text-[11px] font-normal text-white/70 mt-0.5 tracking-wide uppercase drop-shadow-md">{subTitle}</span>}
-          {route.parent_route_id && (
-            <span className="text-[10px] font-medium text-white/40 mt-2 flex items-center gap-1 justify-end">
-              <Share2 size={10} /> {isHe ? 'מבוסס על מסלול מקורי' : 'Based on original route'}
+            <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto ${isHe ? "order-2" : "order-1"}`}>
+              <button
+                onClick={(e) => { e.stopPropagation(); handlePrefsClick(); }}
+                disabled={isRegenerating || isUpdating}
+                className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all relative overflow-hidden ${isPrefsOpen
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'text-white/80 hover:text-white active:bg-white/10'
+                  }`}
+              >
+                {(isRegenerating || isUpdating) ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : isPrefsOpen ? (
+                  <Check size={18} />
+                ) : (
+                  <Settings2 size={18} />
+                )}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsEditMode(!isEditMode); }}
+                className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isEditMode ? 'bg-amber-500 text-white' : 'text-white/80 hover:text-white active:bg-white/10'}`}
+              >
+                <Edit3 size={18} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleShare(); }}
+                className="w-10 h-10 flex items-center justify-center text-white/80 hover:text-white active:bg-white/10 rounded-[8px] transition-all"
+              >
+                <Share2 size={18} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onSave?.(); }}
+                className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white/80 hover:text-white active:bg-white/10'}`}
+              >
+                <Heart size={18} className={isSaved ? 'fill-current' : ''} />
+              </button>
+            </div>
+          </div>
+
+          <div className="absolute bottom-6 inset-x-8 flex flex-col text-right z-10 pointer-events-none">
+            <span className="text-[#6366F1] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1 drop-shadow-md">
+              {route.city}
             </span>
-          )}
+            <h2 className="text-2xl font-semibold text-white leading-tight drop-shadow-lg">{mainTitle}</h2>
+            {(displayTitle !== route.name) && (
+              <span className="text-[14px] font-medium text-white/50 mt-0.5 block drop-shadow-md">{route.name}</span>
+            )}
+            {subTitle && <span className="text-[11px] font-normal text-white/70 mt-0.5 tracking-wide uppercase drop-shadow-md">{subTitle}</span>}
+            {route.parent_route_id && (
+              <span className="text-[10px] font-medium text-white/40 mt-2 flex items-center gap-1 justify-end">
+                <Share2 size={10} /> {isHe ? 'מבוסס על מסלול מקורי' : 'Based on original route'}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar px-6 pt-6 space-y-6 pb-32">
-        {isPrefsOpen && (
-          <div className="animate-in slide-in-from-top duration-300">
-            <QuickRouteSetup
-              preferences={preferences}
-              onUpdatePreferences={onUpdatePreferences}
-              onGenerate={async () => { await onRegenerate(); setIsPrefsOpen(false); }}
-              onCancel={() => setIsPrefsOpen(false)}
-              isEmbedded={true}
-              isLoading={isRegenerating}
-            />
-          </div>
-        )}
+        <div className="px-6 pt-6 space-y-6">
+          {isPrefsOpen && (
+            <div className="animate-in slide-in-from-top duration-300">
+              <QuickRouteSetup
+                preferences={preferences}
+                onUpdatePreferences={onUpdatePreferences}
+                onGenerate={async () => { setIsPrefsOpen(false); await onRegenerate(); }}
+                onCancel={() => setIsPrefsOpen(false)}
+                isEmbedded={true}
+                isLoading={isRegenerating}
+              />
+            </div>
+          )}
 
-        <div className={`space-y-4 transition-opacity duration-300 ${isRegenerating ? 'opacity-40' : 'opacity-100'}`}>
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <ListTodo size={14} className="text-[#6366F1]" />
-              {isHe ? "תחנות הסיור" : "Tour Stops"}
-            </h3>
-          </div>
+          <div className={`space-y-4 transition-opacity duration-300 ${isRegenerating ? 'opacity-40' : 'opacity-100'}`}>
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <ListTodo size={14} className="text-[#6366F1]" />
+                {isHe ? "תחנות הסיור" : "Tour Stops"}
+              </h3>
+            </div>
 
-          <div className="space-y-2">
-            {route.pois.map((poi, index) => {
-              const parenMatch = poi.name.match(/(.*?)\s*\((.*?)\)/);
-              const translatedName = parenMatch ? parenMatch[1].trim() : poi.name;
-              const originalName = parenMatch ? parenMatch[2].trim() : "";
-              const isLoaded = poi.isFullyLoaded;
-              const showOriginalName = originalName && originalName !== translatedName;
+            <div className="space-y-2">
+              {route.pois.map((poi, index) => {
+                const isLoaded = poi.isFullyLoaded;
 
-              return (
-                <React.Fragment key={poi.id}>
-                  <div onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)} className={`group bg-white p-3 rounded-[12px] flex items-center gap-4 transition-all border border-slate-100 relative overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-md hover:border-indigo-200'}`}>
-                    {isEditMode && (
-                      <div className="shrink-0 cursor-grab active:cursor-grabbing">
-                        <GripVertical size={20} className="text-slate-300" />
-                      </div>
-                    )}
-                    <div className={`w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0 shadow-sm transition-colors ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
-                      poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
-                        poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-600' :
-                          poi.category === 'nature' ? 'bg-emerald-50 text-emerald-600' :
-                            poi.category === 'shopping' ? 'bg-pink-50 text-pink-600' :
-                              poi.category === 'culture' ? 'bg-purple-50 text-purple-600' :
-                                poi.category === 'religion' ? 'bg-blue-50 text-blue-600' :
-                                  poi.category === 'art' ? 'bg-rose-50 text-rose-600' :
-                                    'bg-slate-50 text-slate-500'
-                      }`}>
-                      {poi.category ? CATEGORY_ICONS[poi.category as POICategoryType] : <MapPin size={22} />}
-                    </div>
-                    <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-[15px] font-bold text-slate-800 leading-tight truncate">
-                          {translatedName}
-                        </h4>
-                        {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
-                          <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                            <Check size={8} className="stroke-[4]" />
-                          </div>
-                        )}
-                      </div>
-                      {showOriginalName && (
-                        <div className="text-[12px] font-normal text-slate-500 leading-tight truncate opacity-80">
-                          {originalName}
+                // Localization Logic for POI Name
+                let translatedName = poi.name;
+                let originalName = "";
+
+                if (isHe) {
+                  if (poi.content?.name_he) translatedName = poi.content.name_he;
+                  else if ((poi as any).data?.name_he) translatedName = (poi as any).data.name_he;
+
+                  // Try to find English/Original name for secondary display
+                  if (poi.content?.name_en) originalName = poi.content.name_en;
+                  else if ((poi as any).data?.name_en) originalName = (poi as any).data.name_en;
+                  // If the primary name IS english (heuristic check?), maybe use it as original? 
+                  // For now, we trust the explict fields.
+                  else if (poi.name !== translatedName) originalName = poi.name;
+                } else {
+                  // English Logic
+                  if (poi.content?.name_en) translatedName = poi.content.name_en;
+                  else if ((poi as any).data?.name_en) translatedName = (poi as any).data.name_en;
+
+                  // Secondary could be local name if available? Not requested yet.
+                }
+
+                const showOriginalName = originalName && originalName !== translatedName;
+
+                return (
+                  <React.Fragment key={poi.id}>
+                    <div onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)} className={`group bg-white p-3 rounded-[12px] flex items-center gap-4 transition-all border border-slate-100 relative overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-md hover:border-indigo-200'}`}>
+                      {isEditMode && (
+                        <div className="shrink-0 cursor-grab active:cursor-grabbing">
+                          <GripVertical size={20} className="text-slate-300" />
                         </div>
                       )}
-                      <div className="flex items-center gap-2 mt-1.5 min-w-0">
-                        {poi.category && (
-                          <div className="text-[10px] font-medium text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded text-nowrap">
-                            {CATEGORY_LABELS_HE[poi.category]}
+                      <div className={`w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0 shadow-sm transition-colors ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
+                        poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
+                          poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-600' :
+                            poi.category === 'nature' ? 'bg-emerald-50 text-emerald-600' :
+                              poi.category === 'shopping' ? 'bg-pink-50 text-pink-600' :
+                                poi.category === 'culture' ? 'bg-purple-50 text-purple-600' :
+                                  poi.category === 'religion' ? 'bg-blue-50 text-blue-600' :
+                                    poi.category === 'art' ? 'bg-rose-50 text-rose-600' :
+                                      'bg-slate-50 text-slate-500'
+                        }`}>
+                        {poi.category ? CATEGORY_ICONS[poi.category as POICategoryType] : <MapPin size={22} />}
+                      </div>
+                      <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-[15px] font-bold text-slate-800 leading-tight truncate">
+                            {translatedName}
+                          </h4>
+                          {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
+                            <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                              <Check size={8} className="stroke-[4]" />
+                            </div>
+                          )}
+                        </div>
+                        {showOriginalName && (
+                          <div className="text-[12px] font-normal text-slate-500 leading-tight truncate opacity-80">
+                            {originalName}
                           </div>
                         )}
-                        {index > 0 && poi.travelFromPrevious && (
-                          <>
-                            <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 text-nowrap truncate">
-                              <span>{poi.travelFromPrevious.distance}</span>
-                              <span className="opacity-50">|</span>
-                              <span>{poi.travelFromPrevious.duration}</span>
+                        <div className="flex items-center gap-2 mt-1.5 min-w-0">
+                          {poi.category && (
+                            <div className="text-[10px] font-medium text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded text-nowrap">
+                              {CATEGORY_LABELS_HE[poi.category]}
                             </div>
-                          </>
-                        )}
+                          )}
+                          {index > 0 && poi.travelFromPrevious && (
+                            <>
+                              <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1 text-nowrap truncate">
+                                <span>{poi.travelFromPrevious.distance}</span>
+                                <span className="opacity-50">|</span>
+                                <span>{poi.travelFromPrevious.duration}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    {isEditMode ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
-                        className="shrink-0 w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    ) : (
-                      <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+                      {isEditMode ? (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
-                          className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-colors"
+                          onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
+                          className="shrink-0 w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
                         >
-                          <Play size={16} />
+                          <Trash2 size={16} />
                         </button>
-                        <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
-                          <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
+                      ) : (
+                        <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
+                            className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-colors"
+                          >
+                            <Play size={16} />
+                          </button>
+                          <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
+                            <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
+                          </div>
+                        </div>
+                      )}
+                      {(poi.isLoading || isLoaded) && (
+                        <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
+                          {isLoaded ? (
+                            <div className="h-full bg-emerald-500 w-full transition-all duration-500" />
+                          ) : poi.isLoading ? (
+                            <div className="h-full bg-emerald-400 w-1/3 animate-pulse" />
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                    {(index + 1) % 3 === 0 && index !== route.pois.length - 1 && (
+                      <div className="py-2">
+                        <GoogleAd
+                          slot="3209745866"
+                          format="fluid"
+                          layout="-fb+5w+4e-db+86"
+                          className="rounded-[8px] border-none bg-slate-50 shadow-none opacity-100"
+                          style={{ minHeight: '100px', display: 'block' }}
+                        />
+                        <div className="text-[9px] text-center text-slate-300 mt-1 uppercase tracking-widest">
+                          {isHe ? 'מודעה' : 'Advertisement'}
                         </div>
                       </div>
                     )}
-                    {(poi.isLoading || isLoaded) && (
-                      <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
-                        {isLoaded ? (
-                          <div className="h-full bg-emerald-500 w-full transition-all duration-500" />
-                        ) : poi.isLoading ? (
-                          <div className="h-full bg-emerald-400 w-1/3 animate-pulse" />
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                  {(index + 1) % 3 === 0 && index !== route.pois.length - 1 && (
-                    <div className="py-2">
-                      <GoogleAd
-                        slot="3209745866"
-                        format="fluid"
-                        layout="-fb+5w+4e-db+86"
-                        className="rounded-[8px] border-none bg-slate-50 shadow-none opacity-100"
-                        style={{ minHeight: '100px', display: 'block' }}
-                      />
-                      <div className="text-[9px] text-center text-slate-300 mt-1 uppercase tracking-widest">
-                        {isHe ? 'מודעה' : 'Advertisement'}
-                      </div>
-                    </div>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
 
-          {!isEditMode && !isRegenerating && (
-            <NearbyPOISuggestions
-              route={route}
-              onAddPoi={onAddPoi}
-              isHe={isHe}
-            />
-          )}
+            {!isEditMode && !isRegenerating && (
+              <NearbyPOISuggestions
+                route={route}
+                onAddPoi={onAddPoi}
+                isHe={isHe}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div >
