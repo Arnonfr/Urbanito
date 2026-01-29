@@ -165,7 +165,8 @@ export const getRouteFromNewSchema = async (routeId: string): Promise<Route | nu
             durationMinutes: routeData.duration_minutes || 0,
             creator: routeData.user_id,
             directionsData: routeData.directions_data,
-            pois
+            pois,
+            preferences: routeData.preferences || {} // Include preferences
         };
 
         return route;

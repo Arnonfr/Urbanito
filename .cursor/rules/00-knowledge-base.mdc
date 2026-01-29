@@ -1,0 +1,6 @@
+Always reference the detailed project documentation in docs/KNOWLEDGE_BASE.md before planning features or debugging complex issues.
+This documentation contains the Source of Truth for:
+- Architecture (Agents, Command Center)
+- Data Models (Route, POI)
+- Routing Logic & AI Integration
+- UI Guidelines (Light Mode, Indigo Palette)

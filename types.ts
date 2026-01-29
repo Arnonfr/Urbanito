@@ -89,6 +89,8 @@ export interface Route {
   directionsData?: any; // Cached directions result
   suggested_detours?: POI[]; // Optional nearby gems
   originalPoiCount?: number; // Track original count to detect content changes for public saving logic
+  preferences?: any; // For localized names/descriptions and other metadata
+  is_public?: boolean;
 }
 
 export interface AudioState {

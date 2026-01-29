@@ -1,8 +1,15 @@
+/**
+ * 🚨 CRITICAL: READ DOCS/CORE/DESIGN_GUIDELINES.MD BEFORE EDITING 🚨
+ * This file is the core navigation hub. Strict UI rules apply (8px/12px rounding).
+ * iOS Compatibility: Ensure all new features work with Capacitor.
+ * See: docs/core/IOS_STRATEGY.md
+ */
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import {
   Compass, Loader2, Route as RouteIcon, Library as LibraryIcon, User as UserIcon, X, Navigation, MapPin, ListTodo, Plus, Heart, Target as TargetIcon, Trash2, CheckCircle, MapPinned, Search, LocateFixed, ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, BookOpen, Key, Eye, Check, AlertCircle, Crosshair, Bookmark, Globe, Settings2, Sliders, ChevronDown, ChevronUp, History, Map as MapIcon, Timer, SearchCode, Maximize2, Layers, Signpost, ArrowDownCircle, Send, Edit3
 } from 'lucide-react';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { UserPreferences, Route as RouteType, POI } from './types';
 
 
@@ -13,11 +20,13 @@ const PreferencesPanel = lazy(() => import('~components/PreferencesPanel').then(
 const UnifiedPoiCard = lazy(() => import('~components/UnifiedPoiCard').then(module => ({ default: module.UnifiedPoiCard })));
 const RouteOverview = lazy(() => import('~components/RouteOverview').then(module => ({ default: module.RouteOverview })));
 const QuickRouteSetup = lazy(() => import('~components/QuickRouteSetup').then(module => ({ default: module.QuickRouteSetup })));
+import { NavigationDock } from '~components/NavigationDock';
 const GoogleImage = lazy(() => import('~components/GoogleImage').then(module => ({ default: module.GoogleImage })));
 const RouteSkeleton = lazy(() => import('~components/RouteSkeleton').then(module => ({ default: module.RouteSkeleton })));
 const UserGuide = lazy(() => import('~components/UserGuide').then(module => ({ default: module.UserGuide })));
 const VoiceGuideManager = lazy(() => import('~components/VoiceGuideManager').then(module => ({ default: module.VoiceGuideManager })));
 import { AnimatedCompass } from '~components/AnimatedCompass';
+import { CreationMenu } from '~components/CreationMenu';
 import { GlobalAudioPlayer } from '~components/GlobalAudioPlayer';
 import { RadarView } from '~components/RadarView';
 import { CommandCenterPage } from './features/command-center/pages/CommandCenterPage';
@@ -55,13 +64,15 @@ import { useGeolocation } from '~hooks/useGeolocation';
 import { useNearbyRoutes } from '~features/routes/hooks/useNearbyRoutes';
 
 const FALLBACK_CITIES = [
-  { id: 'f1', name: 'ירושלים', name_en: 'Jerusalem', img_url: 'https://images.unsplash.com/photo-1542666281-9958e32c32ee?w=800&q=80' },
-  { id: 'f2', name: 'חדרה', name_en: 'Hadera', img_url: 'https://images.unsplash.com/photo-1628151474248-18567675f928?w=800&q=80' },
-  { id: 'f3', name: 'תל אביב', name_en: 'Tel Aviv', img_url: 'https://images.unsplash.com/photo-1544971587-b842c27f8e14?w=800&q=80' },
-  { id: 'f4', name: 'פריז', name_en: 'Paris', img_url: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&q=80' },
-  { id: 'f5', name: 'לונדון', name_en: 'London', img_url: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800&q=80' },
-  { id: 'f6', name: 'ברצלונה', name_en: 'Barcelona', img_url: 'https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800&q=80' }
-
+  { id: 'f1', name: 'ירושלים', name_en: 'Jerusalem', lat: 31.7683, lng: 35.2137, img_url: 'https://images.unsplash.com/photo-1542666281-9958e32c32ee?w=800&q=80' },
+  { id: 'f2', name: 'חדרה', name_en: 'Hadera', lat: 32.4340, lng: 34.9207, img_url: 'https://images.unsplash.com/photo-1628151474248-18567675f928?w=800&q=80' },
+  { id: 'f3', name: 'תל אביב', name_en: 'Tel Aviv', lat: 32.0853, lng: 34.7818, img_url: 'https://images.unsplash.com/photo-1544971587-b842c27f8e14?w=800&q=80' },
+  { id: 'f4', name: 'פריז', name_en: 'Paris', lat: 48.8566, lng: 2.3522, img_url: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&q=80' },
+  { id: 'f5', name: 'לונדון', name_en: 'London', lat: 51.5074, lng: -0.1278, img_url: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800&q=80' },
+  { id: 'f6', name: 'ברצלונה', name_en: 'Barcelona', lat: 41.3851, lng: 2.1734, img_url: 'https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800&q=80' },
+  { id: 'f7', name: 'ברלין', name_en: 'Berlin', lat: 52.5200, lng: 13.4050, img_url: 'https://images.unsplash.com/photo-1560969184-10fe8719e047?w=800&q=80' },
+  { id: 'f8', name: 'רומא', name_en: 'Rome', lat: 41.9028, lng: 12.4964, img_url: 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=800&q=80' },
+  { id: 'f9', name: 'ניו יורק', name_en: 'New York', lat: 40.7128, lng: -74.0060, img_url: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=800&q=80' }
 ];
 
 const CATEGORY_FILTERS = [
@@ -129,7 +140,13 @@ const App: React.FC = () => {
   const [isCarouselDragging, setIsCarouselDragging] = useState(false);
   const carouselDragStartX = useRef(0);
   const carouselDragStartScrollLeft = useRef(0);
+
   const hasDragged = useRef(false);
+  const [isPeekMapMode, setIsPeekMapMode] = useState(false);
+
+
+  // Clean helper just in case it's called elsewhere (though we used separate refs now)
+  const clearOverviewMarkers = () => { /* No-op or clear unused ref */ };
 
   const [popularCities, setPopularCities] = useState<any[]>(FALLBACK_CITIES);
   const [isLoadingCityRoutes, setIsLoadingCityRoutes] = useState(false);
@@ -162,9 +179,145 @@ const App: React.FC = () => {
   const streetConfirmDataRef = useRef(streetConfirmData);
   const isInitialized = useRef(false);
 
+  // Dedicated refs for the "City Header Map"
+  const cityMapContainerRef = useRef<HTMLDivElement>(null);
+  const cityMapInstance = useRef<any>(null);
+  const cityMapMarkers = useRef<any[]>([]);
   useEffect(() => {
     streetConfirmDataRef.current = streetConfirmData;
   }, [streetConfirmData]);
+
+  // Handle City Overview Map Logic (Header Map)
+  useEffect(() => {
+    // Only run if we are in "Map Mode" and the container exists
+    if (!isPeekMapMode || !cityMapContainerRef.current) return;
+
+    const initHeaderMap = async () => {
+      // Determine coordinates: prefer viewingCityData, fallback to global list, then Geocoding
+      let lat = viewingCityData?.lat;
+      let lng = viewingCityData?.lng;
+
+      if ((!lat || !lng) && viewingCity) {
+        const fallback = FALLBACK_CITIES.find(c => c.name === viewingCity || c.name_en === viewingCity);
+        if (fallback) { lat = fallback.lat; lng = fallback.lng; }
+      }
+
+      // Try Geocoding if still missing (real-world fallback)
+      if ((!lat || !lng) && viewingCity && window.google?.maps?.Geocoder) {
+        try {
+          const geocoder = new google.maps.Geocoder();
+          const result = await geocoder.geocode({ address: viewingCity });
+          if (result.results[0]?.geometry?.location) {
+            lat = result.results[0].geometry.location.lat();
+            lng = result.results[0].geometry.location.lng();
+          }
+        } catch (e) { console.warn("Geocoding failed for city preview", e); }
+      }
+
+      // Final fallback to Paris
+      if (!lat || !lng) { lat = 48.8566; lng = 2.3522; }
+
+      if (!cityMapInstance.current) {
+        cityMapInstance.current = new google.maps.Map(cityMapContainerRef.current, {
+          center: { lat, lng },
+          zoom: 14, // Significant zoom in
+          disableDefaultUI: true,
+          gestureHandling: 'greedy',
+          styles: [
+            { featureType: "poi", stylers: [{ visibility: "off" }] },
+            { featureType: "transit", stylers: [{ visibility: "off" }] },
+            { featureType: "landscape", stylers: [{ saturation: -100 }, { lightness: 65 }, { visibility: "on" }] }
+          ]
+        });
+      } else {
+        // Just recenter if reused
+        cityMapInstance.current.setCenter({ lat, lng });
+        google.maps.event.trigger(cityMapInstance.current, 'resize');
+      }
+
+      // Clear old markers
+      cityMapMarkers.current.forEach(m => m.setMap(null));
+      cityMapMarkers.current = [];
+
+      const routesToShow = citySpecificRoutes.filter(r => {
+        if (!librarySearchQuery) return true;
+        const q = librarySearchQuery.toLowerCase();
+        return r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q);
+      });
+
+      routesToShow.forEach((route, idx) => {
+        if (!route.pois || route.pois.length === 0) return;
+        const startPoi = route.pois[0];
+        if (!startPoi.lat || !startPoi.lng) return;
+
+        const marker = new google.maps.Marker({
+          position: { lat: startPoi.lat, lng: startPoi.lng },
+          map: cityMapInstance.current,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 5, // Smaller, cleaner dot
+            fillColor: "#4F46E5",
+            fillOpacity: 1,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 2,
+          },
+          title: route.name
+        });
+
+        marker.addListener('click', () => handleLoadSavedRoute(route.city, route));
+        cityMapMarkers.current.push(marker);
+      });
+
+      // Show User Location if available
+      if (location) {
+        // Simple check: is user roughly in the same region? (within ~50km)
+        // Just adding it to the map is enough, if it's far it behaves like Google Maps
+        const userMarker = new google.maps.Marker({
+          position: location,
+          map: cityMapInstance.current,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: "#0EA5E9", // Sky Blue for user
+            fillOpacity: 1,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 2,
+          },
+          zIndex: 999,
+          title: isHe ? "המיקום שלך" : "Your Location"
+        });
+
+        // Add a pulsing effect (outer circle)
+        const pulse = new google.maps.Marker({
+          position: location,
+          map: cityMapInstance.current,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 12,
+            fillColor: "#0EA5E9",
+            fillOpacity: 0.2,
+            strokeWeight: 0,
+          },
+          zIndex: 998,
+          clickable: false
+        });
+
+        cityMapMarkers.current.push(userMarker);
+        cityMapMarkers.current.push(pulse);
+      }
+
+    };
+
+    initHeaderMap();
+
+  }, [isPeekMapMode, viewingCityData, viewingCity, citySpecificRoutes, librarySearchQuery, location]);
+
+  // Clean up map instance when exiting map mode
+  useEffect(() => {
+    if (!isPeekMapMode && cityMapInstance.current) {
+      cityMapInstance.current = null;
+    }
+  }, [isPeekMapMode]);
 
   const isHe = preferences.language === 'he';
   const currentRoute = openRoutes[activeRouteIndex] || null;
@@ -514,7 +667,15 @@ const App: React.FC = () => {
         loadGlobalContent();
         const cities = await supabase.from('popular_cities').select('*').eq('is_active', true).order('display_order');
         if (cities.data && cities.data.length > 0) {
-          setPopularCities(cities.data);
+          // Merge specifically Berlin if missing (since we just added it to fallbacks and it might not be in DB yet)
+          const berlin = FALLBACK_CITIES.find(c => c.name_en === 'Berlin');
+          const hasBerlin = cities.data.some(c => c.name_en === 'Berlin' || c.name === 'Berlin');
+
+          if (berlin && !hasBerlin) {
+            setPopularCities([...cities.data, berlin]);
+          } else {
+            setPopularCities(cities.data);
+          }
         } else {
           setPopularCities(FALLBACK_CITIES);
         }
@@ -634,6 +795,19 @@ const App: React.FC = () => {
       });
     }
   }, []);
+
+  // Sync Map with Location State changes (e.g. from "Maximize" button or Search)
+  useEffect(() => {
+    if (location && googleMap.current) {
+      googleMap.current.panTo(new google.maps.LatLng(location.lat, location.lng));
+      // Only zoom if fairly zoomed out? modifying zoom might be annoying if user is interacting.
+      // But for "Go to City", we usually want a restart.
+      // Let's check current zoom.
+      // If we just navigated to a city, we likely want Zoom 14 or 15.
+      const currentZoom = googleMap.current.getZoom();
+      if (currentZoom < 13) googleMap.current.setZoom(14);
+    }
+  }, [location]);
 
   const calculateRouteDistances = async (route: RouteType): Promise<RouteType> => {
     if (!route.pois || route.pois.length < 2) return route;
@@ -1082,9 +1256,11 @@ const App: React.FC = () => {
     showToast(isHe ? 'התחנה נוספה למסלול!' : 'Stop added to route!');
   };
 
+
   const renderRouteMarkers = (route: RouteType) => {
     clearMarkers();
     clearPreviewMarkers();
+    clearOverviewMarkers(); // Ensure overview markers are gone when loading a route
     if (!route.pois || route.pois.length === 0) return;
     const bounds = new google.maps.LatLngBounds();
     route.pois.forEach((p, i) => {
@@ -1379,12 +1555,12 @@ const App: React.FC = () => {
               } />
 
               <Route path="/library" element={
-                <div className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500 ${viewingCity ? 'p-0' : 'p-6'}`}>
-                  {!viewingCity && <div className="flex justify-between items-center mb-8 pt-4 top-safe-area"><h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2></div>}
+                <div className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-32 no-scrollbar animate-in slide-in-from-bottom duration-500 ${viewingCity ? 'p-0' : 'px-6'}`}>
+                  {!viewingCity && <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area"><h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2></div>}
                   {!viewingCity ? (
                     <div className="space-y-8">
                       {/* Library Header Stack */}
-                      <div className="sticky top-0 bg-slate-50 pt-2 pb-4 z-10 space-y-3">
+                      <div className="sticky top-0 -mx-6 px-6 bg-slate-50/95 backdrop-blur-md pt-4 pb-4 z-10 space-y-3 border-b border-slate-100/50">
                         {/* Search */}
                         <div className="relative shadow-sm rounded-[12px]">
                           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -1432,9 +1608,21 @@ const App: React.FC = () => {
                         >
                           {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
                             .filter(city => {
-                              const matchesSearch = !librarySearchQuery || city.name.includes(librarySearchQuery) || city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
+                              // Filter by City Name
+                              const matchesSearch = !librarySearchQuery ||
+                                city.name.includes(librarySearchQuery) ||
+                                city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
+
+                              // Filter by Routes content within the city (Deep Search) - Fixed per user request
+                              const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
+                              const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
+                                (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
+                                (r.description && r.description.toLowerCase().includes(librarySearchQuery.toLowerCase()))
+                              );
+
                               const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
-                              return matchesSearch && matchesCategory;
+
+                              return (matchesSearch || hasMatchingRoute) && matchesCategory;
                             })
                             .map(city => (
                               <button
@@ -1464,8 +1652,15 @@ const App: React.FC = () => {
                         {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
                           .filter(city => {
                             const matchesSearch = !librarySearchQuery || city.name.includes(librarySearchQuery) || city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
+
+                            const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
+                            const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
+                              (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
+                              (r.description && r.description.toLowerCase().includes(librarySearchQuery.toLowerCase()))
+                            );
+
                             const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
-                            return matchesSearch && matchesCategory;
+                            return (matchesSearch || hasMatchingRoute) && matchesCategory;
                           }).length === 0 && (
                             <div className="text-center py-8 text-slate-400 text-xs">
                               {isHe ? 'לא נמצאו ערים תואמות' : 'No matching cities found'}
@@ -1479,24 +1674,42 @@ const App: React.FC = () => {
                             <History size={12} className="text-amber-500" /> {isHe ? 'מסלולים אחרונים בקהילה' : 'Recent Community Tours'}
                           </h3>
                           <div className="grid grid-cols-1 gap-3">
-                            {recentGlobalRoutes.slice(0, 30).map((route, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => handleLoadSavedRoute(route.city, route)}
-                                className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
-                              >
-                                <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
-                                  <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
-                                </div>
-                                <div className="flex-1 text-right min-w-0">
-                                  <div className="text-[8px] font-medium text-[#6366F1] uppercase tracking-widest">{route.city}</div>
-                                  <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight">
-                                    {route.name.replace(/\s*\(.*?\)\s*/g, '')}
-                                  </h4>
-                                </div>
-                                <ChevronLeft size={16} className="text-slate-300" />
-                              </button>
-                            ))}
+                            {recentGlobalRoutes.slice(0, 30).map((route, idx) => {
+                              // Resolve Localized Names
+                              const localizedName = isHe && (route.preferences?.names?.he || (route as any).name_he)
+                                ? (route.preferences?.names?.he || (route as any).name_he)
+                                : route.name;
+
+                              // Resolve Localized City Name
+                              // Try to find the city in our popularCities list to get the official hebrew name
+                              const cityObj = popularCities.find(c =>
+                                c.name === route.city ||
+                                c.name_en === route.city ||
+                                (route.city && c.name_en && route.city.toLowerCase() === c.name_en.toLowerCase())
+                              );
+                              const localizedCity = isHe && cityObj ? cityObj.name : (cityObj?.name_en || route.city);
+
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => handleLoadSavedRoute(route.city, route)}
+                                  className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all text-right"
+                                >
+                                  <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
+                                    <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[8px] font-medium text-[#6366F1] uppercase tracking-widest mb-0.5">
+                                      {localizedCity}
+                                    </div>
+                                    <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight">
+                                      {localizedName.replace(/\s*\(.*?\)\s*/g, '')}
+                                    </h4>
+                                  </div>
+                                  <ChevronLeft size={16} className="text-slate-300" />
+                                </button>
+                              );
+                            })}
                           </div>
                         </section>
                       )}
@@ -1504,8 +1717,9 @@ const App: React.FC = () => {
                   ) : (
                     <div className="animate-in slide-in-from-bottom duration-500 pb-20">
                       {/* Hero Section */}
-                      <div className="relative w-full h-[320px] mb-8 shadow-2xl">
-                        <div className="absolute inset-0">
+                      {/* Hero Section - Static Image */}
+                      <div className="relative w-full h-[320px] mb-6 shadow-2xl">
+                        <div className="absolute inset-0 animate-in fade-in duration-500">
                           {viewingCityData?.img_url ? (
                             <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity} />
                           ) : (
@@ -1514,18 +1728,20 @@ const App: React.FC = () => {
                           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
                         </div>
 
-                        <div className="absolute top-safe-area left-0 right-0 p-6 flex justify-between items-start">
-                          <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-white/20 backdrop-blur-md border border-white/30 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-all">
+                        <div className="absolute top-safe-area left-0 right-0 p-6 flex justify-between items-start z-10">
+                          <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-white/20 backdrop-blur-md border border-white/30 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
                             <ArrowRight size={18} />
                           </button>
                         </div>
 
-                        <div className="absolute bottom-8 right-6 left-6 text-right">
+                        <div className="absolute bottom-8 right-6 left-6 text-right z-10">
                           <span className="text-indigo-400 font-bold uppercase tracking-[0.2em] text-[10px] mb-2 block animate-in slide-in-from-right duration-700 delay-100">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
                           <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-md animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
                           <p className="text-slate-300 text-sm font-medium animate-in fade-in duration-700 delay-300">{viewingCityData?.name_en}</p>
                         </div>
                       </div>
+
+
 
                       {isLoadingCityRoutes ? (
                         <div className="flex flex-col items-center py-20 gap-4">
@@ -1540,29 +1756,92 @@ const App: React.FC = () => {
                               <div className="flex items-center gap-3 mb-4">
                                 <h4 className="text-[14px] font-bold text-slate-800">{isHe ? `מסלולים נבחרים` : `Curated Tours`}</h4>
                                 <div className="h-px bg-slate-100 flex-1" />
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{citySpecificRoutes.length}</span>
+
+                                <button
+                                  onClick={() => setIsPeekMapMode(!isPeekMapMode)}
+                                  className={`h-7 px-3 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${isPeekMapMode ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-200' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                  {isPeekMapMode ? (
+                                    <span className="flex items-center gap-1.5"><MapIcon size={12} fill="currentColor" /> {isHe ? 'הסתר מפה' : 'Hide Map'}</span>
+                                  ) : (
+                                    <span className="flex items-center gap-1.5"><MapIcon size={12} /> {isHe ? 'הצג על מפה' : 'Show Map'}</span>
+                                  )}
+                                </button>
+                              </div>
+
+                              {/* Integrated Map Container - Slides down when active */}
+                              <div className={`overflow-hidden transition-all duration-500 ease-in-out relative mb-4 ${isPeekMapMode ? 'h-[280px] opacity-100 rounded-[16px] shadow-sm border border-slate-100/50' : 'h-0 opacity-0'}`}>
+                                {isPeekMapMode && (
+                                  <>
+                                    <div ref={cityMapContainerRef} className="w-full h-full bg-slate-100" />
+                                    <button
+                                      onClick={() => {
+                                        // Use the center of the current preview map as the target
+                                        if (cityMapInstance.current) {
+                                          const center = cityMapInstance.current.getCenter();
+                                          if (center) {
+                                            const lat = center.lat();
+                                            const lng = center.lng();
+                                            setLocation({ lat, lng });
+                                            setSearchQuery(viewingCity || '');
+                                            setViewingCity(null);
+                                            window.scrollTo(0, 0);
+                                            navigate('/');
+                                          }
+                                        } else if (viewingCityData?.lat && viewingCityData?.lng) {
+                                          setLocation({ lat: viewingCityData.lat, lng: viewingCityData.lng });
+                                          setSearchQuery(viewingCity);
+                                          setViewingCity(null);
+                                          window.scrollTo(0, 0);
+                                          navigate('/');
+                                        }
+                                      }}
+                                      className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-md shadow-sm border border-slate-100 rounded-full flex items-center justify-center text-slate-600 hover:bg-white hover:text-indigo-600 transition-all z-10"
+                                    >
+                                      <Maximize2 size={14} />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                               <div className="space-y-3">
-                                {citySpecificRoutes.map((route, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => handleLoadSavedRoute(route.city, route)}
-                                    className="w-full flex items-start gap-4 bg-white p-4 rounded-[16px] shadow-[0_2px_10px_rgba(0,0,0,0.04)] border border-slate-100/50 active:scale-[0.99] transition-all hover:border-indigo-100"
-                                  >
-                                    <div className="w-20 h-20 rounded-[12px] overflow-hidden bg-slate-100 shrink-0 shadow-sm relative">
-                                      <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full object-cover" />
-                                      {route.pois?.length > 0 && <div className="absolute bottom-1 right-1 bg-black/60 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]">{route.pois.length} stops</div>}
-                                    </div>
-                                    <div className="flex-1 text-right min-w-0 py-1">
-                                      <h4 className="text-[16px] font-bold text-slate-900 leading-tight mb-1">
-                                        {route.name.replace(/\s*\(.*?\)\s*/g, '')}
-                                      </h4>
-                                      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
-                                        {route.description || (isHe ? 'מסלול הליכה מרתק העובר בין הנקודות המרכזיות בעיר.' : 'A fascinating walking tour through the main points of the city.')}
-                                      </p>
-                                    </div>
-                                  </button>
-                                ))}
+                                {citySpecificRoutes
+                                  .filter(route => {
+                                    if (!librarySearchQuery) return true;
+                                    const q = librarySearchQuery.toLowerCase();
+                                    return route.name.toLowerCase().includes(q) || (route.description && route.description.toLowerCase().includes(q));
+                                  })
+                                  .map((route, idx) => {
+                                    // Resolve Localized Names
+                                    const localizedName = isHe && (route.preferences?.names?.he || (route as any).name_he)
+                                      ? (route.preferences?.names?.he || (route as any).name_he)
+                                      : route.name;
+
+                                    const localizedDescription = isHe && (route.preferences?.descriptions?.he || (route as any).description_he)
+                                      ? (route.preferences?.descriptions?.he || (route as any).description_he)
+                                      : route.description;
+
+                                    return (
+                                      <button
+                                        key={idx}
+                                        onClick={() => handleLoadSavedRoute(route.city, route)}
+                                        className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all text-right"
+                                      >
+                                        <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0 relative">
+                                          <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                                          {route.pois?.length > 0 && <div className="absolute bottom-1 right-1 bg-black/60 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]">{route.pois.length} stops</div>}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight mb-1">
+                                            {localizedName.replace(/\s*\(.*?\)\s*/g, '')}
+                                          </h4>
+                                          <p className="text-[11px] text-slate-400 line-clamp-1">
+                                            {localizedDescription || (isHe ? 'מסלול הליכה מרתק העובר בין הנקודות המרכזיות בעיר.' : 'A fascinating walking tour through the main points of the city.')}
+                                          </p>
+                                        </div>
+                                        <ChevronLeft size={16} className="text-slate-300" />
+                                      </button>
+                                    );
+                                  })}
                               </div>
                             </section>
                           )}
@@ -1581,7 +1860,7 @@ const App: React.FC = () => {
                                     key={suggestion.id}
                                     onClick={() => handleGenerateSuggestion(suggestion)}
                                     disabled={generatingSuggestionId === suggestion.id}
-                                    className="flex flex-col gap-3 bg-gradient-to-br from-white to-slate-50 p-4 rounded-[16px] border border-slate-100 hover:border-indigo-200 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-center relative overflow-hidden group"
+                                    className="flex flex-col gap-3 bg-gradient-to-br from-white to-slate-50 p-4 rounded-lg border border-slate-100 hover:border-indigo-200 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-center relative overflow-hidden group"
                                   >
                                     <div className="w-12 h-12 rounded-full bg-white mx-auto flex items-center justify-center text-2xl shadow-sm border border-slate-50 group-hover:scale-110 transition-transform">
                                       {generatingSuggestionId === suggestion.id ? (
@@ -1608,7 +1887,7 @@ const App: React.FC = () => {
                           )}
 
                           {citySpecificRoutes.length === 0 && citySuggestions.length === 0 && (
-                            <div className="p-12 text-center text-slate-400 bg-white rounded-[16px] border border-dashed border-slate-200">
+                            <div className="p-12 text-center text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
                               <p className="text-[11px] uppercase tracking-widest">{isHe ? 'אין עדיין מסלולים בעיר זו' : 'No tours for this city yet'}</p>
                             </div>
                           )}
@@ -1687,15 +1966,20 @@ const App: React.FC = () => {
             </Suspense>
           )}
 
-          {isAiMenuOpen && (
-            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xl z-[7000] flex flex-col items-center justify-end pb-32 px-6">
-              <div className="w-full max-w-[340px] space-y-3 mb-16 animate-in slide-in-from-bottom-10 fade-in duration-300">
-                <button onClick={() => startStreetConfirm('area')} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px] hover:scale-[1.02] active:scale-95 transition-all"><Navigation size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'סיור חכם באזור' : 'Smart Area Tour'}</h4></button>
-                <button onClick={() => startStreetConfirm('street')} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px] hover:scale-[1.02] active:scale-95 transition-all"><Signpost size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'מסלול רחוב' : 'Street Tour'}</h4></button>
-                <button onClick={handleFindNearbyRoutes} className="w-full bg-white py-5 px-6 flex items-center gap-5 shadow-xl rounded-[8px] hover:scale-[1.02] active:scale-95 transition-all"><MapPinned size={22} className="text-[#6366F1] shrink-0" /><h4 className="text-[14px] font-medium text-slate-900">{isHe ? 'מסלולים מוכנים בסביבה' : 'Ready Nearby Tours'}</h4></button>
-              </div>
-            </div>
-          )}
+          <AnimatePresence>
+            {isAiMenuOpen && (
+              <CreationMenu
+                isHe={isHe}
+                onClose={() => setIsAiMenuOpen(false)}
+                onOptionSelect={(opt) => {
+                  if (opt === 'area') startStreetConfirm('area');
+                  if (opt === 'street') startStreetConfirm('street');
+                  if (opt === 'nearby') handleFindNearbyRoutes();
+                  if (opt === 'nearby') setIsAiMenuOpen(false); // Close menu for nearby
+                }}
+              />
+            )}
+          </AnimatePresence>
 
           {selectedPoi && currentRoute && (
             <Suspense fallback={<div className="fixed inset-x-0 bottom-0 h-[400px] bg-white z-[5000] rounded-t-lg flex items-center justify-center border-t shadow-2xl"><Loader2 className="animate-spin text-indigo-500 w-8 h-8" /></div>}>
@@ -1750,9 +2034,9 @@ const App: React.FC = () => {
               <div className="absolute left-1/2 -translate-x-1/2 -top-7 z-20 pointer-events-auto">
                 <button
                   onClick={handleToggleAiMenu}
-                  className={`w-14 h-14 shadow-2xl flex items-center justify-center rounded-full border-[4px] border-white disabled:opacity-50 transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isAiMenuOpen
-                    ? 'bg-white text-[#6366F1] rotate-45'
-                    : 'bg-[#6366F1] text-white rotate-0 hover:scale-105 active:scale-95'
+                  className={`w-14 h-14 shadow-2xl flex items-center justify-center rounded-full border border-indigo-100 transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isAiMenuOpen
+                    ? 'bg-white text-[#6366F1] rotate-45' // Close: White bg, Purple X
+                    : 'bg-[#6366F1] text-white rotate-0 hover:scale-105 active:scale-95' // Open: Purple bg, White Plus
                     }`}
                 >
                   <Plus size={32} className="transition-transform duration-500" />

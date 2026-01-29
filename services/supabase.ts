@@ -233,7 +233,9 @@ export const updateSavedRouteData = async (dbId: string, userId: string, route: 
 export const getSavedRoutesFromSupabase = async (userId: string) => {
   if (!userId) return [];
   const routes = await getUserRoutesFromNewSchema(userId);
-  return routes.map(r => ({
+  // Filter to only show PRIVATE routes in "My Saved", to avoid showing all public curated routes
+  const privateRoutes = routes.filter(r => !r.is_public);
+  return privateRoutes.map(r => ({
     id: r.id,
     user_id: userId,
     route_data: r,
