@@ -80,7 +80,7 @@ export const saveRouteToNewSchema = async (
             p_description: route.description || '',
             p_duration: route.durationMinutes || 0,
             p_preferences: preferences || {},
-            p_directions_data: route.directionsData || null,
+            // p_directions_data removed as it is not in the RPC signature
             p_pois: poisForRpc,
             p_user_id: userId,
             p_is_public: isPublic,

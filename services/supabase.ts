@@ -306,12 +306,25 @@ export const submitFeedback = async (userId: string | null, feedback: FeedbackDa
 };
 
 export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> => {
-  console.log('[getAllRecentRoutes] Fetching routes with limit (NO CACHE):', limit);
+  console.log('[getAllRecentRoutes] Fetching routes with limit (Deep Query):', limit);
 
   try {
     const { data: routes, error } = await supabase
       .from('routes')
-      .select('id')
+      .select(`
+        *,
+        route_pois (
+          order_index,
+          travel_data,
+          pois (
+            id,
+            name,
+            lat,
+            lng,
+            data
+          )
+        )
+      `)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -321,15 +334,44 @@ export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> 
       return [];
     }
 
-    console.log(`[getAllRecentRoutes] Found ${routes.length} route IDs`);
+    console.log(`[getAllRecentRoutes] Found ${routes.length} routes via Deep Query`);
 
-    const fullRoutes = await Promise.all(
-      routes.map(r => getRouteFromNewSchema(r.id))
-    );
+    // Map to Route interface
+    const mappedRoutes: Route[] = routes.map((r: any) => {
+      // Sort POIs by order_index
+      const sortedPois = (r.route_pois || [])
+        .sort((a: any, b: any) => a.order_index - b.order_index)
+        .map((rp: any) => {
+          const p = rp.pois;
+          return {
+            id: p.id || generateStableId(p.name, p.lat, p.lng),
+            name: p.name,
+            lat: p.lat,
+            lng: p.lng,
+            ...p.data,
+            travelFromPrevious: rp.travel_data
+          };
+        });
 
-    const filtered = fullRoutes.filter(r => r !== null) as Route[];
-    console.log(`[getAllRecentRoutes] Returning ${filtered.length} full routes`);
-    return filtered;
+      return {
+        id: r.id,
+        name: r.name,
+        city: r.city,
+        description: r.description || '',
+        durationMinutes: r.duration_minutes || 0,
+        creator: r.user_id,
+        directionsData: r.directions_data,
+        pois: sortedPois,
+        preferences: r.preferences || {},
+        originalPoiCount: sortedPois.length,
+        is_public: r.is_public
+      };
+    });
+
+    // Filter out corrupted routes (no POIs? maybe allow them but prefer valid ones)
+    // For now, return all valid formatted ones
+    return mappedRoutes;
+
   } catch (e) {
     console.error("[getAllRecentRoutes] failure:", e);
     return [];

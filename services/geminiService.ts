@@ -507,5 +507,82 @@ export async function runOrchestrator(userMessage: string): Promise<{ reply: str
     reply = `Multi-agent protocol initiated. Synchronizing ${delegations.map(d => d.agentId).join(' and ')} for execution.`;
   }
 
+  // ... (existing runOrchestrator code)
+
   return { reply, delegations };
+}
+
+/**
+ * Hydration Service: Enriches sparse routes with full content
+ * 1. Generates missing Hebrew/English titles
+ * 2. Hydrates POIs with detailed historical context
+ */
+export async function enrichRoute(route: Route, preferences: UserPreferences): Promise<Route> {
+  let updatedRoute = { ...route };
+  const isHe = preferences.language === 'he';
+
+  // 1. Enrich Route Metadata (Titles/Descriptions) if missing
+  const prefs = updatedRoute.preferences || {};
+  const names = prefs.names || {};
+  const descriptions = prefs.descriptions || {};
+
+  const missingHe = !names.he;
+  const missingEn = !names.en;
+
+  if (missingHe || missingEn) {
+    console.log(`[enrichRoute] Generating missing titles for: ${route.name}`);
+    try {
+      // Very simple prompt to get just the translations
+      const response = await aiCall({
+        contents: `Translate the route title "${route.name}" and description "${route.description || ''}" for a walking tour in ${route.city}.
+        
+        RETURN JSON ONLY:
+        {
+          "names": { "he": "...", "en": "..." },
+          "descriptions": { "he": "...", "en": "..." }
+        }
+        
+        - Hebrew title should be catchy and professional.
+        - English title should be standard.
+        `,
+        config: { responseMimeType: "application/json" }
+      });
+
+      const translations = JSON.parse(cleanJson(response.text || "{}"));
+
+      if (translations.names) {
+        updatedRoute.preferences = {
+          ...prefs,
+          names: { ...names, ...translations.names },
+          descriptions: { ...descriptions, ...translations.descriptions }
+        };
+      }
+    } catch (e) {
+      console.warn("[enrichRoute] Failed to translate metadata", e);
+    }
+  }
+
+  // 2. Enrich Sparse POIs
+  // We process them in parallel with a limit to avoid rate limits, or just one by one for safety
+  const enrichedPois = await Promise.all(updatedRoute.pois.map(async (poi) => {
+    // If it's fully loaded, skip
+    if (poi.isFullyLoaded || (poi.historicalContext && poi.historicalContext.length > 200)) {
+      return poi;
+    }
+
+    console.log(`[enrichRoute] Hydrating POI: ${poi.name}`);
+    const extendedDetails = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng);
+
+    if (extendedDetails) {
+      return {
+        ...poi,
+        ...extendedDetails,
+        isFullyLoaded: true
+      };
+    }
+    return poi;
+  }));
+
+  updatedRoute.pois = enrichedPois;
+  return updatedRoute;
 }

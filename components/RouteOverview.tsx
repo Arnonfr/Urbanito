@@ -203,6 +203,13 @@ export const RouteOverview: React.FC<Props> = ({
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
       onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
     >
+      {/* Enrichment/Hydration Indicator */}
+      {(isRegenerating || isUpdating) && (
+        <div className="absolute top-0 inset-x-0 h-1 bg-indigo-500/20 z-50">
+          <div className="h-full bg-indigo-500 w-1/3 animate-[loading_1s_ease-in-out_infinite]" />
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto no-scrollbar relative pb-32">
         <div className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group`}>
           <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />

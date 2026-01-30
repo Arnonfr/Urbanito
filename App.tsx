@@ -13,7 +13,7 @@ import { AnimatePresence } from 'framer-motion';
 import { UserPreferences, Route as RouteType, POI } from './types';
 
 
-import { generateWalkingRoute, generateStreetWalkRoute, fetchExtendedPoiDetails } from './services/geminiService';
+import { generateWalkingRoute, generateStreetWalkRoute, fetchExtendedPoiDetails, enrichRoute } from './services/geminiService';
 import { SuspenseLoader } from '~components/SuspenseLoader/SuspenseLoader';
 
 const PreferencesPanel = lazy(() => import('~components/PreferencesPanel').then(module => ({ default: module.PreferencesPanel })));
@@ -31,6 +31,8 @@ import { GlobalAudioPlayer } from '~components/GlobalAudioPlayer';
 import { RadarView } from '~components/RadarView';
 import { CommandCenterPage } from './features/command-center/pages/CommandCenterPage';
 import { useWalkMode } from './contexts/WalkModeContext';
+import { useGeolocation } from '~hooks/useGeolocation';
+import { useNearbyRoutes } from '~features/routes/hooks/useNearbyRoutes';
 import { AudioProvider } from './contexts/AudioContext';
 import {
   supabase,
@@ -60,8 +62,6 @@ import {
 // google is declared globally in types/globals.d.ts
 
 const PARIS_COORDS = { lat: 48.8566, lng: 2.3522 };
-import { useGeolocation } from '~hooks/useGeolocation';
-import { useNearbyRoutes } from '~features/routes/hooks/useNearbyRoutes';
 
 const FALLBACK_CITIES = [
   { id: 'f1', name: 'ירושלים', name_en: 'Jerusalem', lat: 31.7683, lng: 35.2137, img_url: 'https://images.unsplash.com/photo-1542666281-9958e32c32ee?w=800&q=80' },
@@ -168,6 +168,15 @@ const App: React.FC = () => {
   const { isSearching: isSearchingNearby, searchNearby } = useNearbyRoutes();
   const { toggleWalkMode, isWalkModeActive } = useWalkMode();
 
+  const isHe = preferences.language === 'he';
+  const currentRoute = openRoutes[activeRouteIndex] || null;
+  const isGeneratingActive = currentRoute ? generatingRouteIds.has(currentRoute.id) : false;
+
+  const isCurrentRouteSaved = currentRoute && savedRoutes.some(r =>
+    normalize(r.route_data.name) === normalize(currentRoute.name) &&
+    normalize(r.route_data.city) === normalize(currentRoute.city)
+  );
+
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMap = useRef<any>(null);
   const markers = useRef<any[]>([]);
@@ -186,6 +195,39 @@ const App: React.FC = () => {
   useEffect(() => {
     streetConfirmDataRef.current = streetConfirmData;
   }, [streetConfirmData]);
+
+  // @Supabase Agent: Auto-Hydration for Sparse Routes
+  // Triggers when a route is active but missing content or translations
+  useEffect(() => {
+    if (!currentRoute || !user?.id) return;
+    if (generatingRouteIds.has(currentRoute.id)) return; // Already working
+
+    // Heuristic: Is it sparse?
+    const isHe = preferences.language === 'he';
+    const missingHeTitle = isHe && !((currentRoute as any).preferences?.names?.he || (currentRoute as any).name_he);
+    const isSparse = currentRoute.pois.length > 0 && currentRoute.pois.slice(0, 2).some(p => !p.historicalContext && !p.data?.historicalAnalysis);
+
+    if ((missingHeTitle || isSparse) && !isGeocoding) {
+      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Starting enrichment...`);
+      setGeneratingRouteIds(prev => new Set(prev).add(currentRoute.id));
+      setToast({ message: isHe ? 'מוריד מידע מורחב למסלול...' : 'Downloading extended route details...', type: 'success' });
+
+      enrichRoute(currentRoute, preferences).then(async (enriched) => {
+        // Update Local State
+        setOpenRoutes(prev => prev.map(r => r.id === currentRoute.id ? enriched : r));
+
+        // Save to Supabase (Publicly if it was public, or purely update content)
+        await saveRouteToSupabase(user.id, enriched, enriched.preferences || {}, true, enriched.parent_route_id);
+
+        console.log(`[Auto-Hydrate] Complete for ${enriched.name}`);
+        setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(currentRoute.id); return next; });
+      }).catch(err => {
+        console.error("[Auto-Hydrate] Failed:", err);
+        setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(currentRoute.id); return next; });
+      });
+    }
+
+  }, [currentRoute?.id]);
 
   // Handle City Overview Map Logic (Header Map)
   useEffect(() => {
@@ -319,14 +361,7 @@ const App: React.FC = () => {
     }
   }, [isPeekMapMode]);
 
-  const isHe = preferences.language === 'he';
-  const currentRoute = openRoutes[activeRouteIndex] || null;
-  const isGeneratingActive = currentRoute ? generatingRouteIds.has(currentRoute.id) : false;
 
-  const isCurrentRouteSaved = currentRoute && savedRoutes.some(r =>
-    normalize(r.route_data.name) === normalize(currentRoute.name) &&
-    normalize(r.route_data.city) === normalize(currentRoute.city)
-  );
 
 
 
@@ -1187,14 +1222,16 @@ const App: React.FC = () => {
           showToast(isHe ? 'המסלול נשמר בהצלחה!' : 'Route saved successfully!');
 
           // Update local route ID to match the new forked ID
-          // This ensures subsequent edits fork from the NEW version
-          if (saved.id !== currentRoute.id) {
+          const newId = (saved as any).id || (saved as any).routeId;
+
+          if (newId && newId !== currentRoute.id) {
             setOpenRoutes(prev => prev.map(r => {
-              if (r.id === currentRoute.id) return { ...r, id: saved.id, originalPoiCount: r.pois.length };
+              if (r.id === currentRoute.id) return { ...r, id: newId, originalPoiCount: r.pois.length };
               return r;
             }));
           }
         } else {
+          console.error("Save failed: saveRouteToSupabase returned null/false.");
           showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
         }
       }
