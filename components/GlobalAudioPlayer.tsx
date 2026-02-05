@@ -32,43 +32,41 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
 
   return (
     <div
-      className={`fixed inset-x-4 bg-white text-slate-900 rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-[10000] 
+      className={`fixed inset-x-4 bg-white/95 backdrop-blur-md text-slate-900 rounded-[24px] shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-slate-100/50 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-[10000] 
         ${isExpanded
           ? 'bottom-[20px] h-auto max-h-[70vh] pb-6'
-          : 'bottom-[calc(100px+env(safe-area-inset-bottom))] h-20 active:scale-[0.98]'
+          : 'bottom-[calc(110px+env(safe-area-inset-bottom))] h-24 active:scale-[0.99]'
         }`}
     >
       {/* Progress Bar (Visible ONLY when collapsed) */}
       {
         !isExpanded && (
-          <div className="h-1.5 w-full bg-slate-100 relative">
+          <div className="h-1 w-full bg-slate-100 relative">
             <div
-              className="h-full bg-indigo-500 transition-all duration-300 relative"
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-300 relative"
               style={{ width: `${progress}%` }}
             />
           </div>
         )
       }
 
-      <div className={`flex-1 flex flex-col ${isExpanded ? 'p-6' : 'px-4 justify-center'}`}>
+      <div className={`flex-1 flex flex-col ${isExpanded ? 'p-6' : 'px-4 pt-3'}`}>
         {/* Top Header - Compact or Expanded */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
             <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${isPlaying ? 'bg-indigo-500 shadow-lg shadow-indigo-200 text-white' : 'bg-slate-100 text-slate-500'}`}
+              onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isPlaying ? 'bg-indigo-600 shadow-lg shadow-indigo-200 text-white' : 'bg-slate-100 text-slate-500'}`}
             >
               <Headphones size={24} className={isPlaying ? 'animate-pulse' : ''} />
             </button>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[14px] font-bold leading-tight truncate">
-                  {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing') : (isHe ? 'מושהה' : 'Paused')}
-                </span>
-                <span className={`text-slate-600 truncate transition-all ${isExpanded ? 'text-sm mt-1 font-medium' : 'text-[12px] font-medium max-w-[200px]'}`}>
-                  {poiName}
-                </span>
-              </div>
+            <div className="flex flex-col min-w-0 flex-1 px-3 justify-center">
+              <span className="text-slate-800 text-[14px] font-bold truncate leading-tight w-full block">
+                {poiName || (isHe ? 'טוען...' : 'Loading...')}
+              </span>
+              <span className="text-[11px] font-medium text-slate-500 truncate leading-none mt-1">
+                {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing Now') : (isHe ? 'מושהה' : 'Paused')}
+              </span>
             </div>
 
             {!isExpanded && (

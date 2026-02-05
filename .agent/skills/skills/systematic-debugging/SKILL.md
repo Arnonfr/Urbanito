@@ -119,6 +119,16 @@ You MUST complete each phase before proceeding to the next.
    - Keep tracing up until you find the source
    - Fix at source, not at symptom
 
+   **6. Identify Redundant Code & "Stuck" Logic**
+   - **Effect Tracing**: If a state update or network call happens twice, trace the triggers. Look for overlapping `useEffect` hooks or redundant event listeners.
+   - **Shadow Logic**: Find code that calculates results that are never used or are immediately overwritten.
+   - **Duplicate Subscriptions**: Verify that auth listeners or real-time subscriptions aren't being initialized multiple times (e.g., both in a constructor/init and an Effect).
+
+   **7. Detect Performance-Choking Components**
+   - **Re-render loops**: Check for components that trigger parent updates which then re-trigger the child. Use React DevTools Profiler or `console.count` in the render body.
+   - **Heavy Initialization**: Identify components doing large data processing (parsing/sorting) inside the `render` function vs. `useMemo` or `useEffect`.
+   - **Circular Dependencies**: Look for services or contexts that depend on each other, causing recursive logic or initialization stalls.
+
 ### Phase 2: Pattern Analysis
 
 **Find the pattern before fixing:**

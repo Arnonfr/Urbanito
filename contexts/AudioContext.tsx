@@ -124,16 +124,20 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const pause = useCallback(() => {
         console.log('[AudioContext] Pause called, audioMode:', audioMode);
-        if (audioMode === 'premium' && audioContextRef.current?.state === 'running') {
+
+        setIsPlaying(false);
+        isPlayingRef.current = false;
+
+        if (audioMode === 'premium' && audioContextRef.current) {
+            // Suspend context for reliable pause
             pausedTimeRef.current = audioContextRef.current.currentTime - startTimeRef.current;
-            audioContextRef.current.suspend().catch(console.error);
+            audioContextRef.current.suspend().catch(e => console.error("Suspend error:", e));
         } else if (audioMode === 'free') {
-            if (window.speechSynthesis.speaking) {
+            if (window.speechSynthesis) {
+                // If speaking, pause. If pause fails (some browsers), we might need cancel, but let's try pause first.
                 window.speechSynthesis.pause();
-                console.log('[AudioContext] Speech synthesis paused');
             }
         }
-        setIsPlaying(false);
     }, [audioMode]);
 
     const resume = useCallback(() => {

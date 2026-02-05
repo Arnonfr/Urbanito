@@ -37,6 +37,7 @@ interface Props {
   showToast?: (message: string, type?: 'success' | 'error') => void;
   nearbyRoutes?: Route[];
   onRouteSelect?: (route: Route) => void;
+  recentRoutes?: Route[];
 }
 
 export const CATEGORY_ICONS: Record<POICategoryType, React.ReactNode> = {
@@ -50,7 +51,7 @@ export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
 
 export const RouteOverview: React.FC<Props> = ({
   route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating,
-  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute, showToast, nearbyRoutes = [], onRouteSelect
+  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute, showToast, nearbyRoutes = [], onRouteSelect, recentRoutes = []
 }) => {
   const isHe = preferences.language === 'he';
 
@@ -90,6 +91,7 @@ export const RouteOverview: React.FC<Props> = ({
   const [initialPrefs, setInitialPrefs] = useState<UserPreferences | null>(null);
 
   const touchStart = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
   const { playText, queueText, stop, isPlaying } = useAudio();
   const { isPremium } = usePremium();
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
@@ -212,11 +214,26 @@ export const RouteOverview: React.FC<Props> = ({
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart.current) return;
-    const dist = touchStart.current - e.changedTouches[0].clientY;
-    // Increased threshold from 60 to 100 to reduce accidental expansion
-    if (dist > 100) setIsExpanded(true); else if (dist < -100) setIsExpanded(false);
+    if (touchStart.current === null || touchStartX.current === null) return;
+
+    const touchY = e.changedTouches[0].clientY;
+    const touchX = e.changedTouches[0].clientX;
+    const distY = touchStart.current - touchY;
+    const distX = touchStartX.current - touchX;
+
+    // Ignore if horizontal scroll was dominant (e.g. swiping carousel)
+    if (Math.abs(distX) > Math.abs(distY) || Math.abs(distX) > 30) {
+      touchStart.current = null;
+      touchStartX.current = null;
+      return;
+    }
+
+    // Checking dominant vertical swipe
+    if (distY > 80) setIsExpanded(true);
+    else if (distY < -80) setIsExpanded(false);
+
     touchStart.current = null;
+    touchStartX.current = null;
   };
 
   const handleShare = async () => {
@@ -259,7 +276,27 @@ export const RouteOverview: React.FC<Props> = ({
     <div
       className={`fixed inset-x-0 bottom-0 ${isExpanded ? 'z-[7000]' : 'z-[3500]'} flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[92dvh]' : 'h-[380px]'} bg-white/50 backdrop-blur-lg border-t border-white/40 overflow-hidden`}
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
-      onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
+      onTouchStart={(e) => {
+        // Only allow swipe from the top handle area (approx 100px)
+        const touchY = e.targetTouches[0].clientY;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const target = e.target as HTMLElement;
+
+        // Ignore if clicking a button or interacting with carousel
+        if (target.closest('button') || target.closest('.overflow-x-auto')) {
+          touchStart.current = null;
+          touchStartX.current = null;
+          return;
+        }
+
+        if (touchY - rect.top < 150) { // Slight increase to easy grabbing area, but filtered by target
+          touchStart.current = touchY;
+          touchStartX.current = e.targetTouches[0].clientX;
+        } else {
+          touchStart.current = null;
+          touchStartX.current = null;
+        }
+      }} onTouchEnd={handleTouchEnd}
     >
       {/* Enrichment/Hydration Indicator */}
       {(isRegenerating || isUpdating) && (
@@ -279,18 +316,36 @@ export const RouteOverview: React.FC<Props> = ({
 
           {/* Action Buttons */}
           <div className={`absolute top-8 inset-x-6 flex items-center justify-between z-10 pointer-events-none`}>
-            {/* Library Button */}
-            <div className={isHe ? "order-1" : "order-2"}>
+            {/* Back Button (Start) */}
+            <div className="bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto">
               <button
                 onClick={(e) => { e.stopPropagation(); if (onClose) onClose(); }}
-                className="w-10 h-10 bg-black/30 backdrop-blur-md rounded-[12px] border border-white/20 flex items-center justify-center text-white/90 hover:text-white hover:bg-black/50 transition-all pointer-events-auto group shadow-lg"
+                className="w-10 h-10 flex items-center justify-center rounded-[8px] transition-all text-white/90 hover:text-white hover:bg-white/10 active:scale-95 group"
                 title={isHe ? 'לספריית המסלולים' : 'To Route Library'}
               >
                 <Library size={18} className="transition-transform group-hover:scale-110" />
               </button>
             </div>
 
-            <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto ${isHe ? "order-2" : "order-1"}`}>
+            {/* Recent Routes Carousel (Center) */}
+            {recentRoutes && recentRoutes.length > 0 && (
+              <div className="pointer-events-auto flex-1 mx-4 overflow-x-auto no-scrollbar flex justify-center gap-2" dir={isHe ? 'rtl' : 'ltr'}>
+                <div className="flex gap-2 p-1 bg-black/20 backdrop-blur-sm rounded-[14px]">
+                  {recentRoutes.map((r, i) => (
+                    <button
+                      key={r.id || i}
+                      onClick={(e) => { e.stopPropagation(); onRouteSelect?.(r); }}
+                      className="shrink-0 w-10 h-10 rounded-[10px] overflow-hidden border border-white/30 shadow-md relative group transition-transform active:scale-90"
+                    >
+                      <GoogleImage query={`${r.city} ${r.name}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions Group (End) */}
+            <div className="flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto">
               <button
                 onClick={(e) => { e.stopPropagation(); handlePrefsClick(); }}
                 disabled={isRegenerating || isUpdating}

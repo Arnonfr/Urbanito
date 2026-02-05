@@ -419,18 +419,18 @@ const App: React.FC = () => {
     }
   };
 
+  const isLoadingGlobal = useRef(false);
   const loadGlobalContent = async () => {
+    if (isLoadingGlobal.current) return;
+    isLoadingGlobal.current = true;
     try {
-      console.log('🔄 loadGlobalContent v2.0: Starting... (CODE UPDATED 27.1.2026 12:45)');
+      console.log('🔄 loadGlobalContent: Fetching...');
       const global = await getAllRecentRoutes(30);
-      console.log('✅ loadGlobalContent: Got routes:', global?.length || 0);
-      if (global && global.length > 0) {
-        console.log('📍 First 3 routes:', global.slice(0, 3).map(r => r.name));
-      }
       setRecentGlobalRoutes(global || []);
     } catch (err) {
       console.error("❌ Failed to load global routes:", err);
-      setRecentGlobalRoutes([]);
+    } finally {
+      isLoadingGlobal.current = false;
     }
   };
 
@@ -486,41 +486,55 @@ const App: React.FC = () => {
 
     if (routes.length > 0) {
       // Filter primarily by distance to avoid "World View" zoom
-      // 1. Try to find routes within 20km
-      let relevantRoutes = routes.filter((r: any) => (r.dist || Infinity) < 20000);
+      // 1. Try to find routes within 15km (True Local)
+      let relevantRoutes = routes.filter((r: any) => (r.dist || Infinity) < 15000);
 
-      // 2. If none, try 50km
+      // 2. If none, try 30km (Regional)
       if (relevantRoutes.length === 0) {
-        relevantRoutes = routes.filter((r: any) => (r.dist || Infinity) < 50000);
+        relevantRoutes = routes.filter((r: any) => (r.dist || Infinity) < 30000);
       }
 
-      // 3. If still none (e.g. only routes in other countries), take the closest 3 regardless of distance,
-      //    BUT do not fit bounds to include them if they are far. Just pan to the first one.
+      // 3. Fallback: If still none or results are just too spread out, handle as "Remote"
       const isRemote = relevantRoutes.length === 0;
       if (isRemote) {
         relevantRoutes = routes.slice(0, 3);
-        showToast(isHe ? "לא נמצאו מסלולים קרובים, מציג מסלולים אחרים" : "No nearby tours, showing others", "success");
+        showToast(isHe ? "לא נמצאו מסלולים קרובים מאוד, מציג מסלולים אחרים" : "No very close tours, showing others", "success");
       }
 
       renderNearbyMarkersOnMap(relevantRoutes);
 
-      if (isRemote && relevantRoutes[0].pois?.[0]) {
-        // Just pan, don't bound
-        googleMap.current.panTo({ lat: relevantRoutes[0].pois[0].lat, lng: relevantRoutes[0].pois[0].lng });
+      const firstPoi = relevantRoutes[0]?.pois?.[0];
+      if (isRemote && firstPoi) {
+        // Just pan to first, don't bound spread-out remote routes
+        googleMap.current.panTo({ lat: firstPoi.lat, lng: firstPoi.lng });
         googleMap.current.setZoom(13);
-      } else {
-        // Fit bounds for local routes
+      } else if (relevantRoutes.length > 0) {
+        // Fit bounds for local routes, but with a sanity check on zoom
         const bounds = new google.maps.LatLngBounds();
+        let validPoints = 0;
+
         relevantRoutes.forEach((r: any) => {
-          if (r.pois && r.pois.length > 0) {
+          if (r.pois && r.pois[0] && Math.abs(r.pois[0].lat) > 0.1) {
             bounds.extend(new google.maps.LatLng(r.pois[0].lat, r.pois[0].lng));
+            validPoints++;
           }
         });
-        // Add current location to bounds so the user sees where they are relative to routes
+
         if (location) {
           bounds.extend(new google.maps.LatLng(location.lat, location.lng));
+          validPoints++;
         }
-        googleMap.current.fitBounds(bounds);
+
+        if (validPoints > 0) {
+          googleMap.current.fitBounds(bounds);
+          // Safety: Don't zoom out too much. If fitBounds goes to level 5 (continent), zoom back in.
+          const listener = google.maps.event.addListener(googleMap.current, 'idle', () => {
+            if (googleMap.current && googleMap.current.getZoom()! < 11) {
+              googleMap.current.setZoom(11);
+            }
+            google.maps.event.removeListener(listener);
+          });
+        }
       }
 
       if (!isRemote) {
@@ -644,8 +658,11 @@ const App: React.FC = () => {
         const newPos = { lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() };
         setLocation(newPos);
         googleMap.current.panTo(newPos);
-        googleMap.current.setZoom(15);
+        // Better zoom logic: if it looks like a specific address (street_address), zoom in more. If locality, zoom 13-14.
+        const isPrecise = results[0].types.includes('street_address') || results[0].types.includes('point_of_interest');
+        googleMap.current.setZoom(isPrecise ? 17 : 14);
         setSearchQuery(results[0].formatted_address);
+        searchInputRef.current?.blur(); // Dismiss keyboard
       } else {
         showToast(isHe ? "לא מצאנו את המיקום הזה" : "Location not found", "error");
       }
@@ -820,72 +837,36 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isInitialized.current) return;
     isInitialized.current = true;
+
     const initApp = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const u = session?.user ?? null;
         setUser(u);
 
-        loadGlobalContent();
-
-        // Fetch Metadata for known cities
-        const { data: cityMetadata } = await supabase.from('popular_cities').select('*').eq('is_active', true);
-
-        // Fetch ALL route cities to calculate real popularity
-        const { data: allRoutes } = await supabase.from('routes').select('city');
+        // Fetch Metadata for known cities (curated list)
+        const { data: cityMetadata } = await supabase
+          .from('popular_cities')
+          .select('*')
+          .eq('is_active', true)
+          .order('name_en', { ascending: true });
 
         if (cityMetadata && cityMetadata.length > 0) {
-          // 1. Calculate Route Counts
-          const routeCounts: Record<string, number> = {};
+          // Rank Logic: Instead of fetching ALL routes (heavy!), we pin the user's favorites 
+          // and use the curated order from the DB.
+          const pinnedNames = ['Tel Aviv', 'Jerusalem'];
+          const topCities = cityMetadata.filter(c => pinnedNames.includes(c.name_en) || pinnedNames.includes(c.name));
+          const otherCities = cityMetadata.filter(c => !topCities.some(tc => tc.id === c.id));
 
-          if (allRoutes) {
-            allRoutes.forEach(r => {
-              if (!r.city) return;
-              // Normalize city name for counting
-              const normalized = r.city.trim();
-              // Try to map to known city name if possible, or just count raw
-              // This is a simplified approach; in production we'd need robust name normalization
-              routeCounts[normalized] = (routeCounts[normalized] || 0) + 1;
-            });
-          }
+          let finalCities = [...topCities, ...otherCities];
 
-          // 2. Sort ranking based on counts
-          let rankedCities = [...cityMetadata];
-
-          rankedCities.sort((a, b) => {
-            // Get count for city A (check both hebrew/english names)
-            const countA = (routeCounts[a.name] || 0) + (routeCounts[a.name_en] || 0);
-            const countB = (routeCounts[b.name] || 0) + (routeCounts[b.name_en] || 0);
-            return countB - countA; // Descending order
-          });
-
-          // 3. Force Tel Aviv & Jerusalem to top (User Requirement)
-          const pinnedCities = ['Tel Aviv', 'Jerusalem'];
-          const topCities: any[] = [];
-          const otherCities: any[] = [];
-
-          // Find pinned cities in our list
-          pinnedCities.forEach(pinnedName => {
-            const found = rankedCities.find(c => c.name_en === pinnedName || c.name === pinnedName);
-            if (found) topCities.push(found);
-          });
-
-          // Add the rest
-          rankedCities.forEach(c => {
-            if (!topCities.includes(c)) otherCities.push(c);
-          });
-
-          const finalCities = [...topCities, ...otherCities];
-
-          // Merge specifically Berlin if missing (fallback logic)
+          // Ensure Berlin is there as per requirement
           const berlin = FALLBACK_CITIES.find(c => c.name_en === 'Berlin');
-          const hasBerlin = finalCities.some(c => c.name_en === 'Berlin' || c.name === 'Berlin');
-
-          if (berlin && !hasBerlin) {
-            setPopularCities([...finalCities, berlin]);
-          } else {
-            setPopularCities(finalCities);
+          if (berlin && !finalCities.some(c => c.name_en === 'Berlin')) {
+            finalCities.push(berlin);
           }
+
+          setPopularCities(finalCities);
         } else {
           setPopularCities(FALLBACK_CITIES);
         }
@@ -899,24 +880,30 @@ const App: React.FC = () => {
         handleLocateUser(true);
       } catch (err) {
         console.error("Init error:", err);
+        setPopularCities(FALLBACK_CITIES);
       }
     };
+
     initApp();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user ?? null;
       setUser(u);
 
+      // Only load global content on sign in/out or the very first time.
+      // event === 'INITIAL_SESSION' is also fine.
       loadGlobalContent();
 
       if (u) {
         refreshSavedContent(u.id);
         const prefs = await getUserPreferences(u.id);
         if (prefs) setPreferences(prev => ({ ...prev, ...prefs }));
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setSavedRoutes([]);
+        setSavedPois([]);
       }
     });
+
     return () => authListener?.subscription?.unsubscribe();
   }, []);
 
@@ -1208,9 +1195,20 @@ const App: React.FC = () => {
       // Reset view to full route
       if (currentRoute && activeTab === 'route' && !isGeneratingActive) {
         const bounds = new google.maps.LatLngBounds();
-        if (currentRoute.pois && currentRoute.pois.length > 0) {
-          currentRoute.pois.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
-          googleMap.current.fitBounds(bounds);
+        const validPois = currentRoute.pois.filter(p => p.lat && p.lng && (p.lat !== 0 || p.lng !== 0));
+
+        if (validPois.length > 0) {
+          if (validPois.length === 1) {
+            googleMap.current.setCenter({ lat: validPois[0].lat, lng: validPois[0].lng });
+            googleMap.current.setZoom(16);
+          } else {
+            validPois.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
+            googleMap.current.fitBounds(bounds);
+            // Clamp zoom if fitBounds goes too crazy (rare but possible with very close points)
+            const listener = google.maps.event.addListenerOnce(googleMap.current, "idle", () => {
+              if (googleMap.current.getZoom() > 18) googleMap.current.setZoom(18);
+            });
+          }
         }
       }
     }
@@ -1295,6 +1293,30 @@ const App: React.FC = () => {
     setTimeout(() => setShowGeneratingTooltip(false), 3000);
 
     try {
+      // DUPLICATE CHECK: If "Area Tour" (City level), check if we already have a generic tour for this city in the library.
+      if (mode === 'area') {
+        const existingRoute = recentGlobalRoutes.find(r =>
+          r.city === finalCity &&
+          // Check if it's likely a general tour (has minimal street specificity or matches city name)
+          // Or just any valid route for this city if the user didn't ask for a specific street.
+          // We prioritize "Official" or Public routes.
+          r.pois.length > 0
+        );
+
+        if (existingRoute) {
+          console.log("Found existing route for city, loading instead of generating:", existingRoute.id);
+          showToast(isHe ? 'נמצא מסלול קיים בעיר, טוען...' : 'Found existing tour, loading...', 'success');
+
+          // Mimic loading logic
+          setOpenRoutes(prev => prev.filter(r => r.id !== tempId)); // Remove placeholder
+          handleLoadSavedRoute(existingRoute.city, existingRoute);
+          setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(tempId); return next; });
+          setIsAiMenuOpen(false);
+          setShowGeneratingTooltip(false);
+          return;
+        }
+      }
+
       const route = mode === 'street'
         ? await generateStreetWalkRoute(`${finalStreet}, ${finalCity}`, pos, finalPrefs, user?.id)
         : await generateWalkingRoute(finalCity, pos, finalPrefs, "general", user?.id);
@@ -1634,56 +1656,9 @@ const App: React.FC = () => {
         {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
         {isSearchingNearby && <div className="fixed inset-0 z-[8000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-[8px] shadow-2xl flex flex-col items-center gap-4"><Loader2 size={40} className="animate-spin text-indigo-500" /><p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים בסביבה...' : 'Searching nearby...'}</p></div></div>}
 
-        {/* Route Tabs - Top of the page */}
-        {openRoutes.length > 1 && locationPath.pathname.startsWith('/route') && (
-          <div className="fixed top-[calc(env(safe-area-inset-top)+12px)] inset-x-0 z-[6000] flex justify-center pointer-events-none px-4">
-            <div className={`p-1 bg-white/80 backdrop-blur-md rounded-[12px] border border-white/40 shadow-xl flex gap-1.5 transition-all duration-500 pointer-events-auto max-w-full overflow-hidden ${areTabsExpanded ? 'flex-wrap justify-center overflow-y-auto max-h-[30dvh]' : ''}`}>
-              {openRoutes.map((r, i) => {
-                const isActive = activeRouteIndex === i;
+        {/* Route Tabs - REMOVED per user request (replaced by header carousel) */}
+        {/* <RouteTabs ... /> */}
 
-                // Shrink logic: If not expanded and length > 3, show only active tab and one other (e.g., first one)
-                if (!areTabsExpanded && openRoutes.length > 3) {
-                  const isFirst = i === 0;
-                  const showThis = isActive || (activeRouteIndex !== 0 ? isFirst : i === 1);
-                  if (!showThis) return null;
-                }
-
-                return (
-                  <button
-                    key={r.id}
-                    onClick={() => { setActiveRouteIndex(i); renderRouteMarkers(r); }}
-                    className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-[8px] border transition-all ${isActive
-                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-bold shadow-sm'
-                      : 'bg-white/50 text-slate-500 border-slate-100'
-                      }`}
-                  >
-                    <span className="text-[10px] truncate max-w-[80px]">{r.name.replace(/\s*\(.*?\)\s*/g, '')}</span>
-                    <X size={16} onClick={(e) => { e.stopPropagation(); handleCloseRoute(i); }} className="hover:bg-indigo-100 rounded-full p-1 -mr-1" />
-                  </button>
-                );
-              })}
-
-              {/* Expansion/Shrink Indicator */}
-              {!areTabsExpanded && openRoutes.length > 3 && (
-                <button
-                  onClick={() => setAreTabsExpanded(true)}
-                  className="shrink-0 flex items-center justify-center px-2 h-8 rounded-[8px] bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100"
-                >
-                  +{openRoutes.length - 2}
-                </button>
-              )}
-
-              {areTabsExpanded && (
-                <button
-                  onClick={() => setAreTabsExpanded(false)}
-                  className="shrink-0 flex items-center justify-center w-8 h-8 rounded-[8px] bg-indigo-100 text-indigo-600 border border-indigo-200"
-                >
-                  <ChevronUp size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         <main className="flex-1 relative h-full">
           <div ref={mapRef} className="w-full h-full" />
@@ -1703,7 +1678,11 @@ const App: React.FC = () => {
                             <div className="p-5 pb-2">
                               <div className="flex justify-between items-start mb-4">
                                 <div className="text-right flex-1 min-w-0">
-                                  <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">{streetConfirmData.type === 'street' ? (isHe ? 'מסלול רחוב' : 'Street Tour') : (isHe ? 'סיור באזור' : 'Area Tour')}</h4>
+                                  <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">
+                                    {streetConfirmData.type === 'street'
+                                      ? (isHe ? 'מסלול רחוב - צור מסלול על רחוב ספיציפי' : 'Street Tour - Create a tour on a specific street')
+                                      : (isHe ? 'מסלול איזורי (צור מסלול ברדיוס סביבך)' : 'Area Tour (Create a route in a radius around you)')}
+                                  </h4>
                                   <div className="relative group">
                                     <input
                                       type="text"
@@ -1808,6 +1787,14 @@ const App: React.FC = () => {
                           onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
                           dir={isHe ? "rtl" : "ltr"}
                         />
+                        {searchQuery && (
+                          <button
+                            onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                            className="p-1 text-slate-300 hover:text-slate-500 rounded-full hover:bg-slate-100 transition-all"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
                         <div className="w-px h-6 bg-slate-100 mx-1"></div>
                         <button
                           onClick={() => toggleTab('profile')}
@@ -2518,7 +2505,7 @@ const App: React.FC = () => {
                       <VoiceGuideManager route={currentRoute} language={preferences.language} />
                     </Suspense>
                   )}
-                  {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/library')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} showToast={showToast} nearbyRoutes={recentGlobalRoutes.filter(r => (r.city === currentRoute.city || (currentRoute.city && r.city && r.city.includes(currentRoute.city))) && r.id !== currentRoute.id)} onRouteSelect={(r) => handleLoadSavedRoute(r.city, r)} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
+                  {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/library')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} showToast={showToast} nearbyRoutes={recentGlobalRoutes.filter(r => (r.city === currentRoute.city || (currentRoute.city && r.city && r.city.includes(currentRoute.city))) && r.id !== currentRoute.id)} onRouteSelect={(r) => handleLoadSavedRoute(r.city, r)} recentRoutes={openRoutes.filter(r => r.id !== currentRoute.id)} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
                 </div>
               } />
 

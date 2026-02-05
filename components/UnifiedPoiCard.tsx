@@ -37,6 +37,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const [fontLevel, setFontLevel] = useState<0 | 1 | 2>(0);
   const [isImageFullscreen, setIsImageFullscreen] = useState(false);
   const touchStart = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const dragStartY = useRef(0);
@@ -46,11 +47,25 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const extendedData = poi; // Use poi as extendedData since fields are merged
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStart.current === null) return;
-    const distance = touchStart.current - e.changedTouches[0].clientY;
-    if (distance > 60) setIsExpanded(true);
-    else if (distance < -60) setIsExpanded(false);
+    if (touchStart.current === null || touchStartX.current === null) return;
+
+    const touchY = e.changedTouches[0].clientY;
+    const touchX = e.changedTouches[0].clientX;
+    const distY = touchStart.current - touchY;
+    const distX = touchStartX.current - touchX;
+
+    // Ignore if horizontal scroll was dominant
+    if (Math.abs(distX) > Math.abs(distY) || Math.abs(distX) > 30) {
+      touchStart.current = null;
+      touchStartX.current = null;
+      return;
+    }
+
+    if (distY > 80) setIsExpanded(true);
+    else if (distY < -80) setIsExpanded(false);
+
     touchStart.current = null;
+    touchStartX.current = null;
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -128,7 +143,27 @@ export const UnifiedPoiCard: React.FC<Props> = ({
     <div
       className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[96dvh]' : 'h-[420px]'} bg-white/50 backdrop-blur-xl border-t border-white/40 overflow-hidden`}
       dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
-      onTouchStart={(e) => touchStart.current = e.targetTouches[0].clientY} onTouchEnd={handleTouchEnd}
+      onTouchStart={(e) => {
+        const touchY = e.targetTouches[0].clientY;
+        const rect = e.currentTarget.getBoundingClientRect();
+        // Allow swipe only from the top 100px (header/image area)
+        const target = e.target as HTMLElement;
+
+        // Ignore if clicking a button
+        if (target.closest('button') || target.closest('input')) {
+          touchStart.current = null;
+          touchStartX.current = null;
+          return;
+        }
+
+        if (touchY - rect.top < 150) {
+          touchStart.current = touchY;
+          touchStartX.current = e.targetTouches[0].clientX;
+        } else {
+          touchStart.current = null;
+          touchStartX.current = null;
+        }
+      }} onTouchEnd={handleTouchEnd}
       onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
     >
       <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar relative pb-32">

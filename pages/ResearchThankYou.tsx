@@ -99,8 +99,8 @@ const ResearchThankYou: React.FC<Props> = ({ couponCode }) => {
                 </div>
 
                 <button
-                    onClick={() => navigate('/')}
-                    className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg"
+                    onClick={() => window.location.href = '/'}
+                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-2xl font-bold text-lg hover:translate-y-[-2px] hover:shadow-xl transition-all shadow-lg active:scale-95"
                 >
                     חזרה לאפליקציה
                 </button>

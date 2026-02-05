@@ -64,12 +64,13 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                 </motion.div>
 
                 {/* Options List */}
+                {/* Options List */}
                 <div className="p-3 space-y-2">
                     <MenuItem
                         icon={<Crosshair size={22} className="drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />}
                         color="indigo"
-                        title={isHe ? 'סיור אזורי' : 'Regional Tour'}
-                        desc={isHe ? 'בינה מלאכותית שתופרת לך חוויה' : 'AI-tailored experience'}
+                        title={isHe ? 'מסלול איזורי' : 'Area Tour'}
+                        desc={isHe ? 'צור מסלול ברדיוס סביבך' : 'Create a route in a radius around you'}
                         onClick={() => onOptionSelect('area')}
                         delay={0.1}
                         isHe={isHe}
@@ -77,8 +78,8 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                     <MenuItem
                         icon={<Signpost size={22} className="drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
                         color="emerald"
-                        title={isHe ? 'סיור רחוב' : 'Street Tour'}
-                        desc={isHe ? 'גל פנינים לאורך הציר' : 'Discover gems along the way'}
+                        title={isHe ? 'מסלול רחוב' : 'Street Tour'}
+                        desc={isHe ? 'צור מסלול על רחוב ספיציפי' : 'Create a tour on a specific street'}
                         onClick={() => onOptionSelect('street')}
                         delay={0.15}
                         isHe={isHe}
@@ -86,8 +87,8 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                     <MenuItem
                         icon={<Compass size={22} className="drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
                         color="amber"
-                        title={isHe ? 'מסלולים באיזור' : 'Routes Nearby'}
-                        desc={isHe ? 'המסלולים הקרובים ביותר אליך' : 'Top routes in your area'}
+                        title={isHe ? 'מסלולים באזור' : 'Routes Nearby'}
+                        desc={isHe ? 'מסלולים מוכנים באזור' : 'Ready trails in the area'}
                         onClick={() => onOptionSelect('nearby')}
                         delay={0.2}
                         isHe={isHe}

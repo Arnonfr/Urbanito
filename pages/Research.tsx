@@ -4,6 +4,36 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import ResearchThankYou from './ResearchThankYou';
 
+interface Question {
+    id: string;
+    category: string;
+    question: string;
+    subtitle?: string;
+    type?: 'horizontal_cards' | 'conditional' | 'slider' | 'text';
+    options?: {
+        id: string;
+        label: string;
+        icon: string;
+        description?: string;
+    }[];
+    multiSelect?: boolean;
+    maxSelect?: number;
+    showIf?: () => boolean;
+    followUp?: {
+        condition: string;
+        question: string;
+        options: { id: string; label: string; icon: string; }[];
+    };
+    sliderConfig?: {
+        min: number;
+        max: number;
+        labels: string[];
+        emojis: string[];
+    };
+    placeholder?: string;
+    optional?: boolean;
+}
+
 const Research: React.FC = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(0);
@@ -236,18 +266,22 @@ const Research: React.FC = () => {
             category: 'נכונות לשלם',
             question: 'כמה היית מוכן/ה לשלם עבור גרסת פרימיום?',
             subtitle: 'מסלולים ארוכים יותר, אודיו מקצועי, הורדה לאופליין, תמונות ופיצ\'רים נוספים',
-            options: [
-                { id: 'free_only', label: 'רק חינם', icon: '🆓' },
-                { id: '5-10', label: '$5-10 לשנה', icon: '💵' },
-                { id: '10-15', label: '$10-15 לשנה', icon: '💰' },
-                { id: '15+', label: 'מעל $15 לשנה', icon: '💎' }
-            ]
+            type: 'slider',
+            sliderConfig: {
+                min: 1,
+                max: 4,
+                labels: ['רק חינם', '$5-10 לשנה', '$10-15 לשנה', 'מעל $15'],
+                emojis: ['🆓', '💵', '💰', '💎']
+            }
         }
     ];
 
+    const typedQuestions = (questions as Question[]);
+
     // Filter questions based on showIf conditions
-    const filteredQuestions = questions.filter(q => !q.showIf || q.showIf());
+    const filteredQuestions = typedQuestions.filter(q => !q.showIf || q.showIf());
     const currentQ = filteredQuestions[step];
+    const progress = ((step + 1) / filteredQuestions.length) * 100;
 
     const handleOptionSelect = (optionId: string) => {
         if (currentQ.multiSelect) {
@@ -345,6 +379,10 @@ const Research: React.FC = () => {
                         <span>{filteredQuestions.length}</span>
                     </div>
                 </div>
+
+                {/* Progress Bar */}
+                <div className="absolute bottom-0 left-0 h-1 bg-indigo-600 transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-slate-100 -z-10" />
             </div>
 
             {/* Content */}
@@ -386,12 +424,12 @@ const Research: React.FC = () => {
                                         return (
                                             <div
                                                 key={idx}
-                                                className={`flex flex-col items-center transition-all ${isSelected ? 'scale-110' : 'scale-90 opacity-50'}`}
+                                                className={`flex flex-col items-center transition-all duration-300 ${isSelected ? 'scale-110' : 'scale-90 opacity-40'}`}
                                             >
-                                                <div className={`text-3xl mb-1 transition-transform ${isSelected ? 'animate-bounce' : ''}`}>
+                                                <div className={`text-4xl mb-2 transition-all duration-500 ${isSelected ? 'animate-bounce drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''}`}>
                                                     {currentQ.sliderConfig!.emojis[idx]}
                                                 </div>
-                                                <span className={`text-xs font-medium text-center ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                                <span className={`text-[10px] font-bold text-center leading-tight max-w-[60px] ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`}>
                                                     {label}
                                                 </span>
                                             </div>
@@ -404,31 +442,32 @@ const Research: React.FC = () => {
                             <style>{`
                                 .slider-thumb::-webkit-slider-thumb {
                                     appearance: none;
-                                    width: 28px;
-                                    height: 28px;
+                                    width: 32px;
+                                    height: 32px;
                                     border-radius: 50%;
                                     background: #6366F1;
+                                    border: 4px solid white;
                                     cursor: pointer;
-                                    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
-                                    transition: all 0.2s;
+                                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+                                    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
                                 }
                                 .slider-thumb::-webkit-slider-thumb:hover {
                                     transform: scale(1.1);
-                                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.6);
+                                    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.6);
                                 }
                                 .slider-thumb::-moz-range-thumb {
-                                    width: 28px;
-                                    height: 28px;
+                                    width: 32px;
+                                    height: 32px;
                                     border-radius: 50%;
                                     background: #6366F1;
+                                    border: 4px solid white;
                                     cursor: pointer;
-                                    border: none;
-                                    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
-                                    transition: all 0.2s;
+                                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+                                    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
                                 }
                                 .slider-thumb::-moz-range-thumb:hover {
                                     transform: scale(1.1);
-                                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.6);
+                                    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.6);
                                 }
                             `}</style>
                         </div>
@@ -440,20 +479,30 @@ const Research: React.FC = () => {
                                     <button
                                         key={opt.id}
                                         onClick={() => handleOptionSelect(opt.id)}
-                                        className={`flex flex-col items-center p-6 rounded-2xl border-2 transition-all ${isSelected
-                                            ? 'border-[#6366F1] bg-indigo-50 shadow-lg scale-105'
-                                            : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-md'
+                                        className={`group relative text-right p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 overflow-hidden ${isSelected
+                                            ? 'border-[#6366F1] bg-indigo-50/50 shadow-md ring-4 ring-indigo-50'
+                                            : 'border-white bg-white hover:border-slate-100 hover:shadow-sm'
                                             }`}
                                     >
-                                        <div className="text-5xl mb-3">{opt.icon}</div>
-                                        <div className="font-bold text-lg mb-2 text-slate-900">{opt.label}</div>
-                                        <div className="text-xs text-slate-600 text-center leading-relaxed">
+                                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl transition-all duration-500 shadow-sm ${isSelected ? 'bg-white scale-110 rotate-3' : 'bg-slate-50 group-hover:scale-105'
+                                            }`}>
+                                            {opt.icon}
+                                        </div>
+                                        <div className="text-center">
+                                            <span className={`block font-bold text-sm ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                                {opt.label}
+                                            </span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 text-center leading-relaxed h-[40px] flex items-center">
                                             {'description' in opt ? opt.description : ''}
                                         </div>
                                         {isSelected && (
-                                            <div className="mt-3 w-6 h-6 bg-[#6366F1] rounded-full flex items-center justify-center text-white">
-                                                <Check size={14} strokeWidth={3} />
+                                            <div className="absolute top-2 right-2 w-5 h-5 bg-[#6366F1] rounded-full flex items-center justify-center text-white shadow-sm scale-110 animate-in zoom-in duration-300">
+                                                <Check size={12} strokeWidth={4} />
                                             </div>
+                                        )}
+                                        {!isSelected && (
+                                            <div className="absolute inset-0 bg-transparent group-hover:bg-indigo-50/5 transition-colors pointer-events-none" />
                                         )}
                                     </button>
                                 );
@@ -593,7 +642,7 @@ const Research: React.FC = () => {
                         // Check if main question is answered
                         const mainAnswered = currentQ.multiSelect
                             ? (answers[currentQ.id] as string[])?.length > 0
-                            : !!answers[currentQ.id];
+                            : (currentQ.type === 'slider' ? !!answers[currentQ.id] : !!answers[currentQ.id]);
 
                         if (!mainAnswered) return true;
 
@@ -608,12 +657,22 @@ const Research: React.FC = () => {
 
                         return false;
                     })()}
-                    className="px-8 py-3 bg-[#6366F1] text-white rounded-full font-bold shadow-lg shadow-indigo-200 flex items-center gap-2 disabled:opacity-50 disabled:shadow-none hover:bg-indigo-700 transition-all active:scale-95"
+                    className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold shadow-[0_10px_20px_-5px_rgba(99,102,241,0.4)] flex items-center gap-2 disabled:opacity-50 disabled:shadow-none hover:translate-y-[-2px] hover:shadow-[0_15px_25px_-5px_rgba(99,102,241,0.5)] transition-all active:scale-95"
                 >
                     {isSubmitting ? 'שולח...' : (step === filteredQuestions.length - 1 ? 'סיים ושלח' : 'הבא')}
                     {!isSubmitting && <ChevronLeft size={18} />}
                 </button>
             </div>
+
+            <style>{`
+                @keyframes bounce-subtle {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-5px); }
+                }
+                .animate-bounce-subtle {
+                    animation: bounce-subtle 2s infinite ease-in-out;
+                }
+            `}</style>
         </div>
     );
 };

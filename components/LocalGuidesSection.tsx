@@ -22,9 +22,9 @@ export const LocalGuidesSection: React.FC<LocalGuidesSectionProps> = ({ city, cl
             const { data, error } = await supabase
                 .from('guide_posts')
                 .select(`
-    *,
-    guide: local_guides(*)
-        `)
+                    *,
+                    guide: local_guides(*)
+                `)
                 // Simple case-insensitive match or just match the passed city string
                 // In a real app we'd map 'ירושלים' to 'Jerusalem' or have synonyms
                 // Simple case-insensitive match or just match the passed city string
@@ -92,7 +92,7 @@ export const LocalGuidesSection: React.FC<LocalGuidesSectionProps> = ({ city, cl
     if (!loading && posts.length === 0) return null;
 
     return (
-        <div className={`w - full space - y - 6 ${className} `}>
+        <div className={`w-full space-y-6 ${className}`}>
             {/* Header - Editorial Style */}
             <div className="flex items-end justify-between border-b border-amber-200/40 pb-4">
                 <div>
