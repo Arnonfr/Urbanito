@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Radar, MapPinned, Footprints, Plus, X } from 'lucide-react';
+import { Crosshair, Signpost, Compass, Plus, X, Route } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
@@ -27,10 +27,10 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                 layoutId="create-menu-container"
                 initial={{ borderRadius: 28, width: 56, height: 56, y: -28, opacity: 0 }}
                 animate={{
-                    borderRadius: 24,
-                    width: 'min(90vw, 360px)',
+                    borderRadius: 32,
+                    width: 'min(92vw, 400px)',
                     height: 'auto',
-                    y: -100,
+                    y: -110,
                     opacity: 1
                 }}
                 exit={{
@@ -42,11 +42,11 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                 }}
                 transition={{
                     type: "spring",
-                    stiffness: 300,
-                    damping: 25,
+                    stiffness: 400,
+                    damping: 30,
                     mass: 0.8
                 }}
-                className="relative bg-white/80 backdrop-blur-2xl border border-white/50 shadow-2xl shadow-indigo-500/10 overflow-hidden pointer-events-auto mx-auto flex flex-col"
+                className="relative bg-white/90 backdrop-blur-3xl border border-white/40 shadow-2xl shadow-indigo-500/10 overflow-hidden pointer-events-auto mx-auto flex flex-col"
                 style={{ transformOrigin: "bottom center" }}
             >
 
@@ -64,32 +64,32 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                 </motion.div>
 
                 {/* Options List */}
-                <div className="p-2 space-y-1">
+                <div className="p-3 space-y-2">
                     <MenuItem
-                        icon={<Radar size={20} />}
+                        icon={<Crosshair size={22} className="drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />}
                         color="indigo"
-                        title={isHe ? 'סיור חכם באזור' : 'Smart Area Tour'}
-                        desc={isHe ? 'חוויה מותאמת אישית' : 'Curated just for you'}
+                        title={isHe ? 'סיור אזורי' : 'Regional Tour'}
+                        desc={isHe ? 'בינה מלאכותית שתופרת לך חוויה' : 'AI-tailored experience'}
                         onClick={() => onOptionSelect('area')}
-                        delay={0.2}
+                        delay={0.1}
                         isHe={isHe}
                     />
                     <MenuItem
-                        icon={<Footprints size={20} />}
+                        icon={<Signpost size={22} className="drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
                         color="emerald"
-                        title={isHe ? 'מסלול רחוב' : 'Street Route'}
-                        desc={isHe ? 'הליכה לאורך רחוב' : 'Walk a specific street'}
+                        title={isHe ? 'סיור רחוב' : 'Street Tour'}
+                        desc={isHe ? 'גל פנינים לאורך הציר' : 'Discover gems along the way'}
                         onClick={() => onOptionSelect('street')}
-                        delay={0.25}
+                        delay={0.15}
                         isHe={isHe}
                     />
                     <MenuItem
-                        icon={<MapPinned size={20} />}
+                        icon={<Compass size={22} className="drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
                         color="amber"
-                        title={isHe ? 'מסלולים מוכנים' : 'Ready Routes'}
-                        desc={isHe ? 'מה שחם בסביבה' : 'Popular nearby'}
+                        title={isHe ? 'מסלולים באיזור' : 'Routes Nearby'}
+                        desc={isHe ? 'המסלולים הקרובים ביותר אליך' : 'Top routes in your area'}
                         onClick={() => onOptionSelect('nearby')}
-                        delay={0.3}
+                        delay={0.2}
                         isHe={isHe}
                     />
                 </div>
@@ -101,11 +101,11 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
 
 // Helper Component for Menu Items
 const MenuItem = ({ icon, color, title, desc, onClick, delay, isHe }: any) => {
-    // Enhanced colors for glassmorphism context
+    // Enhanced colors for glassmorphism context - Deeper and richer as requested
     const colors: Record<string, string> = {
-        indigo: 'bg-indigo-500/10 text-indigo-600 group-hover:bg-indigo-500 group-hover:text-white',
-        emerald: 'bg-emerald-500/10 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white',
-        amber: 'bg-amber-500/10 text-amber-600 group-hover:bg-amber-500 group-hover:text-white',
+        indigo: 'bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white',
+        emerald: 'bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white',
+        amber: 'bg-amber-100 text-amber-700 group-hover:bg-amber-600 group-hover:text-white',
     };
 
     return (
@@ -120,8 +120,8 @@ const MenuItem = ({ icon, color, title, desc, onClick, delay, isHe }: any) => {
                 {icon}
             </div>
             <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-slate-800 leading-tight">{title}</h4>
-                <p className="text-[11px] text-slate-500 font-medium truncate opacity-80">{desc}</p>
+                <h4 className="text-[15px] font-black text-slate-800 leading-tight mb-0.5">{title}</h4>
+                <p className="text-[12px] text-slate-500 font-medium truncate opacity-100 group-hover:text-slate-600">{desc}</p>
             </div>
         </motion.button>
     );

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User, Bot, Sparkles } from 'lucide-react';
+import { Send, User, Bot, Zap } from 'lucide-react';
 import { useCommandCenter } from '../context/CommandCenterContext';
 
 export const ChatConsole = () => {
@@ -43,7 +43,7 @@ export const ChatConsole = () => {
                                 msg.sender === 'agent' ? 'bg-amber-100 text-amber-600 border border-amber-200'
                                     : 'bg-white border border-gray-200 text-indigo-600'}`}>
                             {msg.sender === 'user' ? <User size={18} /> :
-                                msg.sender === 'agent' ? <Bot size={18} /> : <Sparkles size={18} />}
+                                msg.sender === 'agent' ? <Bot size={18} /> : <Zap size={18} />}
                         </div>
 
                         {/* Bubble */}
@@ -63,7 +63,7 @@ export const ChatConsole = () => {
                 {isProcessing && (
                     <div className="flex gap-4">
                         <div className="w-10 h-10 rounded-full bg-white border border-gray-200 text-indigo-600 flex items-center justify-center shadow-sm">
-                            <Sparkles size={18} className="animate-pulse" />
+                            <Zap size={18} className="animate-pulse" />
                         </div>
                         <div className="bg-white border border-gray-100 text-gray-500 rounded-2xl p-4 rounded-tl-none shadow-sm flex items-center gap-2">
                             <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
@@ -79,7 +79,7 @@ export const ChatConsole = () => {
             <div className="p-6 border-t border-gray-200 bg-white">
                 <div className="relative flex items-center gap-2 max-w-4xl mx-auto">
                     <div className="absolute left-4 text-indigo-500">
-                        <Sparkles size={16} />
+                        <Zap size={16} />
                     </div>
                     <input
                         type="text"

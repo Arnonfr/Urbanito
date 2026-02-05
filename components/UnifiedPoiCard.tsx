@@ -1,24 +1,30 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { POI, UserPreferences, Route } from '../types';
-import { fetchExtendedPoiDetails } from '../services/geminiService';
 import {
   Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ArrowRight, ArrowLeft,
-  Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Sparkles, Building, Footprints,
-  Play, Pause
+  Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Building, Footprints,
+  Play, Pause, Zap, User
 } from 'lucide-react';
 import { CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
+import { useAudio } from '../contexts/AudioContext';
 
 interface Props {
-  poi: POI; route: Route; onClose: () => void; onNext: () => void; onPrev: () => void;
-  currentIndex: number; totalCount: number; preferences: UserPreferences; onUpdatePreferences: (p: UserPreferences) => void;
-  isExpanded: boolean; setIsExpanded: (v: boolean) => void;
+  poi: POI;
+  route: Route;
+  onClose: () => void;
+  onNext: () => void;
+  onPrev: () => void;
+  currentIndex: number;
+  totalCount: number;
+  preferences: UserPreferences;
+  onUpdatePreferences: (p: UserPreferences) => void;
+  isExpanded: boolean;
+  setIsExpanded: (v: boolean) => void;
   showToast?: (m: string, t?: 'success' | 'error') => void;
-  isSaved?: boolean; onSave?: () => void;
+  isSaved?: boolean;
+  onSave?: () => void;
 }
-
-import { useAudio } from '../contexts/AudioContext';
 
 export const UnifiedPoiCard: React.FC<Props> = ({
   poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast, isSaved, onSave
@@ -37,7 +43,6 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const dragStartScrollTop = useRef(0);
 
   // Data comes fully from props now (managed by App.tsx pre-fetching)
-  const isLoading = !poi.isFullyLoaded;
   const extendedData = poi; // Use poi as extendedData since fields are merged
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -74,15 +79,11 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   };
 
   const openInGoogleMaps = () => {
-    // Priority 1: Google Place ID (Best precision + Business Card)
     if (poi.googlePlaceId) {
       const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(poi.name)}&query_place_id=${poi.googlePlaceId}`;
       window.open(url, '_blank');
       return;
     }
-
-    // Priority 2: Place Name + City (Good precision, shows business card usually)
-    // We append the city/route-city context to disambiguate
     const query = `${poi.name}, ${route.city || ''}`;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
     window.open(url, '_blank');
@@ -93,8 +94,6 @@ export const UnifiedPoiCard: React.FC<Props> = ({
       stop();
       return;
     }
-
-    // Play audio - sync with visible content in the UI
     const text = poi.historicalAnalysis || poi.description || poi.summary || poi.narrative || poi.name;
     playText(text, preferences.language, poi.id, 'high');
   };
@@ -208,43 +207,19 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               </h3>
             </div>
             <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontClasses[fontLevel]}`}>
-              {(poi as any).isLoading ? (
-                <div className="flex flex-col gap-6">
-                  {(poi.summary || poi.description) && (
-                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
-                      <p className="text-lg text-slate-700 italic border-l-4 border-indigo-200 pl-4 py-1">
-                        {poi.summary || poi.description}
-                      </p>
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center py-10 gap-4 bg-slate-50/50 rounded-[12px] border border-slate-100 border-dashed">
-                    <Loader2 size={32} className="animate-spin text-[#6366F1]" />
-                    <p className="text-[9px] font-medium uppercase text-slate-400 tracking-widest">{isHe ? 'מפיק הסברים נוספים...' : 'Fetching deeper stories...'}</p>
-                  </div>
-                </div>
-              ) : !poi.isFullyLoaded ? (
+              {!poi.isFullyLoaded ? (
                 <div className="space-y-6">
                   <p className="opacity-90 leading-relaxed text-lg">
                     {poi.description || (isHe ? 'אין מידע זמין כרגע.' : 'No details available.')}
                   </p>
-
-                  <div className="p-4 bg-amber-50 text-amber-700 text-xs rounded-lg border border-amber-100 flex items-start gap-2">
-                    <Info size={14} className="mt-0.5 shrink-0" />
-                    <div>
-                      <p className="font-bold mb-1">{isHe ? 'טעינת תוכן מורחב נכשלה' : 'Extended Content Load Failed'}</p>
-                      <p>{isHe ? 'לא הצלחנו לייצר את הסיפור המלא כרגע. אנא נסה שוב מאוחר יותר.' : 'We couldn\'t generate the full story right now. Please try again later.'}</p>
-                    </div>
-                  </div>
                 </div>
               ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
-                  {/* Main content with improved paragraph structure */}
                   {(() => {
                     const mainContent = extendedData?.historicalAnalysis || poi.description;
                     const paragraphs = mainContent.split('\n').filter((p: string) => p.trim());
 
                     return paragraphs.map((paragraph: string, idx: number) => {
-                      // Check if paragraph looks like a heading (short, ends with :, or all caps)
                       const isHeading = paragraph.length < 60 && (
                         paragraph.endsWith(':') ||
                         paragraph === paragraph.toUpperCase() ||
@@ -254,7 +229,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                       if (isHeading) {
                         return (
                           <h4 key={idx} className="text-lg font-bold text-slate-900 mt-8 mb-3 flex items-center gap-2">
-                            <span className="w-1 h-6 bg-indigo-500 rounded-full"></span>
+                            <Zap className="w-4 h-4 text-indigo-400" />
                             {paragraph.replace(/:$/, '')}
                           </h4>
                         );
@@ -268,11 +243,10 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                     });
                   })()}
 
-                  {/* Additional sections */}
                   {extendedData?.sections?.map((section: any, idx: number) => (
                     <div key={idx} className="space-y-4 pt-8 border-t border-slate-100">
                       <h4 className="text-sm font-bold text-indigo-600 flex items-center gap-2">
-                        {idx % 3 === 0 ? <Building size={16} /> : idx % 3 === 1 ? <Sparkles size={16} /> : <Info size={16} />}
+                        {idx % 3 === 0 ? <Building size={16} /> : idx % 3 === 1 ? <Zap size={16} /> : <Info size={16} />}
                         {section.title}
                       </h4>
                       {section.content.split('\n').filter((p: string) => p.trim()).map((para: string, pIdx: number) => (
@@ -283,7 +257,6 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                     </div>
                   ))}
 
-                  {/* Sources */}
                   {extendedData?.sources && extendedData.sources.length > 0 && (
                     <div className="pt-10 border-t-2 border-slate-100">
                       <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">

@@ -2,6 +2,24 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
+# ⚠️ CRITICAL: READ IRON RULES FIRST ⚠️
+
+## 🚨 **ALL AI AGENTS & DEVELOPERS - START HERE:**
+
+**Before making ANY changes to this codebase, you MUST read:**
+
+### 📕 **[.agent/IRON_RULES.md](.agent/IRON_RULES.md)** ← READ THIS NOW!
+
+This file contains:
+- ❌ **FORBIDDEN patterns** (stars in icons, AI slop, generic stock images)
+- ✅ **REQUIRED practices** (RTL-first, design system, testing)
+- 🚨 **Critical functions** that must never break
+- 🎯 **Design principles** to follow
+
+**Violating these rules will result in rejected changes.**
+
+---
+
 # 🛑 STOP! READ THIS FIRST (DEVELOPERS & AI)
 
 **Before modifying any code, you MUST review the core documentation in `docs/core/`:**

@@ -128,3 +128,28 @@ export interface FeedbackData {
   };
   additionalComments: string;
 }
+
+export interface LocalGuide {
+  id: string;
+  name: string;
+  handle: string;
+  platform: 'x' | 'instagram' | 'tiktok' | 'youtube' | 'facebook';
+  profile_image_url: string;
+  bio?: string;
+  is_verified?: boolean;
+}
+
+export interface GuidePost {
+  id: string;
+  guide_id: string;
+  guide?: LocalGuide;
+  city: string;
+  content_text: string;
+  media_url: string;
+  media_type: 'image' | 'video';
+  original_link: string;
+  linked_route_id?: string;
+  poi_data?: Partial<POI>;
+  tags?: string[];
+  created_at: string;
+}

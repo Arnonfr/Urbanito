@@ -4,7 +4,7 @@ import { useLiveLocation } from '../hooks/useLiveLocation';
 import { getDistanceFromLatLonInMeters } from '../utils/geocoding';
 import { useAudio } from '../contexts/AudioContext';
 import {
-    Volume2, Play, Pause, X, Headphones, Sparkles, User, Zap,
+    Headphones, Play, Pause, X, Volume2, Maximize2, Zap, User,
     ChevronUp, ChevronDown, RotateCcw, RotateCw, Gauge
 } from 'lucide-react';
 
@@ -112,7 +112,7 @@ export const VoiceGuideManager: React.FC<Props> = ({ route, language }) => {
                     {showModeSelector && (
                         <>
                             <h4 className="text-sm font-bold mb-3 flex items-center gap-2">
-                                <Sparkles className="w-4 h-4 text-indigo-400" />
+                                <Zap className="w-4 h-4 text-indigo-400" />
                                 {language === 'he' ? 'בחר איכות שמע' : 'Select Audio Quality'}
                             </h4>
                             <div className="grid grid-cols-2 gap-2">

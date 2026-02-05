@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AudioProvider } from './contexts/AudioContext';
+import { PremiumProvider } from './contexts/PremiumContext';
 import { WalkModeProvider } from './contexts/WalkModeContext';
 
 const rootElement = document.getElementById('root');
@@ -16,9 +17,11 @@ root.render(
   <React.StrictMode>
     <BrowserRouter>
       <AudioProvider>
-        <WalkModeProvider>
-          <App />
-        </WalkModeProvider>
+        <PremiumProvider>
+          <WalkModeProvider>
+            <App />
+          </WalkModeProvider>
+        </PremiumProvider>
       </AudioProvider>
     </BrowserRouter>
   </React.StrictMode>

@@ -123,21 +123,29 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, []);
 
     const pause = useCallback(() => {
+        console.log('[AudioContext] Pause called, audioMode:', audioMode);
         if (audioMode === 'premium' && audioContextRef.current?.state === 'running') {
             pausedTimeRef.current = audioContextRef.current.currentTime - startTimeRef.current;
             audioContextRef.current.suspend().catch(console.error);
         } else if (audioMode === 'free') {
-            window.speechSynthesis.pause();
+            if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.pause();
+                console.log('[AudioContext] Speech synthesis paused');
+            }
         }
         setIsPlaying(false);
     }, [audioMode]);
 
     const resume = useCallback(() => {
+        console.log('[AudioContext] Resume called, audioMode:', audioMode, 'paused:', window.speechSynthesis.paused, 'speaking:', window.speechSynthesis.speaking);
         if (audioMode === 'premium' && audioContextRef.current?.state === 'suspended') {
             audioContextRef.current.resume().catch(console.error);
             setIsPlaying(true);
         } else if (audioMode === 'free') {
-            window.speechSynthesis.resume();
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+                console.log('[AudioContext] Speech synthesis resumed');
+            }
             setIsPlaying(true);
         }
     }, [audioMode]);
@@ -200,8 +208,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (sourceRef.current) {
             sourceRef.current.playbackRate.value = playbackRate;
         }
-        // Note: SpeechSynthesis (Web Speech) doesn't support changing rate mid-utterance easily in all browsers,
-        // so it will apply to the next chunk.
+        // Force restart of current chunk in Free Mode to apply new rate immediately
+        if (audioMode === 'free' && isPlayingRef.current) {
+            // Backtrack index so onend (triggered by cancel) increments it back to current
+            currentChunkIndexRef.current = Math.max(0, currentChunkIndexRef.current - 1);
+            window.speechSynthesis.cancel();
+        }
     }, [playbackRate]);
 
     const playBuffer = async (buffer: AudioBuffer, offset: number = 0) => {
@@ -276,8 +288,25 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         const voices = window.speechSynthesis.getVoices();
         const langCode = language === 'he' ? 'he-IL' : 'en-US';
-        const voice = voices.find(v => v.lang === langCode && v.name.includes('Google'))
-            || voices.find(v => v.lang === langCode);
+
+        let voice = null;
+
+        // Premium Fallback: Try to find a "better" system voice if Gemini failed or is loading
+        if (audioMode === 'premium') {
+            // Priority list for premium-feeling system voices
+            const premiumKeywords = ['Premium', 'Enhanced', 'Natural', 'Daniel', 'Samantha', 'Karen', 'Moira', 'Rishi'];
+            voice = voices.find(v => v.lang === langCode && premiumKeywords.some(k => v.name.includes(k)));
+
+            // If English, maybe try UK/Australian for a different "flavor" if mostly US users
+            if (!voice && language === 'en') {
+                voice = voices.find(v => v.lang === 'en-GB' && v.name.includes('Google'));
+            }
+        }
+
+        if (!voice) {
+            voice = voices.find(v => v.lang === langCode && v.name.includes('Google'))
+                || voices.find(v => v.lang === langCode);
+        }
 
         const speakNext = () => {
             if (!isPlayingRef.current || currentChunkIndexRef.current >= chunks.length) {

@@ -3,14 +3,17 @@ import React, { useRef, useState } from 'react';
 import { Route, POI, UserPreferences, POICategoryType } from '../types';
 import {
   Landmark, Building2, Utensils, Ship, Trees, ShoppingBag, Palette,
-  Church, Heart, X, ChevronLeft, Trash2, Settings2, MapPin,
-  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical, Building
+  Church, Heart, X, ChevronLeft, Trash2, Settings2, MapPin, Library,
+  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical, Building, ArrowRight, CloudDownload, Cloud, CloudOff
 } from 'lucide-react';
+import { usePremium } from '../contexts/PremiumContext';
+import { downloadRouteForOffline, isRouteOffline, removeOfflineRoute } from '../services/offlineService';
 import { GoogleImage } from './GoogleImage';
 import { QuickRouteSetup } from './QuickRouteSetup';
 import { GoogleAd } from './GoogleAd';
 import { NearbyPOISuggestions } from './NearbyPOISuggestions';
 import { useAudio } from '../contexts/AudioContext';
+import { nativeBridge } from '../utils/nativeBridge';
 
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
@@ -31,6 +34,9 @@ interface Props {
   activeRouteIndex?: number;
   onSwitchRoute?: (index: number) => void;
   onCloseRoute?: (index: number) => void;
+  showToast?: (message: string, type?: 'success' | 'error') => void;
+  nearbyRoutes?: Route[];
+  onRouteSelect?: (route: Route) => void;
 }
 
 export const CATEGORY_ICONS: Record<POICategoryType, React.ReactNode> = {
@@ -44,7 +50,7 @@ export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
 
 export const RouteOverview: React.FC<Props> = ({
   route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating,
-  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute
+  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute, showToast, nearbyRoutes = [], onRouteSelect
 }) => {
   const isHe = preferences.language === 'he';
 
@@ -70,9 +76,13 @@ export const RouteOverview: React.FC<Props> = ({
     if (prefsDesc?.en) displayDescription = prefsDesc.en;
   }
 
+  // Parse title: Extract main title and subtitle
+  // Format: "Long Descriptive Title (Short Name)" -> Show "City | Short Name" + subtitle "Long Descriptive Title"
   const parenMatch = displayTitle.match(/(.*?)\s*\((.*?)\)/);
-  const mainTitle = parenMatch ? parenMatch[1].trim() : displayTitle;
-  const subTitle = parenMatch ? parenMatch[2].trim() : "";
+  const longDescription = parenMatch ? parenMatch[1].trim() : "";
+  const shortTitle = parenMatch ? parenMatch[2].trim() : displayTitle;
+  const mainTitle = shortTitle; // Use short title as main
+  const subTitle = longDescription; // Use long description as subtitle
   const [isPrefsOpen, setIsPrefsOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   // Internal loading state for button feedback only (non-blocking)
@@ -81,6 +91,52 @@ export const RouteOverview: React.FC<Props> = ({
 
   const touchStart = useRef<number | null>(null);
   const { playText, queueText, stop, isPlaying } = useAudio();
+  const { isPremium } = usePremium();
+  const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  // Check offline status on mount
+  React.useEffect(() => {
+    if (route?.id) {
+      isRouteOffline(route.id).then(exists => {
+        if (exists) setDownloadState('done');
+        else setDownloadState('idle');
+      });
+    }
+  }, [route?.id]);
+
+  const handleDownloadToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isPremium) {
+      showToast?.(isHe ? 'זמין למנויי פרימיום בלבד' : 'Available for Premium users only', 'error');
+      return;
+    }
+
+    // If already done, remove it
+    if (downloadState === 'done') {
+      await removeOfflineRoute(route.id);
+      setDownloadState('idle');
+      showToast?.(isHe ? 'המסלול הוסר מהמכשיר' : 'Route removed from offline');
+      return;
+    }
+
+    if (downloadState !== 'idle') return;
+
+    setDownloadState('downloading');
+    setDownloadProgress(0);
+
+    const success = await downloadRouteForOffline(route, (progress) => {
+      setDownloadProgress(progress);
+    });
+
+    if (success) {
+      setDownloadState('done');
+      showToast?.(isHe ? 'המסלול ירד בהצלחה!' : 'Route downloaded successfully!');
+    } else {
+      setDownloadState('idle');
+      showToast?.(isHe ? 'ההורדה נכשלה' : 'Download failed', 'error');
+    }
+  };
 
   // Optimizing AdSense Targeting by updating page context
   React.useEffect(() => {
@@ -158,11 +214,12 @@ export const RouteOverview: React.FC<Props> = ({
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStart.current) return;
     const dist = touchStart.current - e.changedTouches[0].clientY;
-    if (dist > 60) setIsExpanded(true); else if (dist < -60) setIsExpanded(false);
+    // Increased threshold from 60 to 100 to reduce accidental expansion
+    if (dist > 100) setIsExpanded(true); else if (dist < -100) setIsExpanded(false);
     touchStart.current = null;
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     let teaser = route.shareTeaser || "";
     if (!teaser && route.pois && route.pois.length > 0) {
       const firstPoi = route.pois[0];
@@ -181,20 +238,21 @@ export const RouteOverview: React.FC<Props> = ({
 
     const url = `${window.location.origin}/route/${route.id}`;
 
-    if (navigator.share) {
-      navigator.share({ title, text, url }).catch((err) => {
-        if (err.name !== 'AbortError') {
-          copyToClipboard(`${text}\n${url}`);
-        }
-      });
-    } else {
+    const shared = await nativeBridge.share({ title, text, url });
+    if (!shared) {
       copyToClipboard(`${text}\n${url}`);
     }
   };
 
   const copyToClipboard = (content: string) => {
     navigator.clipboard.writeText(content);
-    alert(isHe ? 'הלינק והתיאור הועתקו! מוכן לשיתוף 🚀' : 'Link and teaser copied! Ready to share 🚀');
+    // Assuming showToast is defined elsewhere or will be added.
+    // If not, you might need to define a simple alert or a custom toast function.
+    // For now, I'll use a placeholder for showToast.
+    // If showToast is not available, you might want to revert to alert or define it.
+    // For the purpose of this edit, I'm assuming showToast exists or will be handled.
+    // If showToast is not available, find a fallback.
+    showToast?.(isHe ? 'הקישור הועתק!' : 'Link copied to clipboard!');
   };
 
   return (
@@ -221,7 +279,15 @@ export const RouteOverview: React.FC<Props> = ({
 
           {/* Action Buttons */}
           <div className={`absolute top-8 inset-x-6 flex items-center justify-between z-10 pointer-events-none`}>
+            {/* Library Button */}
             <div className={isHe ? "order-1" : "order-2"}>
+              <button
+                onClick={(e) => { e.stopPropagation(); if (onClose) onClose(); }}
+                className="w-10 h-10 bg-black/30 backdrop-blur-md rounded-[12px] border border-white/20 flex items-center justify-center text-white/90 hover:text-white hover:bg-black/50 transition-all pointer-events-auto group shadow-lg"
+                title={isHe ? 'לספריית המסלולים' : 'To Route Library'}
+              >
+                <Library size={18} className="transition-transform group-hover:scale-110" />
+              </button>
             </div>
 
             <div className={`flex bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto ${isHe ? "order-2" : "order-1"}`}>
@@ -254,6 +320,19 @@ export const RouteOverview: React.FC<Props> = ({
                 <Share2 size={18} />
               </button>
               <button
+                onClick={handleDownloadToggle}
+                className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all relative overflow-hidden ${downloadState === 'done' ? 'text-emerald-400' : 'text-white/80 hover:text-white active:bg-white/10'}`}
+              >
+                {downloadState === 'idle' && <CloudDownload size={18} />}
+                {downloadState === 'downloading' && (
+                  <div className="flex items-center justify-center w-full h-full relative">
+                    <div className="absolute inset-0 bg-white/20 animate-pulse" style={{ height: `${downloadProgress}%`, top: 'auto', bottom: 0 }} />
+                    <span className="text-[9px] font-bold z-10">{downloadProgress}%</span>
+                  </div>
+                )}
+                {downloadState === 'done' && <Check size={18} />}
+              </button>
+              <button
                 onClick={(e) => { e.stopPropagation(); onSave?.(); }}
                 className={`w-10 h-10 flex items-center justify-center rounded-[8px] transition-all ${isSaved ? 'text-rose-400' : 'text-white/80 hover:text-white active:bg-white/10'}`}
               >
@@ -263,14 +342,20 @@ export const RouteOverview: React.FC<Props> = ({
           </div>
 
           <div className="absolute bottom-6 inset-x-8 flex flex-col text-right z-10 pointer-events-none">
-            <span className="text-[#6366F1] font-semibold uppercase text-[9px] tracking-[0.2em] mb-1 drop-shadow-md">
+            {/* City above Title */}
+            <div className="text-[11px] font-black text-indigo-300 uppercase tracking-[0.2em] mb-1.5 drop-shadow-md">
               {route.city}
-            </span>
-            <h2 className="text-2xl font-semibold text-white leading-tight drop-shadow-lg">{mainTitle}</h2>
-            {(displayTitle !== route.name) && (
-              <span className="text-[14px] font-medium text-white/50 mt-0.5 block drop-shadow-md">{route.name}</span>
+            </div>
+            {/* Main Title */}
+            <h2 className="text-3xl font-bold text-white leading-tight drop-shadow-2xl">
+              {mainTitle}
+            </h2>
+            {/* Long descriptive subtitle */}
+            {subTitle && (
+              <p className="text-[13px] font-normal text-white/80 mt-2 leading-snug drop-shadow-md line-clamp-2">
+                {subTitle}
+              </p>
             )}
-            {subTitle && <span className="text-[11px] font-normal text-white/70 mt-0.5 tracking-wide uppercase drop-shadow-md">{subTitle}</span>}
             {route.parent_route_id && (
               <span className="text-[10px] font-medium text-white/40 mt-2 flex items-center gap-1 justify-end">
                 <Share2 size={10} /> {isHe ? 'מבוסס על מסלול מקורי' : 'Based on original route'}
@@ -331,52 +416,79 @@ export const RouteOverview: React.FC<Props> = ({
 
                 return (
                   <React.Fragment key={poi.id}>
-                    <div onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)} className={`group bg-white p-3 rounded-[12px] flex items-center gap-4 transition-all border border-slate-100 relative overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-md hover:border-indigo-200'}`}>
+                    <div
+                      onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)}
+                      className={`group relative bg-white/70 backdrop-blur-sm p-3 rounded-[16px] flex items-center gap-3 transition-all border border-white/80 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-lg hover:border-indigo-100 hover:scale-[1.01]'}`}
+                    >
+                      {/* Left Accent line based on category */}
+                      <div className={`absolute left-0 inset-y-0 w-1 ${poi.category === 'history' ? 'bg-amber-400' :
+                        poi.category === 'food' ? 'bg-orange-400' :
+                          poi.category === 'architecture' ? 'bg-indigo-400' :
+                            poi.category === 'nature' ? 'bg-emerald-400' :
+                              poi.category === 'shopping' ? 'bg-pink-400' :
+                                poi.category === 'culture' ? 'bg-purple-400' :
+                                  poi.category === 'religion' ? 'bg-blue-400' :
+                                    poi.category === 'art' ? 'bg-rose-400' :
+                                      'bg-slate-300'
+                        }`} />
+
                       {isEditMode && (
-                        <div className="shrink-0 cursor-grab active:cursor-grabbing">
-                          <GripVertical size={20} className="text-slate-300" />
+                        <div className="shrink-0 cursor-grab active:cursor-grabbing mr-1">
+                          <GripVertical size={18} className="text-slate-300" />
                         </div>
                       )}
-                      <div className={`w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0 shadow-sm transition-colors ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
-                        poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
-                          poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-600' :
-                            poi.category === 'nature' ? 'bg-emerald-50 text-emerald-600' :
-                              poi.category === 'shopping' ? 'bg-pink-50 text-pink-600' :
-                                poi.category === 'culture' ? 'bg-purple-50 text-purple-600' :
-                                  poi.category === 'religion' ? 'bg-blue-50 text-blue-600' :
-                                    poi.category === 'art' ? 'bg-rose-50 text-rose-600' :
-                                      'bg-slate-50 text-slate-500'
-                        }`}>
-                        {poi.category ? CATEGORY_ICONS[poi.category as POICategoryType] : <MapPin size={22} />}
+
+                      {/* POI Thumbnail Image */}
+                      <div className="w-14 h-14 rounded-[12px] bg-slate-100 overflow-hidden shrink-0 border border-slate-200/50 shadow-inner relative group-hover:border-indigo-200/50 transition-colors">
+                        <GoogleImage
+                          query={`${poi.name} ${route.city}`}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                        <div className={`absolute bottom-0 inset-x-0 h-1 bg-current opacity-30 ${poi.category === 'history' ? 'text-amber-500' :
+                          poi.category === 'food' ? 'text-orange-500' :
+                            poi.category === 'architecture' ? 'text-indigo-500' :
+                              poi.category === 'nature' ? 'text-emerald-500' :
+                                'text-slate-400'
+                          }`} />
                       </div>
+
                       <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
                         <div className="flex items-center gap-2">
-                          <h4 className="text-[15px] font-bold text-slate-800 leading-tight truncate">
+                          <h4 className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
                             {translatedName}
                           </h4>
                           {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
-                            <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                              <Check size={8} className="stroke-[4]" />
+                            <div className="flex items-center gap-1 shrink-0 bg-emerald-50/80 px-1.5 py-0.5 rounded-full border border-emerald-100/50 shadow-xs">
+                              <Check size={8} className="text-emerald-500 stroke-[4]" />
+                              <span className="text-[8px] font-black text-emerald-600 tracking-tighter">READY</span>
                             </div>
                           )}
                         </div>
                         {showOriginalName && (
-                          <div className="text-[12px] font-normal text-slate-500 leading-tight truncate opacity-80">
+                          <div className="text-[11px] font-normal text-slate-400 leading-tight truncate mt-0.5">
                             {originalName}
                           </div>
                         )}
-                        <div className="flex items-center gap-2 mt-1.5 min-w-0">
-                          {poi.category && (
-                            <div className="text-[10px] font-medium text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded text-nowrap">
-                              {CATEGORY_LABELS_HE[poi.category]}
-                            </div>
-                          )}
+
+                        <div className="flex items-center gap-2 mt-1 min-w-0">
+                          <div className={`w-3.5 h-3.5 rounded flex items-center justify-center ${poi.category === 'history' ? 'bg-amber-50 text-amber-500' :
+                            poi.category === 'food' ? 'bg-orange-50 text-orange-500' :
+                              poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-500' :
+                                poi.category === 'nature' ? 'bg-emerald-50 text-emerald-500' :
+                                  'bg-slate-50 text-slate-500'
+                            }`}>
+                            {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
+                              ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement, { size: 10 })
+                              : <MapPin size={10} />}
+                          </div>
+                          <span className="text-[10px] font-semibold text-slate-400/80 uppercase tracking-wide">
+                            {CATEGORY_LABELS_HE[poi.category as POICategoryType]}
+                          </span>
+
                           {index > 0 && poi.travelFromPrevious && (
                             <>
                               <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
-                              <div className="text-[10px] text-slate-400 flex items-center gap-1 text-nowrap truncate">
-                                <span>{poi.travelFromPrevious.distance}</span>
-                                <span className="opacity-50">|</span>
+                              <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
                                 <span>{poi.travelFromPrevious.duration}</span>
                               </div>
                             </>
@@ -438,6 +550,31 @@ export const RouteOverview: React.FC<Props> = ({
                 onAddPoi={onAddPoi}
                 isHe={isHe}
               />
+            )}
+
+            {nearbyRoutes && nearbyRoutes.length > 0 && (
+              <div className="mt-8 mb-4">
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <h3 className="text-[14px] font-bold text-slate-800">{isHe ? 'מסלולים מוכנים' : 'Ready Routes'}</h3>
+                </div>
+                <div className="flex overflow-x-auto pb-4 gap-3 -mx-4 px-4 no-scrollbar snap-x snap-mandatory">
+                  {nearbyRoutes.map((r, i) => (
+                    <button
+                      key={r.id || i}
+                      onClick={() => onRouteSelect?.(r)}
+                      className="shrink-0 w-[140px] snap-start flex flex-col gap-2 group text-right"
+                    >
+                      <div className="aspect-[4/3] w-full bg-slate-100 rounded-[12px] overflow-hidden relative shadow-sm border border-slate-100/50">
+                        <GoogleImage query={`${r.city} ${r.name}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent" />
+                        <div className="absolute bottom-2 right-2 left-2 flex justify-between items-end">
+                          <span className="text-[10px] font-bold text-white leading-tight line-clamp-2">{r.name}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>

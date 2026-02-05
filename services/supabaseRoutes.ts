@@ -43,6 +43,24 @@ export const saveRouteToNewSchema = async (
     isPublic: boolean = false
 ): Promise<{ routeId: string; success: boolean } | null> => {
     try {
+        console.log(`[saveRouteToNewSchema] Checking for existing route: ${route.name} in ${route.city}`);
+
+        // Check if this route already exists for this user (prevent duplicates)
+        if (userId && !parentRouteId) { // Only check if not a fork
+            const { data: existingRoutes, error: checkError } = await supabase
+                .from('routes')
+                .select('id, name, city')
+                .eq('user_id', userId)
+                .eq('name', route.name)
+                .eq('city', normalize(route.city))
+                .limit(1);
+
+            if (!checkError && existingRoutes && existingRoutes.length > 0) {
+                console.log(`[saveRouteToNewSchema] Route already exists with ID: ${existingRoutes[0].id}. Returning existing ID.`);
+                return { routeId: existingRoutes[0].id, success: true };
+            }
+        }
+
         console.log(`[saveRouteToNewSchema] Using RPC for user ${userId}`);
 
         // Prepare POIs for RPC
