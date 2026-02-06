@@ -963,17 +963,19 @@ const App: React.FC = () => {
         polylineOptions: { strokeColor: '#6366F1', strokeWeight: 5, strokeOpacity: 0.8 }
       });
 
-      const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current);
-      autocomplete.bindTo('bounds', googleMap.current);
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        if (!place.geometry || !place.geometry.location) return;
-        const newPos = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
-        setLocation(newPos);
-        googleMap.current.panTo(newPos);
-        googleMap.current.setZoom(15);
-        setSearchQuery(place.formatted_address || '');
-      });
+      if (searchInputRef.current) {
+        const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current);
+        autocomplete.bindTo('bounds', googleMap.current);
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (!place.geometry || !place.geometry.location) return;
+          const newPos = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
+          setLocation(newPos);
+          googleMap.current.panTo(newPos);
+          googleMap.current.setZoom(15);
+          setSearchQuery(place.formatted_address || '');
+        });
+      }
 
       googleMap.current.addListener('center_changed', () => {
         const center = googleMap.current.getCenter();
