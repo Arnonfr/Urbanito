@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useAudio } from '../contexts/AudioContext';
-import { Headphones, Pause, Play, X, RotateCcw, RotateCw, FastForward, SkipBack, SkipForward } from 'lucide-react';
+import { Headphones, Pause, Play, X, RotateCcw, RotateCw, ChevronDown } from 'lucide-react';
 import { Route } from '../types';
 
 interface Props {
@@ -32,67 +32,95 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
 
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-[9999] transition-transform duration-500 ease-spring ${isExpanded ? 'h-[85vh] rounded-t-[32px]' : 'h-24'
-        } ${isExpanded ? 'bg-white' : 'bg-white/90 backdrop-blur-xl border-t border-indigo-50'} shadow-[0_-8px_30px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden`}
+      className={`fixed z-[9999] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] 
+        ${isExpanded
+          ? 'inset-x-4 bottom-6 h-[70vh] rounded-[32px] bg-white shadow-2xl'
+          : 'inset-x-4 bottom-24 h-20 rounded-[24px] bg-white/90 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.12)] active:scale-[0.98]'
+        } flex flex-col overflow-hidden`}
     >
       {/* Progress Bar (Visible ONLY when collapsed) */}
       {
         !isExpanded && (
-          <div className="h-1 w-full bg-slate-100 relative">
+          <div className="h-1 w-full bg-slate-50 relative opacity-50">
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-300 relative"
+              className="h-full bg-indigo-500 transition-all duration-300 relative rounded-r-full"
               style={{ width: `${progress}%` }}
             />
           </div>
         )
       }
 
-      <div className={`flex-1 flex flex-col ${isExpanded ? 'p-6' : 'px-4 pt-3'}`}>
-        {/* Top Header - Compact or Expanded */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 overflow-hidden">
+      <div className={`flex-1 flex flex-col ${isExpanded ? 'p-0' : 'px-4 pt-0 justify-center'}`}>
+
+        {/* Expanded Header / Collapse Button */}
+        {isExpanded && (
+          <div className="flex items-center justify-between p-6 pb-2">
             <button
-              onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isPlaying ? 'bg-indigo-600 shadow-lg shadow-indigo-200 text-white' : 'bg-slate-100 text-slate-500'}`}
+              onClick={() => setIsExpanded(false)}
+              className="w-10 h-10 rounded-full bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-all active:scale-95"
             >
-              <Headphones size={24} className={isPlaying ? 'animate-pulse' : ''} />
+              <ChevronDown size={24} />
             </button>
-            <div className="flex flex-col min-w-0 flex-1 px-3 justify-center">
-              <span className="text-slate-800 text-[14px] font-bold truncate leading-tight w-full block">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">
+              {isHe ? 'נגן' : 'PLAYER'}
+            </span>
+            <div className="w-10" /> {/* Spacer for centering */}
+          </div>
+        )}
+
+        {/* Top Header - Compact or Expanded */}
+        <div className={`flex items-center justify-between ${isExpanded ? 'px-6 mt-4 flex-col text-center' : ''}`}>
+
+          <div className={`flex items-center ${isExpanded ? 'flex-col gap-4' : 'gap-3'} overflow-hidden w-full`}>
+            {/* Icon Box */}
+            <button
+              onClick={(e) => {
+                if (!isExpanded) {
+                  e.stopPropagation();
+                  setIsExpanded(true);
+                }
+              }}
+              className={`flex items-center justify-center transition-all shadow-sm ${isExpanded
+                ? 'w-24 h-24 rounded-[32px] bg-indigo-50 text-indigo-500 mb-2 shadow-inner'
+                : 'w-10 h-10 rounded-xl bg-slate-100 text-slate-500 shrink-0'
+                } ${isPlaying && !isExpanded ? 'ring-2 ring-indigo-500/20' : ''}`}
+            >
+              <Headphones size={isExpanded ? 40 : 20} className={isPlaying && !isExpanded ? 'animate-pulse' : ''} />
+            </button>
+
+            {/* Texts */}
+            <div className={`flex flex-col min-w-0 flex-1 justify-center ${isExpanded ? 'items-center' : 'items-start'}`}>
+              <span className={`text-slate-800 font-bold leading-tight truncate w-full ${isExpanded ? 'text-2xl whitespace-normal' : 'text-[14px]'}`}>
                 {poiName || (isHe ? 'טוען...' : 'Loading...')}
               </span>
-              <span className="text-[11px] font-medium text-slate-500 truncate leading-none mt-1">
+              <span className={`font-medium text-slate-400 leading-none mt-1.5 ${isExpanded ? 'text-sm' : 'text-[11px]'}`}>
                 {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing Now') : (isHe ? 'מושהה' : 'Paused')}
               </span>
             </div>
 
+            {/* Compact Controls (Play/Pause/Close) */}
             {!isExpanded && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3 shrink-0 ml-2">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isPlaying) pause();
                     else resume();
                   }}
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-700 active:bg-slate-200 transition-colors shadow-sm"
-                  title={isHe ? (isPlaying ? 'השהה' : 'נגן') : (isPlaying ? 'Pause' : 'Play')}
+                  className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-800 active:bg-slate-200 transition-colors"
                 >
                   {isPlaying ? <Pause size={20} className="fill-current" /> : <Play size={20} className="fill-current ml-0.5" />}
                 </button>
 
+                <div className="w-px h-6 bg-slate-100 mx-1"></div>
+
                 <button
                   onClick={(e) => { e.stopPropagation(); stop(); }}
-                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded-full transition-colors"
+                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 active:bg-red-50 rounded-full transition-colors"
                 >
                   <X size={18} />
                 </button>
               </div>
-            )}
-
-            {isExpanded && (
-              <button onClick={() => setIsExpanded(false)} className="p-2 text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded-full transition-colors">
-                <X size={24} />
-              </button>
             )}
           </div>
 
