@@ -32,11 +32,8 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
 
   return (
     <div
-      className={`fixed inset-x-4 bg-white/70 backdrop-blur-2xl text-slate-900 rounded-[24px] shadow-[0_16px_64px_rgba(0,0,0,0.12)] border border-white/40 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-[10000] 
-        ${isExpanded
-          ? 'bottom-[20px] h-auto max-h-[70vh] pb-6'
-          : 'bottom-[calc(110px+env(safe-area-inset-bottom))] h-24 active:scale-[0.99]'
-        }`}
+      className={`fixed inset-x-0 bottom-0 z-[9999] transition-transform duration-500 ease-spring ${isExpanded ? 'h-[85vh] rounded-t-[32px]' : 'h-24'
+        } ${isExpanded ? 'bg-white' : 'bg-white/90 backdrop-blur-xl border-t border-indigo-50'} shadow-[0_-8px_30px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden`}
     >
       {/* Progress Bar (Visible ONLY when collapsed) */}
       {
@@ -172,8 +169,8 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
                     key={rate}
                     onClick={() => setPlaybackRate(rate)}
                     className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${playbackRate === rate
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'bg-slate-100/80 text-slate-500 hover:bg-slate-200'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-slate-100/80 text-slate-500 hover:bg-slate-200'
                       }`}
                   >
                     {rate}x
