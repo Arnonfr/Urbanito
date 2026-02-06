@@ -481,8 +481,28 @@ const App: React.FC = () => {
     if (!googleMap.current) return;
     setIsAiMenuOpen(false);
 
-    const center = googleMap.current.getCenter();
-    const routes = await searchNearby(center.lat(), center.lng());
+    // Helper to wrap locateUser in promise
+    const getRealLocation = () => new Promise<{ lat: number, lng: number }>((resolve, reject) => {
+      showToast(isHe ? "מאתר מיקום..." : "Locating...", "success");
+      locateUser(
+        (pos) => resolve(pos),
+        () => reject('Failed to locate')
+      );
+    });
+
+    let searchCenter = { lat: googleMap.current.getCenter()?.lat() || 0, lng: googleMap.current.getCenter()?.lng() || 0 };
+
+    try {
+      // 1. Try to get REAL user location
+      const userPos = await getRealLocation();
+      searchCenter = userPos;
+    } catch (e) {
+      // 2. Fallback to map center if location fails
+      console.warn("Could not locate user, falling back to map center");
+      showToast(isHe ? "לא ניתן לאתר מיקום, מחפש באזור הנוכחי" : "Location unavailable, searching here", "error");
+    }
+
+    const routes = await searchNearby(searchCenter.lat, searchCenter.lng);
 
     if (routes.length > 0) {
       // Filter primarily by distance to avoid "World View" zoom
@@ -494,17 +514,19 @@ const App: React.FC = () => {
         relevantRoutes = routes.filter((r: any) => (r.dist || Infinity) < 30000);
       }
 
-      // 3. Fallback: If still none or results are just too spread out, handle as "Remote"
-      const isRemote = relevantRoutes.length === 0;
-      if (isRemote) {
-        relevantRoutes = routes.slice(0, 3);
-        showToast(isHe ? "לא נמצאו מסלולים קרובים מאוד, מציג מסלולים אחרים" : "No very close tours, showing others", "success");
+      // 3. Fallback: If still none, assume "Remote" but only if we really found something valid (distance check in searchNearby handles the 100km limit)
+      // Since we added 100km limit in useNearbyRoutes, we shouldn't get "Europe" results if we are in Israel.
+
+      if (relevantRoutes.length === 0) {
+        // If we are here, it means we found routes within 100km but not within 30km.
+        // Still show them as they are better than nothing.
+        relevantRoutes = routes.slice(0, 5);
       }
 
       renderNearbyMarkersOnMap(relevantRoutes);
 
       const firstPoi = relevantRoutes[0]?.pois?.[0];
-      if (isRemote && firstPoi) {
+      if (firstPoi) {
         // Just pan to first, don't bound spread-out remote routes
         googleMap.current.panTo({ lat: firstPoi.lat, lng: firstPoi.lng });
         googleMap.current.setZoom(13);
@@ -1211,6 +1233,8 @@ const App: React.FC = () => {
               if (googleMap.current.getZoom() > 18) googleMap.current.setZoom(18);
             });
           }
+        } else {
+          showToast(isHe ? "לא נמצאו מסלולים בקרבת מקום (100 ק\"מ)" : "No routes found nearby (100km)", "error");
         }
       }
     }
