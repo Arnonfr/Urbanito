@@ -73,7 +73,7 @@ export const PremiumProfileSection: React.FC<{ isHe: boolean }> = ({ isHe }) => 
                     onClick={handleRedeem}
                     className="bg-slate-900 text-white px-5 rounded-xl font-medium text-sm hover:bg-slate-800 active:scale-95 transition-all"
                 >
-                    {isHe ? 'ממש' : 'Redeem'}
+                    {isHe ? 'החל' : 'Apply'}
                 </button>
             </div>
             {error && (

@@ -1,4 +1,5 @@
 import React from 'react';
+import { BookOpen } from 'lucide-react';
 import { GoogleAd } from './GoogleAd';
 
 // Copied from App.tsx to avoid circular dependency
@@ -9,7 +10,12 @@ const RouteTravelIcon = ({ className = "", animated = true }: { className?: stri
    </svg>
 );
 
-export const RouteSkeleton: React.FC<{ isHe: boolean }> = ({ isHe }) => {
+interface SkeletonProps {
+   isHe: boolean;
+   onBrowseLibrary?: () => void;
+}
+
+export const RouteSkeleton: React.FC<SkeletonProps> = ({ isHe, onBrowseLibrary }) => {
    return (
       <>
          <style>{`
@@ -75,9 +81,20 @@ export const RouteSkeleton: React.FC<{ isHe: boolean }> = ({ isHe }) => {
                   <h2 className="text-2xl md:text-3xl font-light text-slate-800 mb-3 animate-pulse">
                      {isHe ? 'המסלול בהכנה...' : 'Route in Progress...'}
                   </h2>
-                  <p className="text-slate-400 max-w-md leading-relaxed text-sm mb-10 px-4">
+                  <p className="text-slate-400 max-w-md leading-relaxed text-sm mb-6 px-4">
                      {isHe ? 'ה-AI בונה עבורך את המסלול המושלם' : 'AI is crafting your perfect route'}
                   </p>
+
+                  {/* Browse Library Button */}
+                  {onBrowseLibrary && (
+                     <button
+                        onClick={onBrowseLibrary}
+                        className="mb-8 flex items-center gap-2 px-5 py-2.5 bg-white/90 backdrop-blur-xl rounded-full shadow-lg border border-slate-200/50 text-slate-700 text-sm font-medium hover:bg-white hover:shadow-xl active:scale-95 transition-all"
+                     >
+                        <BookOpen size={16} className="text-indigo-500" />
+                        {isHe ? 'דפדף בספריה' : 'Browse Library'}
+                     </button>
+                  )}
 
                   {/* Large Prominent Ad */}
                   <div className="w-full max-w-[336px] mx-auto overflow-hidden rounded-2xl border-2 border-slate-200 shadow-xl bg-white">

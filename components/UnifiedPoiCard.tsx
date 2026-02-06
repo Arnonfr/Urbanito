@@ -8,6 +8,9 @@ import {
 import { CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
 import { useAudio } from '../contexts/AudioContext';
+import { usePremium } from '../contexts/PremiumContext';
+import { PremiumLockOverlay } from './PremiumLockOverlay';
+import { Sparkles } from 'lucide-react';
 
 interface Props {
   poi: POI;
@@ -32,6 +35,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
   const isHe = preferences.language === 'he';
 
   const { playText, stop, pause, resume, isPlaying, currentItem, progress, playbackRate } = useAudio();
+  const { isPremium } = usePremium();
   const isCurrentPoiPlaying = isPlaying && (currentItem?.poiId === poi.id || currentItem?.id === poi.id);
 
   const [fontLevel, setFontLevel] = useState<0 | 1 | 2>(0);
@@ -312,6 +316,68 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                           </a>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Premium Content Section */}
+                  {poi.premium && (
+                    <div className="space-y-6 pt-8 border-t-2 border-amber-100">
+                      <h4 className="text-sm font-bold text-amber-600 flex items-center gap-2">
+                        <Sparkles size={16} className="text-amber-500" />
+                        {isHe ? "תוכן בלעדי לפרימיום" : "Premium Exclusive"}
+                      </h4>
+
+                      {/* Deep Narrative */}
+                      {poi.premium.deepNarrative && (
+                        <div className="relative">
+                          {isPremium ? (
+                            <div className="space-y-4">
+                              <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                {isHe ? "הסיפור המעמיק" : "Deep Dive"}
+                              </h5>
+                              {poi.premium.deepNarrative.split('\n').filter((p: string) => p.trim()).map((para: string, pIdx: number) => (
+                                <p key={pIdx} className="opacity-90 leading-relaxed">{para}</p>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="relative h-32 bg-gradient-to-t from-slate-100 to-slate-50 rounded-lg overflow-hidden">
+                              <p className="p-4 text-slate-600 blur-[2px] line-clamp-3">
+                                {poi.premium.deepNarrative.slice(0, 200)}...
+                              </p>
+                              <PremiumLockOverlay
+                                message={isHe ? "הסיפור המלא" : "Full Story"}
+                                compact
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Hidden Story */}
+                      {poi.premium.hiddenStory && (
+                        <div className="relative mt-6">
+                          {isPremium ? (
+                            <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-4 rounded-lg border border-amber-200">
+                              <h5 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">
+                                {isHe ? "סיפור נסתר" : "Hidden Story"}
+                              </h5>
+                              <p className="text-slate-700 leading-relaxed">
+                                {poi.premium.hiddenStory}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="relative h-24 bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg overflow-hidden border border-amber-200">
+                              <p className="p-4 text-slate-600 blur-[2px] line-clamp-2">
+                                {poi.premium.hiddenStory.slice(0, 100)}...
+                              </p>
+                              <PremiumLockOverlay
+                                message={isHe ? "סיפור נסתר" : "Secret Story"}
+                                compact
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

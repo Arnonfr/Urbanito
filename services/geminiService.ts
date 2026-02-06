@@ -263,6 +263,12 @@ JSON SCHEMA:
       "travelFromPrevious": {
         "distance": "e.g., 400m",
         "duration": "e.g., 5 mins"
+      },
+      "premium": {
+        "deepNarrative": "5+ paragraphs of rich, engaging historical narrative in ${langName}. Include sensory details, personal stories, and verified historical facts.",
+        "hiddenStory": "A little-known anecdote or secret about this location (1-2 paragraphs in ${langName}). Something most tourists wouldn't know.",
+        "historicalImagePrompt": "Detailed image generation prompt for a historical reconstruction of this location. Example: 'Photorealistic reconstruction of [Place Name] in 1920, showing the original facade, horse-drawn carriages, people in period dress, sepia-toned'",
+        "architecturalDeepDive": "Detailed architectural analysis (1-2 paragraphs in ${langName})"
       }
     }
     }
@@ -278,7 +284,8 @@ JSON SCHEMA:
   ]
 }
       
-NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby (cafes, viewpoints, hidden stats) that are NOT in the main route list.`,
+NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby (cafes, viewpoints, hidden stats) that are NOT in the main route list.
+PREMIUM CONTENT: The 'premium' object in each POI is REQUIRED and must contain rich, in-depth content.`,
       config: { responseMimeType: "application/json" }
     });
 

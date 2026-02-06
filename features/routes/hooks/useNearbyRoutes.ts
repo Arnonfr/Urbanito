@@ -42,7 +42,11 @@ export const useNearbyRoutes = () => {
                 return { ...route, dist };
             });
 
-            const sorted = routesWithDist.sort((a: any, b: any) => (a.dist || 0) - (b.dist || 0));
+            // Filter by distance (max 100km) to ensure local relevance
+            const MAX_DISTANCE = 100000; // 100km
+            const localRoutes = routesWithDist.filter(r => r.dist <= MAX_DISTANCE);
+
+            const sorted = localRoutes.sort((a: any, b: any) => (a.dist || 0) - (b.dist || 0));
             const top10 = sorted.slice(0, 10);
 
             setNearbyRoutes(top10);

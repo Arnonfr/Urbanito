@@ -32,7 +32,7 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
 
   return (
     <div
-      className={`fixed inset-x-4 bg-white/95 backdrop-blur-md text-slate-900 rounded-[24px] shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-slate-100/50 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-[10000] 
+      className={`fixed inset-x-4 bg-white/70 backdrop-blur-2xl text-slate-900 rounded-[24px] shadow-[0_16px_64px_rgba(0,0,0,0.12)] border border-white/40 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-[10000] 
         ${isExpanded
           ? 'bottom-[20px] h-auto max-h-[70vh] pb-6'
           : 'bottom-[calc(110px+env(safe-area-inset-bottom))] h-24 active:scale-[0.99]'
@@ -101,8 +101,13 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
 
           {/* Expanded Controls */}
           {isExpanded && (
-            <div className="flex-1 flex flex-col justify-center animate-in fade-in zoom-in-95 duration-300 px-2" dir={isHe ? 'rtl' : 'ltr'}>
+            <div className="flex-1 flex flex-col justify-center animate-in fade-in zoom-in-95 duration-300 px-2 w-full" dir={isHe ? 'rtl' : 'ltr'}>
 
+              {/* Section Header */}
+              <div className="flex items-center gap-2 justify-center mb-4 text-indigo-500">
+                <Headphones size={18} />
+                <span className="text-sm font-semibold">{isHe ? 'סיפור המקום המלא' : 'Full Story'}</span>
+              </div>
               {/* Seeker / Slider */}
               <div className="mb-6 px-1" dir="ltr">
                 <input
@@ -158,6 +163,22 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
                   <RotateCw size={28} className="group-active:rotate-45 transition-transform" />
                   <span className="absolute text-[8px] font-bold mt-[2px] text-slate-400">10</span>
                 </button>
+              </div>
+
+              {/* Playback Speed */}
+              <div className="flex items-center justify-center gap-2 mb-6">
+                {rates.map(rate => (
+                  <button
+                    key={rate}
+                    onClick={() => setPlaybackRate(rate)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${playbackRate === rate
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'bg-slate-100/80 text-slate-500 hover:bg-slate-200'
+                      }`}
+                  >
+                    {rate}x
+                  </button>
+                ))}
               </div>
 
               {/* Disclaimer */}

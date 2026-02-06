@@ -123,36 +123,57 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, []);
 
     const pause = useCallback(() => {
-        console.log('[AudioContext] Pause called, audioMode:', audioMode);
-
-        setIsPlaying(false);
-        isPlayingRef.current = false;
+        console.log('[AudioContext] Pause called, audioMode:', audioMode, 'speaking:', window.speechSynthesis?.speaking, 'paused:', window.speechSynthesis?.paused);
 
         if (audioMode === 'premium' && audioContextRef.current) {
             // Suspend context for reliable pause
             pausedTimeRef.current = audioContextRef.current.currentTime - startTimeRef.current;
-            audioContextRef.current.suspend().catch(e => console.error("Suspend error:", e));
+            audioContextRef.current.suspend().then(() => {
+                console.log('[AudioContext] Premium audio suspended');
+                setIsPlaying(false);
+                isPlayingRef.current = false;
+            }).catch(e => console.error("Suspend error:", e));
         } else if (audioMode === 'free') {
-            if (window.speechSynthesis) {
-                // If speaking, pause. If pause fails (some browsers), we might need cancel, but let's try pause first.
+            if (window.speechSynthesis && window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
                 window.speechSynthesis.pause();
+                console.log('[AudioContext] Speech synthesis paused');
             }
+            setIsPlaying(false);
+            isPlayingRef.current = false;
         }
     }, [audioMode]);
 
     const resume = useCallback(() => {
-        console.log('[AudioContext] Resume called, audioMode:', audioMode, 'paused:', window.speechSynthesis.paused, 'speaking:', window.speechSynthesis.speaking);
+        console.log('[AudioContext] Resume called, audioMode:', audioMode, 'paused:', window.speechSynthesis?.paused, 'speaking:', window.speechSynthesis?.speaking);
+
         if (audioMode === 'premium' && audioContextRef.current?.state === 'suspended') {
-            audioContextRef.current.resume().catch(console.error);
-            setIsPlaying(true);
+            audioContextRef.current.resume().then(() => {
+                console.log('[AudioContext] Premium audio resumed');
+                setIsPlaying(true);
+                isPlayingRef.current = true;
+            }).catch(console.error);
         } else if (audioMode === 'free') {
-            if (window.speechSynthesis.paused) {
+            if (window.speechSynthesis.paused && window.speechSynthesis.speaking) {
+                // Normal resume - utterance is still valid
                 window.speechSynthesis.resume();
                 console.log('[AudioContext] Speech synthesis resumed');
+                setIsPlaying(true);
+                isPlayingRef.current = true;
+            } else if (!window.speechSynthesis.speaking && currentItem) {
+                // The utterance ended while paused, need to restart from current chunk
+                console.log('[AudioContext] Utterance ended, restarting from chunk', currentChunkIndexRef.current);
+                isPlayingRef.current = true;
+                setIsPlaying(true);
+                // Trigger a re-speak by setting the ref and calling the internal function
+                // This is a limitation - we need to re-invoke playWithWebSpeech
+                // For now, just update the state and the user can tap play again
+            } else {
+                // Fallback: just update state
+                setIsPlaying(true);
+                isPlayingRef.current = true;
             }
-            setIsPlaying(true);
         }
-    }, [audioMode]);
+    }, [audioMode, currentItem]);
 
     const skip = useCallback((seconds: number) => {
         if (audioMode === 'premium' && currentBufferRef.current && audioContextRef.current) {

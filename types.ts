@@ -43,6 +43,28 @@ export interface POISource {
   url: string;
 }
 
+/**
+ * Premium-only content for POIs.
+ * This content is generated for all routes but only displayed to Premium users.
+ */
+export interface PremiumPOIContent {
+  /** 5+ paragraph deep historical narrative */
+  deepNarrative?: string;
+  /** AI-generated historical reconstruction image URL */
+  historicalImageUrl?: string;
+  /** Prompt used to generate the historical image (for regeneration) */
+  historicalImagePrompt?: string;
+  /** Hidden story or little-known anecdote */
+  hiddenStory?: string;
+  /** Extended architectural analysis */
+  architecturalDeepDive?: string;
+  /** Richer, longer audio script for premium TTS */
+  audioScriptPremium?: string;
+  /** Academic-style source citations */
+  sources?: POISource[];
+}
+
+
 export interface POI {
   id: string;
   name: string;
@@ -70,6 +92,8 @@ export interface POI {
   isLoading?: boolean;
   googlePlaceId?: string;
   content?: any;
+  /** Premium-only content (generated for all, but displayed only to Premium users) */
+  premium?: PremiumPOIContent;
 }
 
 export interface Route {

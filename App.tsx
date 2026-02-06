@@ -1293,15 +1293,30 @@ const App: React.FC = () => {
     setTimeout(() => setShowGeneratingTooltip(false), 3000);
 
     try {
-      // DUPLICATE CHECK: If "Area Tour" (City level), check if we already have a generic tour for this city in the library.
+      // DUPLICATE CHECK: If "Area Tour" (City level), check if we already have a generic tour for this city.
       if (mode === 'area') {
-        const existingRoute = recentGlobalRoutes.find(r =>
-          r.city === finalCity &&
-          // Check if it's likely a general tour (has minimal street specificity or matches city name)
-          // Or just any valid route for this city if the user didn't ask for a specific street.
-          // We prioritize "Official" or Public routes.
-          r.pois.length > 0
+        // Helper to check if route matches language
+        const matchesLanguage = (r: RouteType) => {
+          const firstPoiName = r.pois?.[0]?.name || r.name || '';
+          const hasHebrewChars = /[\u0590-\u05FF]/.test(firstPoiName);
+          return preferences.language === 'he' ? hasHebrewChars : !hasHebrewChars;
+        };
+
+        // First check local list for speed
+        let existingRoute = recentGlobalRoutes.find(r =>
+          (normalize(r.city) === normalize(finalCity) || (r.city && normalize(r.city).includes(normalize(finalCity)))) &&
+          r.pois.length > 0 &&
+          matchesLanguage(r)
         );
+
+        // If not in local list, check the database hub with language filter
+        if (!existingRoute) {
+          console.log("Checking DB for existing route for city:", finalCity, "language:", preferences.language);
+          const cityRoutes = await getRoutesByCityHub(finalCity, undefined, preferences.language);
+          if (cityRoutes && cityRoutes.length > 0) {
+            existingRoute = cityRoutes[0]; // Take the most recent/curated one
+          }
+        }
 
         if (existingRoute) {
           console.log("Found existing route for city, loading instead of generating:", existingRoute.id);
@@ -1391,6 +1406,7 @@ const App: React.FC = () => {
     setIsCardExpanded(false);
     setStreetConfirmData(null);
     setViewingCity(null);
+    if (route.id) navigate(`/route/${route.id}`);
 
   };
 
@@ -1828,7 +1844,10 @@ const App: React.FC = () => {
                   )}
                   {/* Route tabs removed per user request */}
 
-                  {(activeTab === 'library' || (activeTab === 'route' && openRoutes.length === 0)) ? (
+                  {/* DISABLED: This duplicate library block was causing cache issues.
+                      Library is now only rendered at /library path.
+                      See lines 2289+ for the actual library implementation. */}
+                  {false && (
                     <div
                       key={viewingCity || 'library-main'}
                       className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}
@@ -2235,39 +2254,38 @@ const App: React.FC = () => {
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="pointer-events-auto h-full">
-                      {isGeneratingActive ? (
-                        <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div>
-                      ) : currentRoute ? (
-                        <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
-                          <RouteOverview
-                            route={currentRoute}
-                            onPoiClick={setSelectedPoi}
-                            onRemovePoi={() => { }}
-                            onAddPoi={handleAddPoi}
-                            onSave={handleSaveRoute}
-                            preferences={preferences}
-                            onUpdatePreferences={setPreferences}
-                            onRequestRefine={() => { }}
-                            user={user}
-                            isSaved={isCurrentRouteSaved}
-                            onClose={() => navigate('/library')}
-                            isExpanded={isCardExpanded}
-                            setIsExpanded={setIsCardExpanded}
-                            onRegenerate={handleActionCreateRoute}
-                            openRoutes={openRoutes}
-                            activeRouteIndex={activeRouteIndex}
-                            onSwitchRoute={(idx) => { setActiveRouteIndex(idx); renderRouteMarkers(openRoutes[idx]); }}
-                            onCloseRoute={handleCloseRoute}
-                            showToast={showToast}
-                          />
-                        </div>
-                      ) : (
-                        <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>
-                      )}
-                    </div>
                   )}
+                  <div className="pointer-events-auto h-full">
+                    {isGeneratingActive ? (
+                      <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div>
+                    ) : currentRoute ? (
+                      <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
+                        <RouteOverview
+                          route={currentRoute}
+                          onPoiClick={setSelectedPoi}
+                          onRemovePoi={() => { }}
+                          onAddPoi={handleAddPoi}
+                          onSave={handleSaveRoute}
+                          preferences={preferences}
+                          onUpdatePreferences={setPreferences}
+                          onRequestRefine={() => { }}
+                          user={user}
+                          isSaved={isCurrentRouteSaved}
+                          onClose={() => navigate('/library')}
+                          isExpanded={isCardExpanded}
+                          setIsExpanded={setIsCardExpanded}
+                          onRegenerate={handleActionCreateRoute}
+                          openRoutes={openRoutes}
+                          activeRouteIndex={activeRouteIndex}
+                          onSwitchRoute={(idx) => { setActiveRouteIndex(idx); renderRouteMarkers(openRoutes[idx]); }}
+                          onCloseRoute={handleCloseRoute}
+                          showToast={showToast}
+                        />
+                      </div>
+                    ) : (
+                      <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>
+                    )}
+                  </div>
                 </div>
               } />
               <Route path="/library" element={
@@ -2287,7 +2305,7 @@ const App: React.FC = () => {
                               type="text"
                               value={librarySearchQuery}
                               onChange={(e) => setLibrarySearchQuery(e.target.value)}
-                              placeholder={isHe ? 'חיפוש עיר...' : 'Search city...'}
+                              placeholder={isHe ? 'חיפוש ערים, מסלולים ומקומות...' : 'Search cities, routes & places...'}
                               className="w-full bg-white border border-slate-200 rounded-[12px] py-3 pr-10 pl-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                             />
                           </div>
@@ -2312,6 +2330,61 @@ const App: React.FC = () => {
                             ))}
                           </div>
                         </div>
+
+                        {/* Search Results - Show matching routes when searching */}
+                        {librarySearchQuery.trim() && (() => {
+                          const q = librarySearchQuery.toLowerCase();
+                          const matchingRoutes = recentGlobalRoutes.filter(r =>
+                            r.name?.toLowerCase().includes(q) ||
+                            r.description?.toLowerCase().includes(q) ||
+                            r.city?.toLowerCase().includes(q) ||
+                            r.pois?.some((p: any) => p.name?.toLowerCase().includes(q))
+                          ).slice(0, 10);
+
+                          if (matchingRoutes.length === 0) return null;
+
+                          return (
+                            <section className="mb-4">
+                              <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <Search size={12} className="text-indigo-500" /> {isHe ? 'תוצאות חיפוש' : 'Search Results'}
+                              </h3>
+                              <div className="grid grid-cols-1 gap-2">
+                                {matchingRoutes.map((route, idx) => {
+                                  const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
+                                    ? (route.preferences?.names?.he || (route as any).name_he)
+                                    : route.name).replace(/✨/g, '').trim();
+
+                                  // Find matching POIs to show which ones matched
+                                  const matchingPois = route.pois?.filter((p: any) => p.name?.toLowerCase().includes(q)) || [];
+
+                                  return (
+                                    <button
+                                      key={route.id || idx}
+                                      onClick={() => handleLoadSavedRoute(route.city, route)}
+                                      className="w-full flex items-center gap-3 bg-white p-3 rounded-[12px] shadow-sm border border-indigo-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.99] transition-all text-right"
+                                    >
+                                      <div className="w-12 h-12 rounded-[8px] overflow-hidden bg-indigo-50 shrink-0 flex items-center justify-center">
+                                        <MapPin size={20} className="text-indigo-400" />
+                                      </div>
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                        <span className="font-semibold text-slate-800 text-[13px] truncate">{localizedName}</span>
+                                        <span className="text-[10px] text-slate-400 truncate">{route.city}</span>
+                                        {matchingPois.length > 0 && (
+                                          <span className="text-[9px] text-indigo-500 truncate mt-0.5">
+                                            {isHe ? 'כולל:' : 'Includes:'} {matchingPois.map((p: any) => p.name).join(', ')}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 font-medium">
+                                        <span>{route.pois?.length || 0}</span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          );
+                        })()}
 
                         <section>
                           <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
@@ -2505,16 +2578,51 @@ const App: React.FC = () => {
                       <VoiceGuideManager route={currentRoute} language={preferences.language} />
                     </Suspense>
                   )}
-                  {isGeneratingActive ? <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div> : currentRoute ? <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}><RouteOverview route={currentRoute} onPoiClick={setSelectedPoi} onRemovePoi={() => { }} onAddPoi={handleAddPoi} onSave={handleSaveRoute} preferences={preferences} onUpdatePreferences={setPreferences} onRequestRefine={() => { }} user={user} isSaved={isCurrentRouteSaved} onClose={() => navigate('/library')} isExpanded={isCardExpanded} setIsExpanded={setIsCardExpanded} onRegenerate={handleActionCreateRoute} showToast={showToast} nearbyRoutes={recentGlobalRoutes.filter(r => (r.city === currentRoute.city || (currentRoute.city && r.city && r.city.includes(currentRoute.city))) && r.id !== currentRoute.id)} onRouteSelect={(r) => handleLoadSavedRoute(r.city, r)} recentRoutes={openRoutes.filter(r => r.id !== currentRoute.id)} /></div> : <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400"><RouteIcon size={40} className="mb-4 opacity-20" /><p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p></div>}
+                  {isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id) ? (
+                    <div className="pointer-events-auto h-full">
+                      <RouteSkeleton isHe={isHe} onBrowseLibrary={() => navigate('/library')} />
+                    </div>
+                  ) : currentRoute ? (
+                    <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
+                      <RouteOverview
+                        route={currentRoute}
+                        onPoiClick={setSelectedPoi}
+                        onRemovePoi={() => { }}
+                        onAddPoi={handleAddPoi}
+                        onSave={handleSaveRoute}
+                        preferences={preferences}
+                        onUpdatePreferences={setPreferences}
+                        onRequestRefine={() => { }}
+                        user={user}
+                        isSaved={isCurrentRouteSaved}
+                        onClose={() => navigate('/')}
+                        isExpanded={isCardExpanded}
+                        setIsExpanded={setIsCardExpanded}
+                        onRegenerate={handleActionCreateRoute}
+                        isRegenerating={isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id)}
+                        showToast={showToast}
+                        nearbyRoutes={recentGlobalRoutes.filter(r => (r.city === currentRoute.city || (currentRoute.city && r.city && r.city.includes(currentRoute.city))) && r.id !== currentRoute.id)}
+                        onRouteSelect={(r) => handleLoadSavedRoute(r.city, r)}
+                        recentRoutes={openRoutes.filter(r => r.id !== currentRoute.id)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400">
+                      <RouteIcon size={40} className="mb-4 opacity-20" />
+                      <p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p>
+                    </div>
+                  )}
                 </div>
               } />
 
               <Route path="/profile" element={
                 <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500">
-                  <div className="top-safe-area space-y-4">
-                    <PremiumProfileSection isHe={isHe} />
+                  <div className="top-safe-area space-y-6">
                     <DevTestingPanel user={user} />
                     <PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} />
+                    <div className="pt-8 border-t border-slate-50">
+                      <PremiumProfileSection isHe={isHe} />
+                    </div>
                   </div>
                 </div>
               } />
@@ -2623,8 +2731,26 @@ const App: React.FC = () => {
               {/* Route Button */}
               <button
                 onClick={() => {
-                  if (openRoutes.length > 0) toggleTab('route');
-                  else toggleTab('library');
+                  if (activeTab === 'route') {
+                    toggleTab('library');
+                    navigate('/library');
+                  } else if (activeTab === 'library') {
+                    if (openRoutes.length > 0) {
+                      toggleTab('route');
+                      navigate('/route');
+                    } else {
+                      toggleTab('navigation');
+                      navigate('/');
+                    }
+                  } else {
+                    if (openRoutes.length > 0) {
+                      toggleTab('route');
+                      navigate('/route');
+                    } else {
+                      toggleTab('library');
+                      navigate('/library');
+                    }
+                  }
                 }}
                 className={`group relative h-12 transition-all duration-500 ease-out flex items-center justify-center gap-2 overflow-hidden ${(activeTab === 'route' || activeTab === 'library')
                   ? 'w-12 bg-indigo-600 text-white rounded-full shadow-indigo-200 shadow-lg'

@@ -189,7 +189,9 @@ export const saveToCuratedRoutes = async (route: Route, theme: string = 'general
 
     if (result?.success) {
       console.log('[saveToCuratedRoutes] Route saved successfully with ID:', result.routeId);
-      // Invalidate cache implicitly by fetching fresh next time (since we disabled cache)
+      // Invalidate caches
+      globalCache.invalidatePattern('all-recent-routes');
+      globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
       return { data: [{ route_data: route, id: result.routeId }], error: null };
     }
     console.error('[saveToCuratedRoutes] Save failed - no success flag');
@@ -212,6 +214,7 @@ export const saveRouteToSupabase = async (
     const result = await saveRouteToNewSchema(userId, route, preferences, parentRouteId, isPublic);
     if (result?.success) {
       globalCache.invalidatePattern('all-recent-routes');
+      globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
       return { id: result.routeId, route_data: route, user_id: userId };
     }
     return null;
@@ -382,10 +385,11 @@ export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[
   return await getAllRecentRoutes(limit);
 };
 
-export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string): Promise<Route[]> => {
+export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string, preferredLanguage?: 'he' | 'en'): Promise<Route[]> => {
   const normHe = normalize(cityName);
   const normEn = cityNameEn ? normalize(cityNameEn) : normHe;
-  const cacheKey = `city-hub-${normHe}-${normEn}`;
+  const langSuffix = preferredLanguage || 'all';
+  const cacheKey = `city-hub-${normHe}-${normEn}-${langSuffix}`;
 
   return globalCache.fetch(cacheKey, async () => {
     try {
@@ -402,7 +406,19 @@ export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string):
         routes.map(r => getRouteFromNewSchema(r.id))
       );
 
-      return fullRoutes.filter(r => r !== null) as Route[];
+      let validRoutes = fullRoutes.filter(r => r !== null) as Route[];
+
+      // Filter by language if specified
+      if (preferredLanguage) {
+        validRoutes = validRoutes.filter(r => {
+          // Check first POI name for language detection
+          const firstPoiName = r.pois?.[0]?.name || r.name || '';
+          const hasHebrewChars = /[\u0590-\u05FF]/.test(firstPoiName);
+          return preferredLanguage === 'he' ? hasHebrewChars : !hasHebrewChars;
+        });
+      }
+
+      return validRoutes;
     } catch (e) {
       console.error("City hub fetch failed:", e);
       return [];

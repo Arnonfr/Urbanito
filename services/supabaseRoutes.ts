@@ -87,7 +87,8 @@ export const saveRouteToNewSchema = async (
                     sections: poi.sections,
                     sources: poi.sources,
                     externalUrl: poi.externalUrl,
-                    googlePlaceId: poi.googlePlaceId
+                    googlePlaceId: poi.googlePlaceId,
+                    isFullyLoaded: poi.isFullyLoaded || (poi.description && poi.description.length > 50) // Heuristic fallback
                 }
             };
         }));
@@ -170,6 +171,7 @@ export const getRouteFromNewSchema = async (routeId: string): Promise<Route | nu
                 lat: poiData.lat,
                 lng: poiData.lng,
                 ...poiData.data,
+                isFullyLoaded: poiData.data?.isFullyLoaded || false,
                 travelFromPrevious: rp.travel_data
             };
         });
