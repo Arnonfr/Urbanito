@@ -58,14 +58,7 @@ export const RouteSkeleton: React.FC<SkeletonProps> = ({ isHe, onBrowseLibrary }
                   ))}
                </div>
 
-               {/* Ad Placeholder for Loading State */}
-               <div className="mt-auto">
-                  <GoogleAd
-                     slot="4724021981"
-                     className="rounded-[8px] overflow-hidden"
-                     style={{ minHeight: '120px' }}
-                  />
-               </div>
+
             </div>
 
             {/* Main Map Area Skeleton */}
@@ -96,19 +89,7 @@ export const RouteSkeleton: React.FC<SkeletonProps> = ({ isHe, onBrowseLibrary }
                      </button>
                   )}
 
-                  {/* Large Prominent Ad */}
-                  <div className="w-full max-w-[336px] mx-auto overflow-hidden rounded-2xl border-2 border-slate-200 shadow-xl bg-white">
-                     <GoogleAd
-                        slot="4724021981"
-                        format="rectangle"
-                        responsive={true}
-                        className="w-full h-auto"
-                        style={{ minHeight: '280px' }}
-                     />
-                     <div className="text-[9px] text-center text-slate-300 py-2 bg-slate-50 uppercase tracking-widest font-medium">
-                        {isHe ? 'מודעה' : 'Advertisement'}
-                     </div>
-                  </div>
+
                </div>
             </div>
          </div>

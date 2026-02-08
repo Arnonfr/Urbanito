@@ -194,8 +194,32 @@ export const saveToCuratedRoutes = async (route: Route, theme: string = 'general
       globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
       return { data: [{ route_data: route, id: result.routeId }], error: null };
     }
-    console.error('[saveToCuratedRoutes] Save failed - no success flag');
-    return { data: null, error: 'Save failed' };
+
+    // If save failed (likely due to RLS/anonymous auth disabled), try server-side fallback
+    console.warn('[saveToCuratedRoutes] Save failed client-side - attempting server-side fallback');
+    try {
+      const resp = await fetch('/api/save-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ route, preferences: { theme }, isPublic: true })
+      });
+
+      if (resp.ok) {
+        const json = await resp.json();
+        const serverRouteId = json.routeId || (json.routeId && json.routeId[0]) || null;
+        console.log('[saveToCuratedRoutes] Server-side save success:', serverRouteId);
+        globalCache.invalidatePattern('all-recent-routes');
+        globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
+        return { data: [{ route_data: route, id: serverRouteId }], error: null };
+      } else {
+        const txt = await resp.text();
+        console.error('[saveToCuratedRoutes] Server fallback failed:', resp.status, txt);
+        return { data: null, error: 'Save failed' };
+      }
+    } catch (e) {
+      console.error('[saveToCuratedRoutes] Server fallback exception:', e);
+      return { data: null, error: 'Save failed' };
+    }
   } catch (e) {
     console.error("[saveToCuratedRoutes] Auto-save failed:", e);
     return { data: null, error: (e as Error).message };

@@ -41,10 +41,16 @@ export const PremiumProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     setTier('free');
                 }
             } else {
-                // User is NOT logged in, clear any premium status
-                setTier('free');
-                localStorage.removeItem('urbanito_tier');
-                localStorage.removeItem('urbanito_audio_mode');
+                // User is NOT logged in
+                // CHECK LOCAL STORAGE ANYWAY (For Dev/Testing Override)
+                const savedTier = localStorage.getItem('urbanito_tier') as PremiumTier;
+                if (savedTier === 'premium') {
+                    setTier('premium'); // Allow sticky premium for testing
+                } else {
+                    setTier('free');
+                    localStorage.removeItem('urbanito_tier');
+                    localStorage.removeItem('urbanito_audio_mode');
+                }
             }
         };
 

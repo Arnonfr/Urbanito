@@ -16,13 +16,13 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <BrowserRouter>
-      <AudioProvider>
-        <PremiumProvider>
+      <PremiumProvider>
+        <AudioProvider>
           <WalkModeProvider>
             <App />
           </WalkModeProvider>
-        </PremiumProvider>
-      </AudioProvider>
+        </AudioProvider>
+      </PremiumProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

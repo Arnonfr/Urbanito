@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronRight, ChevronLeft, Plus, Navigation, Signpost, Heart, BookOpen, Layers, Library as LibraryIcon, Zap } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Plus, Navigation, Signpost, Heart, BookOpen, Layers, Library as LibraryIcon, Zap, Search, MapPinned, ChevronDown } from 'lucide-react';
 
 interface Props {
   isHe: boolean;
@@ -66,6 +66,61 @@ export const UserGuide: React.FC<Props> = ({ isHe, onClose }) => {
           <div className="bg-white p-4 rounded-[15px] shadow-md border border-slate-100 flex items-center gap-4 transition-transform hover:scale-105">
             <Signpost size={22} className="text-indigo-600 shrink-0" />
             <span className="text-xs font-medium text-slate-700">{isHe ? "מסלול רחוב" : "Street Tour"}</span>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: isHe ? "חיפוש חכם וניווט 🔍" : "Smart Search & Nearby 🔍",
+      description: isHe
+        ? "חפשו כל דבר - ערים, מסלולים ואפילו נקודות עניין ספציפיות. כפתור 'בסביבה' ימצא מסלולים קרובים למיקום האמיתי שלכם (עד 100 ק\"מ)."
+        : "Search for cities, routes, or specific spots. The 'Nearby' button finds tours close to your real location (up to 100km).",
+      visualEmoji: "🧭",
+      color: "bg-blue-50",
+      content: (
+        <div className="flex flex-col gap-3 w-full max-w-[220px] animate-in fade-in slide-in-from-right duration-700">
+          <div className="bg-white p-3 rounded-[15px] shadow-sm flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
+              <Search size={16} />
+            </div>
+            <div className="text-[10px] text-slate-500 leading-tight">
+              {isHe ? "חיפוש חופשי (ערים, אתרים...)" : "Free search (cities, sites...)"}
+            </div>
+          </div>
+          <div className="bg-white p-3 rounded-[15px] shadow-sm flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+              <MapPinned size={16} />
+            </div>
+            <div className="text-[10px] text-slate-500 leading-tight">
+              {isHe ? "מסלולים ליד הבית (GPS)" : "Routes near you (GPS)"}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: isHe ? "חווית שמע מתקדמת 🎧" : "Immersive Audio 🎧",
+      description: isHe
+        ? "האזינו לסיפורים עם נגן חכם. ניתן למזער אותו כדי להמשיך לנווט במפה. משתמשי פרימיום נהנים מקריינות AI אנושית ואיכותית."
+        : "Listen to stories with our smart player. Minimize it to keep exploring the map. Premium users enjoy high-quality AI narration.",
+      visualEmoji: "🎙️",
+      color: "bg-purple-50",
+      content: (
+        <div className="relative animate-in zoom-in duration-500 mt-2">
+          <div className="bg-white/80 backdrop-blur rounded-[24px] p-4 shadow-[0_8px_30px_rgba(0,0,0,0.1)] border border-white w-48 flex flex-col items-center gap-3">
+            <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full w-2/3 bg-indigo-500 rounded-full" />
+            </div>
+            <div className="flex items-center gap-4 text-slate-700">
+              <Signpost size={20} className="text-slate-300" />
+              <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                <Zap size={20} fill="currentColor" />
+              </div>
+              <ChevronDown size={20} className="text-slate-400" />
+            </div>
+            <div className="text-[9px] text-slate-400 font-medium bg-slate-50 px-2 py-0.5 rounded-full">
+              {isHe ? "נגן ממוזער" : "Minimized Player"}
+            </div>
           </div>
         </div>
       )

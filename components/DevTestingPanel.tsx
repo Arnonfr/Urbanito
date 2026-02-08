@@ -10,8 +10,8 @@ export const DevTestingPanel: React.FC<{ user: any }> = ({ user }) => {
     const { isPremium, tier, clearPremium, unlockWithCoupon } = usePremium();
     const [isVisible, setIsVisible] = useState(true);
 
-    // Only show for admin user
-    const isAdmin = user?.email === 'arnon7700@gmail.com';
+    // Only show for admin user OR if manually enabled via console
+    const isAdmin = user?.email === 'arnon7700@gmail.com' || localStorage.getItem('urbanito_dev') === 'true';
     if (!isAdmin) return null;
 
     return (
@@ -19,19 +19,19 @@ export const DevTestingPanel: React.FC<{ user: any }> = ({ user }) => {
             {/* Floating Toggle Button */}
             <button
                 onClick={() => setIsVisible(!isVisible)}
-                className="fixed bottom-24 right-4 z-[99999] w-12 h-12 bg-purple-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-purple-700 transition-all active:scale-95"
+                className="fixed bottom-32 right-6 z-[1000000] w-12 h-12 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-indigo-700 transition-all active:scale-95 border-2 border-white ring-4 ring-indigo-500/20"
                 title="Dev Testing Panel"
             >
-                {isPremium ? <Crown size={20} /> : <User size={20} />}
+                {isPremium ? <Crown size={22} className="fill-white/20" /> : <User size={22} />}
             </button>
 
             {/* Panel */}
             {isVisible && (
-                <div className="fixed bottom-40 right-4 z-[99999] bg-white rounded-2xl shadow-2xl border-2 border-purple-200 p-4 w-72 animate-in slide-in-from-bottom-4 fade-in duration-200">
-                    <div className="flex items-center justify-between mb-3">
+                <div className="fixed bottom-48 right-6 z-[1000001] bg-white rounded-2xl shadow-2xl border-2 border-indigo-100 p-4 w-72 animate-in slide-in-from-bottom-4 fade-in duration-300">
+                    <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <RefreshCw size={16} className="text-purple-600" />
-                            Dev Testing
+                            <RefreshCw size={17} className="text-indigo-600" />
+                            Dev Engine
                         </h3>
                         <button
                             onClick={() => setIsVisible(false)}
@@ -47,36 +47,36 @@ export const DevTestingPanel: React.FC<{ user: any }> = ({ user }) => {
                         <div className="flex items-center gap-2">
                             {isPremium ? (
                                 <>
-                                    <Crown size={18} className="text-purple-600" />
-                                    <span className="font-bold text-purple-600">Premium</span>
+                                    <Crown size={18} className="text-indigo-600 fill-indigo-50" />
+                                    <span className="font-bold text-indigo-600 tracking-tight">PREMIUM ACTIVE</span>
                                 </>
                             ) : (
                                 <>
-                                    <User size={18} className="text-slate-600" />
-                                    <span className="font-bold text-slate-600">Free</span>
+                                    <User size={18} className="text-slate-400" />
+                                    <span className="font-bold text-slate-500 tracking-tight">FREE TIER</span>
                                 </>
                             )}
                         </div>
                     </div>
 
                     {/* Quick Actions */}
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                         {!isPremium ? (
                             <button
                                 onClick={() => unlockWithCoupon('URBAN-PRO-2026')}
-                                className="w-full bg-purple-600 text-white py-2 rounded-lg font-medium text-sm hover:bg-purple-700 active:scale-95 transition-all"
+                                className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-100 uppercase tracking-wider"
                             >
-                                Switch to Premium
+                                Activate Pro Mode
                             </button>
                         ) : (
                             <button
                                 onClick={() => {
                                     clearPremium();
-                                    window.location.reload();
+                                    // reload happens in clearPremium
                                 }}
-                                className="w-full bg-slate-600 text-white py-2 rounded-lg font-medium text-sm hover:bg-slate-700 active:scale-95 transition-all"
+                                className="w-full bg-slate-800 text-white py-2.5 rounded-xl font-bold text-xs hover:bg-slate-900 active:scale-95 transition-all shadow-md uppercase tracking-wider"
                             >
-                                Switch to Free
+                                Reset to Free
                             </button>
                         )}
 

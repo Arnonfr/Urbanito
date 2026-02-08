@@ -28,13 +28,11 @@ export const NavigationDock = ({ onCreateClick }: { onCreateClick?: () => void }
     return (
         <div className="fixed bottom-6 left-4 right-4 z-50 flex justify-center pointer-events-none">
             <motion.nav
-                initial={{ y: 100, opacity: 0 }}
+                initial={{ y: 200, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="pointer-events-auto bg-white/90 backdrop-blur-xl border border-white/50 shadow-2xl shadow-indigo-500/10 rounded-full px-6 py-3 flex items-center justify-between gap-1 w-full max-w-[360px] mx-auto"
+                className="pointer-events-auto bg-white/90 backdrop-blur-xl border border-white/50 shadow-2xl shadow-indigo-500/10 rounded-full px-7 py-4 flex items-center justify-between gap-1 w-full max-w-[420px] mx-auto"
             >
                 {navItems.map((item) => {
-                    const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
-
                     if (item.isPrimary) {
                         return (
                             <button
@@ -43,13 +41,13 @@ export const NavigationDock = ({ onCreateClick }: { onCreateClick?: () => void }
                                     e.preventDefault();
                                     if (onCreateClick) onCreateClick();
                                 }}
-                                className="relative -mt-12 group"
+                                className="relative -mt-16 group"
                             >
                                 <motion.div
                                     whileTap={{ scale: 0.9 }}
-                                    className="w-16 h-16 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-xl shadow-indigo-600/40 border-4 border-white transform transition-transform group-hover:-translate-y-1"
+                                    className="w-[74px] h-[74px] bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-xl shadow-indigo-600/40 border-4 border-white transform transition-transform group-hover:-translate-y-1"
                                 >
-                                    <Plus className="w-8 h-8" strokeWidth={3} />
+                                    <Plus className="w-9 h-9" strokeWidth={3} />
                                 </motion.div>
                             </button>
                         );
@@ -59,24 +57,24 @@ export const NavigationDock = ({ onCreateClick }: { onCreateClick?: () => void }
                         <NavLink
                             key={item.id}
                             to={item.path}
-                            className="relative flex flex-col items-center justify-center w-16 h-12"
+                            className="relative flex flex-col items-center justify-center w-20 h-14"
                         >
                             {({ isActive }) => (
                                 <>
                                     <div className={`transition-all duration-300 ${isActive ? 'text-indigo-600 -translate-y-1' : 'text-slate-400'}`}>
                                         <item.icon
-                                            size={24}
+                                            size={28}
                                             strokeWidth={isActive ? 2.5 : 2}
                                             className={isActive ? "fill-indigo-50" : ""}
                                         />
                                     </div>
-                                    <span className={`text-[10px] font-medium absolute bottom-0 transition-opacity duration-300 ${isActive ? 'opacity-100 text-indigo-600' : 'opacity-0 translate-y-2'}`}>
+                                    <span className={`text-[11px] font-medium absolute -bottom-1 transition-opacity duration-300 ${isActive ? 'opacity-100 text-indigo-600' : 'opacity-0 translate-y-2'}`}>
                                         {item.label}
                                     </span>
                                     {isActive && (
                                         <motion.div
                                             layoutId="nav-indicator"
-                                            className="absolute -bottom-1 w-1 h-1 bg-indigo-600 rounded-full"
+                                            className="absolute -bottom-2 w-1.5 h-1.5 bg-indigo-600 rounded-full"
                                         />
                                     )}
                                 </>

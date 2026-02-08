@@ -35,6 +35,8 @@ export const simulateOrchestrator = async (
     // 1. Analyze Intent
     const lowerInput = input.toLowerCase();
 
+    const isPremium = preferences.isPremium || false;
+
     // Check for "Create Route" intent
     if (INTENT_PATTERNS.create_route.some(p => p.test(lowerInput)) && !input.includes('?')) {
         // Extract parameters (naive extraction)
@@ -44,8 +46,10 @@ export const simulateOrchestrator = async (
         return {
             agent: 'builder',
             action: 'create_route',
-            parameters: { city, theme: 'general' },
-            message: `I'll have Builder construct a tour for you in ${city}.`
+            parameters: { city, theme: 'general', isPremium },
+            message: isPremium
+                ? `Certainly. As a Premium member, I'll have Builder construct an exclusive, deep-dive tour for you in ${city}.`
+                : `I'll have Builder construct a tour for you in ${city}.`
         };
     }
 

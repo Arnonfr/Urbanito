@@ -249,8 +249,14 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               {!poi.isFullyLoaded ? (
                 <div className="space-y-6">
                   <p className="opacity-90 leading-relaxed text-lg">
-                    {poi.description || (isHe ? 'אין מידע זמין כרגע.' : 'No details available.')}
+                    {poi.summary || poi.description || (isHe ? 'מאתר מידע על המקום...' : 'Fetching location details...')}
                   </p>
+                  <div className="flex items-center gap-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                    <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                    <span className="text-sm text-indigo-600 font-medium animate-pulse">
+                      {isHe ? 'ה-AI חוקר את ההיסטוריה המעמיקה...' : 'AI is researching deep history...'}
+                    </span>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">

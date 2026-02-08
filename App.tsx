@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import {
-  Compass, Loader2, Route as RouteIcon, Library as LibraryIcon, User as UserIcon, X, Navigation, MapPin, ListTodo, Plus, Heart, Target as TargetIcon, Trash2, CheckCircle, MapPinned, Search, LocateFixed, ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, BookOpen, Key, Eye, Check, AlertCircle, Crosshair, Bookmark, Globe, Settings2, Sliders, ChevronDown, ChevronUp, History, Map as MapIcon, Timer, SearchCode, Maximize2, Layers, Signpost, ArrowDownCircle, Send, Edit3
+  Compass, Loader2, Route as RouteIcon, Library as LibraryIcon, User as UserIcon, X, Navigation, MapPin, ListTodo, Plus, Heart, Target as TargetIcon, Trash2, CheckCircle, MapPinned, Search, LocateFixed, ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, BookOpen, Key, Eye, Check, AlertCircle, Crosshair, Bookmark, Globe, Settings2, Sliders, ChevronDown, ChevronUp, History, Map as MapIcon, Timer, SearchCode, Maximize2, Layers, Signpost, ArrowDownCircle, Send, Edit3, Crown
 } from 'lucide-react';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -17,15 +17,17 @@ import { generateWalkingRoute, generateStreetWalkRoute, fetchExtendedPoiDetails,
 import { SuspenseLoader } from '~components/SuspenseLoader/SuspenseLoader';
 import { LocalGuidesSection } from '~components/LocalGuidesSection';
 
-const PreferencesPanel = lazy(() => import('~components/PreferencesPanel').then(module => ({ default: module.PreferencesPanel })));
-const UnifiedPoiCard = lazy(() => import('~components/UnifiedPoiCard').then(module => ({ default: module.UnifiedPoiCard })));
-const RouteOverview = lazy(() => import('~components/RouteOverview').then(module => ({ default: module.RouteOverview })));
-const QuickRouteSetup = lazy(() => import('~components/QuickRouteSetup').then(module => ({ default: module.QuickRouteSetup })));
+import { lazyRetry } from './utils/lazyRetry';
+
+const PreferencesPanel = lazyRetry(() => import('~components/PreferencesPanel').then(module => ({ default: module.PreferencesPanel })), "PreferencesPanel");
+const UnifiedPoiCard = lazyRetry(() => import('~components/UnifiedPoiCard').then(module => ({ default: module.UnifiedPoiCard })), "UnifiedPoiCard");
+const RouteOverview = lazyRetry(() => import('~components/RouteOverview').then(module => ({ default: module.RouteOverview })), "RouteOverview");
+const QuickRouteSetup = lazyRetry(() => import('~components/QuickRouteSetup').then(module => ({ default: module.QuickRouteSetup })), "QuickRouteSetup");
 import { NavigationDock } from '~components/NavigationDock';
-const GoogleImage = lazy(() => import('~components/GoogleImage').then(module => ({ default: module.GoogleImage })));
-const RouteSkeleton = lazy(() => import('~components/RouteSkeleton').then(module => ({ default: module.RouteSkeleton })));
-const UserGuide = lazy(() => import('~components/UserGuide').then(module => ({ default: module.UserGuide })));
-const VoiceGuideManager = lazy(() => import('~components/VoiceGuideManager').then(module => ({ default: module.VoiceGuideManager })));
+const GoogleImage = lazyRetry(() => import('~components/GoogleImage').then(module => ({ default: module.GoogleImage })), "GoogleImage");
+const RouteSkeleton = lazyRetry(() => import('~components/RouteSkeleton').then(module => ({ default: module.RouteSkeleton })), "RouteSkeleton");
+const UserGuide = lazyRetry(() => import('~components/UserGuide').then(module => ({ default: module.UserGuide })), "UserGuide");
+const VoiceGuideManager = lazyRetry(() => import('~components/VoiceGuideManager').then(module => ({ default: module.VoiceGuideManager })), "VoiceGuideManager");
 import { AnimatedCompass } from '~components/AnimatedCompass';
 import { CreationMenu } from '~components/CreationMenu';
 const Research = lazy(() => import('./pages/Research'));
@@ -34,6 +36,7 @@ import { RadarView } from '~components/RadarView';
 import { CommandCenterPage } from './features/command-center/pages/CommandCenterPage';
 import { PremiumProfileSection } from '~components/PremiumProfileSection';
 import { DevTestingPanel } from '~components/DevTestingPanel';
+import { RouteReadyOverlay } from '~components/RouteReadyOverlay';
 import { useWalkMode } from './contexts/WalkModeContext';
 import { useGeolocation } from '~hooks/useGeolocation';
 import { useNearbyRoutes } from '~features/routes/hooks/useNearbyRoutes';
@@ -121,27 +124,34 @@ const App: React.FC = () => {
   const locationPath = useLocation();
   const isResearchMode = locationPath.pathname === '/research';
 
-  if (isResearchMode) {
-    return (
-      <Suspense fallback={<SuspenseLoader />}>
-        <Routes>
-          <Route path="/research" element={<Research />} />
-        </Routes>
-      </Suspense>
-    );
-  }
-
   const [user, setUser] = useState<any>(undefined);
   const [preferences, setPreferences] = useState<UserPreferences>({
     hiddenGemsLevel: 30, interests: ['היסטוריה'], walkingDistance: 3, desiredPoiCount: 5, language: 'he', explanationStyle: 'standard', religiousFriendly: true
   });
 
+  if (isResearchMode) {
+    return (
+      <>
+        <Suspense fallback={<SuspenseLoader />}>
+          <Routes>
+            <Route path="/research" element={<Research />} />
+          </Routes>
+        </Suspense>
+
+        {/* Global Dev Panel - Accessible from any route */}
+        <DevTestingPanel user={user} />
+      </>
+    );
+  }
+
+  const { isPremium } = usePremium();
   const [openRoutes, setOpenRoutes] = useState<RouteType[]>([]);
   const [activeRouteIndex, setActiveRouteIndex] = useState<number>(0);
   const [areTabsExpanded, setAreTabsExpanded] = useState(false);
   const [generatingRouteIds, setGeneratingRouteIds] = useState<Set<string>>(new Set());
 
   const [selectedPoi, setSelectedPoi] = useState<POI | null>(null);
+  const [showRouteReady, setShowRouteReady] = useState(false);
   const [isCardExpanded, setIsCardExpanded] = useState(false);
   const [showGeneratingTooltip, setShowGeneratingTooltip] = useState(false);
   const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
@@ -170,7 +180,7 @@ const App: React.FC = () => {
   const [popularCities, setPopularCities] = useState<any[]>(FALLBACK_CITIES);
   const [isLoadingCityRoutes, setIsLoadingCityRoutes] = useState(false);
   const [generatingSuggestionId, setGeneratingSuggestionId] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
 
   const activeTab = locationPath.pathname.split('/')[1] || 'navigation';
   const setActiveTab = (tab: string) => navigate(tab === 'navigation' ? '/' : `/${tab}`);
@@ -227,11 +237,12 @@ const App: React.FC = () => {
     const isSparse = currentRoute.pois.length > 0 && currentRoute.pois.slice(0, 2).some(p => !p.historicalContext && !(p as any).data?.historicalAnalysis);
 
     if ((missingHeTitle || isSparse) && !isGeocoding) {
-      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Starting enrichment...`);
-      setGeneratingRouteIds(prev => new Set(prev).add(currentRoute.id));
-      // Removed annoying toast
+      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Starting enrichment (Silently)...`);
 
-      enrichRoute(currentRoute, preferences).then(async (enriched) => {
+      // Removed annoying toast and UI blocking state (setGeneratingRouteIds)
+      // This allows enrichment to happen in the background without locking the UI or confusing the user
+
+      enrichRoute(currentRoute, preferences, isPremium).then(async (enriched) => {
         // Update Local State
         setOpenRoutes(prev => prev.map(r => r.id === currentRoute.id ? enriched : r));
 
@@ -250,10 +261,8 @@ const App: React.FC = () => {
         }
 
         console.log(`[Auto-Hydrate] Complete for ${enriched.name}`);
-        setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(currentRoute.id); return next; });
       }).catch(err => {
         console.error("[Auto-Hydrate] Failed:", err);
-        setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(currentRoute.id); return next; });
       });
     }
 
@@ -426,9 +435,34 @@ const App: React.FC = () => {
     try {
       console.log('🔄 loadGlobalContent: Fetching...');
       const global = await getAllRecentRoutes(30);
-      setRecentGlobalRoutes(global || []);
+
+      // Merge with pending local routes
+      let localRoutes: RouteType[] = [];
+      try {
+        localRoutes = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+      } catch (e) {
+        console.error("Failed to parse local routes", e);
+      }
+
+      // Combine: Local first (they are newest/user's own), then global. Deduplicate by ID.
+      const combined = [...localRoutes, ...(global || [])];
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+
+      // Sort by creation time if possible (assuming local are newest for now) rather than relying on map order?
+      // Actually standard map approach preserves insertion order for first occurrence, so localRoutes (if newer) should be at top if they are first in array.
+      // But we want to ensure latest created are top.
+      // Since `global` is already sorted by created_at desc.
+      // And `localRoutes` we just pushed to top.
+      // So simple concat is fine, assuming user just created it.
+
+      setRecentGlobalRoutes(unique);
     } catch (err) {
       console.error("❌ Failed to load global routes:", err);
+      // Fallback: show at least local routes
+      try {
+        const local = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+        setRecentGlobalRoutes(local);
+      } catch (e) { }
     } finally {
       isLoadingGlobal.current = false;
     }
@@ -442,7 +476,25 @@ const App: React.FC = () => {
     }
   }, [activeTab]);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  // IMMEDIATE LOAD: Load local routes on mount to ensure they are visible ASAP
+  useEffect(() => {
+    try {
+      const localRoutes = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+      if (localRoutes.length > 0) {
+        console.log('📂 Loaded local routes on mount:', localRoutes.length);
+        setRecentGlobalRoutes(prev => {
+          // Merge to avoid duplicates if network already loaded something (unlikely on mount)
+          const combined = [...localRoutes, ...prev];
+          const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+          return unique;
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load local routes on mount", e);
+    }
+  }, []);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
@@ -559,7 +611,8 @@ const App: React.FC = () => {
         }
       }
 
-      if (!isRemote) {
+      const isRemoteEnabled = false; // Legacy logic
+      if (!isRemoteEnabled) {
         showToast(isHe ? `מצאנו ${relevantRoutes.length} מסלולים קרובים!` : `Found ${relevantRoutes.length} nearby tours!`);
       }
     } else {
@@ -1377,6 +1430,7 @@ const App: React.FC = () => {
 
         setActiveTab('route');
         showToast(isHe ? 'המסלול שלך מוכן!' : 'Your tour is ready!', 'success');
+        setShowRouteReady(true); // Trigger celebration overlay
 
         renderRouteMarkers(validatedRoute);
         logUsage(user?.id || null, finalCity);
@@ -1384,11 +1438,21 @@ const App: React.FC = () => {
         // Optimistic UI Update: Show it immediately in the "Recent Routes" list
         setRecentGlobalRoutes(prev => [validatedRoute, ...prev]);
 
-        // Try to save to server in background
+        // 1. SAVE LOCALLY FIRST (Critical for data safety)
+        try {
+          const localRoutes = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+          const updatedLocalRoutes = [validatedRoute, ...localRoutes.filter((r: any) => r.id !== validatedRoute.id)].slice(0, 50);
+          localStorage.setItem('urbanito_local_routes', JSON.stringify(updatedLocalRoutes));
+          console.log("💾 Route saved locally:", validatedRoute.name);
+        } catch (e) {
+          console.error("Local save failed:", e);
+        }
+
+        // 2. Try to save to server in background
         saveToCuratedRoutes(validatedRoute).then(res => {
           if (res.error) {
             console.warn("Background save failed (likely Guest RLS/Rate Limit), but route is active locally:", res.error);
-            showToast(isHe ? 'שומר מקומית (בעיית חיבור לענן)' : 'Saved locally (Cloud sync issue)', 'error');
+            showToast(isHe ? "המסלול נוצר אך שמירה לשרת נכשלה. הוא נשמר מקומית." : "Route created, but server sync failed. It is saved locally.", "error");
           } else {
             // Only reload from server if save was ACTUALLY successful
             loadGlobalContent();
@@ -1840,12 +1904,19 @@ const App: React.FC = () => {
                         <div className="w-px h-6 bg-slate-100 mx-1"></div>
                         <button
                           onClick={() => toggleTab('profile')}
-                          className="w-9 h-9 rounded-[10px] bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all overflow-hidden"
+                          className="w-9 h-9 rounded-[10px] bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all overflow-hidden relative"
                         >
                           {user?.user_metadata?.avatar_url ? (
                             <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" alt="avatar" />
                           ) : (
                             <UserIcon size={18} />
+                          )}
+
+                          {/* Premium Indicator Badge */}
+                          {isPremium && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in duration-300">
+                              <Crown size={8} className="text-white fill-white" />
+                            </div>
                           )}
                         </button>
                       </div>
@@ -2087,19 +2158,19 @@ const App: React.FC = () => {
                               ) : (
                                 <GoogleImage query={`${viewingCity} landmark`} className="w-full h-full object-cover" />
                               )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/20" />
                             </div>
 
-                            <div className="absolute top-safe-area left-0 right-0 p-6 pt-8 flex justify-between items-start z-10">
-                              <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-white/20 backdrop-blur-md border border-white/30 rounded-[12px] flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
+                            <div className="absolute top-0 left-0 right-0 p-6 pt-16 flex justify-between items-start z-10">
+                              <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-black/20 backdrop-blur-md border border-white/30 rounded-[12px] flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
                                 <ArrowRight size={18} />
                               </button>
                             </div>
 
                             <div className="absolute bottom-8 right-6 left-6 text-right z-10">
-                              <span className="text-indigo-400 font-bold uppercase tracking-[0.2em] text-[10px] mb-2 block animate-in slide-in-from-right duration-700 delay-100">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
-                              <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-md animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
-                              <p className="text-slate-300 text-sm font-medium animate-in fade-in duration-700 delay-300">{viewingCityData?.name_en}</p>
+                              <span className="text-indigo-300 font-bold uppercase tracking-[0.2em] text-[11px] mb-2 block animate-in slide-in-from-right duration-700 delay-100 drop-shadow-md">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
+                              <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-xl animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
+                              <p className="text-slate-200 text-sm font-medium animate-in fade-in duration-700 delay-300 drop-shadow-md">{viewingCityData?.name_en}</p>
                             </div>
                           </div>
 
@@ -2437,7 +2508,7 @@ const App: React.FC = () => {
                                 );
 
                                 const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
-                                return (matchesSearch || hasMatchingRoute) && matchesCategory;
+                                return (matchesSearch || hasMatchingRoute) && matchesCategory && city.img_url; // Filter out cities without images
                               })
                               .map(city => (
                                 <button
@@ -2525,19 +2596,19 @@ const App: React.FC = () => {
                             ) : (
                               <GoogleImage query={`${viewingCity} landmark`} className="w-full h-full object-cover" />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/20" />
                           </div>
 
-                          <div className="absolute top-safe-area left-0 right-0 p-6 pt-8 flex justify-between items-start z-10">
-                            <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-white/20 backdrop-blur-md border border-white/30 rounded-[12px] flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
+                          <div className="absolute top-0 left-0 right-0 p-6 pt-16 flex justify-between items-start z-10">
+                            <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-black/20 backdrop-blur-md border border-white/30 rounded-[12px] flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
                               <ArrowRight size={18} />
                             </button>
                           </div>
 
                           <div className="absolute bottom-8 right-6 left-6 text-right z-10">
-                            <span className="text-indigo-400 font-bold uppercase tracking-[0.2em] text-[10px] mb-2 block animate-in slide-in-from-right duration-700 delay-100">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
-                            <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-md animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
-                            <p className="text-slate-300 text-sm font-medium animate-in fade-in duration-700 delay-300">{viewingCityData?.name_en}</p>
+                            <span className="text-indigo-300 font-bold uppercase tracking-[0.2em] text-[11px] mb-2 block animate-in slide-in-from-right duration-700 delay-100 drop-shadow-md">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
+                            <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-xl animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
+                            <p className="text-slate-200 text-sm font-medium animate-in fade-in duration-700 delay-300 drop-shadow-md">{viewingCityData?.name_en}</p>
                           </div>
                         </div>
 
@@ -2644,7 +2715,6 @@ const App: React.FC = () => {
               <Route path="/profile" element={
                 <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500">
                   <div className="top-safe-area space-y-6">
-                    <DevTestingPanel user={user} />
                     <PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} />
                     <div className="pt-8 border-t border-slate-50">
                       <PremiumProfileSection isHe={isHe} />

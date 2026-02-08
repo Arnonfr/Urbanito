@@ -34,14 +34,27 @@ export const useAudio = () => {
     return context;
 };
 
+import { usePremium } from './PremiumContext';
+
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentItem, setCurrentItem] = useState<AudioItem | null>(null);
     const [queue, setQueue] = useState<AudioItem[]>([]);
     const [isAudioReady, setIsAudioReady] = useState(false);
+
+    const { isPremium } = usePremium(); // Consume Premium Context
+
+    // Sync Audio Mode with Premium Context
+    useEffect(() => {
+        setAudioMode(isPremium ? 'premium' : 'free');
+    }, [isPremium]);
+
     const [audioMode, setAudioMode] = useState<'free' | 'premium'>(() => {
+        // Initial value based on Premium Context or local storage fallback
+        // Note: isPremium might be false on initial mount if it's async, so fallback is good
         return (localStorage.getItem('urbanito_audio_mode') as 'free' | 'premium') || 'free';
     });
+
     const [playbackRate, setPlaybackRate] = useState(1.0);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);

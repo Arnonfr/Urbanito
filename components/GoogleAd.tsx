@@ -51,17 +51,5 @@ export const GoogleAd: React.FC<GoogleAdProps> = ({
         );
     }
 
-    return (
-        <div className={`google-ad-container ${className}`}>
-            <ins
-                className="adsbygoogle"
-                style={{ display: 'block', ...style }}
-                data-ad-client="ca-pub-5516166184309166"
-                data-ad-slot={slot}
-                data-ad-format={format}
-                data-full-width-responsive={responsive ? 'true' : 'false'}
-                data-ad-layout={layout}
-            />
-        </div>
-    );
+    return null;
 };

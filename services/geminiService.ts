@@ -18,17 +18,25 @@ import {
 const getApiKey = () => {
   // @ts-ignore - import.meta is a Vite feature
   const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
-  if (viteKey) return viteKey;
+  if (viteKey) {
+    console.log("DEBUG: Found API Key in import.meta.env");
+    return viteKey;
+  }
 
   // Fallback to strict process.env check to avoid ReferenceError in some browsers
   try {
     if (typeof process !== 'undefined' && process.env) {
-      return process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
+      const key = process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
+      if (key) {
+        console.log("DEBUG: Found API Key in process.env");
+        return key;
+      }
     }
   } catch (e) {
     // process is not defined
   }
 
+  console.warn("DEBUG: No API Key found in env.");
   return "";
 };
 
@@ -118,6 +126,7 @@ async function aiCall(params: any, retries = 3): Promise<any> {
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  // CRITICAL: USER REQUIREMENT - DO NOT CHANGE FROM gemini-3-flash-preview
   const model = 'gemini-3-flash-preview';
 
   console.log('🚀 Making Gemini API call:', {
@@ -151,23 +160,34 @@ async function aiCall(params: any, retries = 3): Promise<any> {
   }
 }
 
-export async function fetchExtendedPoiDetails(poiName: string, city: string, preferences: UserPreferences, lat?: number, lng?: number) {
+export async function fetchExtendedPoiDetails(poiName: string, city: string, preferences: UserPreferences, lat?: number, lng?: number, isPremium: boolean = false) {
   try {
     const cached = await getCachedPoiDetails(poiName, city, lat, lng);
-    if (cached && cached.historicalAnalysis && cached.historicalAnalysis.length > 300) return { ...cached, isFullyLoaded: true };
+    // If cached and fully loaded, return (but upgrade if premium and cache is light)
+    if (cached && cached.description && cached.historicalAnalysis && cached.historicalAnalysis.length > 500) {
+      if (!isPremium || cached.isPremiumContent) return { ...cached, isFullyLoaded: true };
+    }
 
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
+
+    const premiumInstructions = isPremium ? `
+      PREMIUM DEPTH REQUIRED:
+      - Include "insider" secrets and less-known historical facts.
+      - Add deep architectural analysis (specific styles, materials, architects).
+      - Provide a "Time Window" description: precisely how the location looked in its most famous era.
+      - Use a more sophisticated, storyteller personality.
+    ` : "";
+
     const response = await aiCall({
       contents: `Provide rich, engaging, and highly reliable historical context for "${poiName}" in ${city} (Location: ${lat}, ${lng}).
       
       CRITICAL INSTRUCTIONS:
       1. LANGUAGE: ALL content MUST be in ${langName} only.
-      2. DEPTH: Write 3-5 comprehensive, high-quality paragraphs.
+      2. DEPTH: Write 3-5 comprehensive, high-quality paragraphs.${premiumInstructions}
       3. ACCURACY & SOURCES: Use only verified historical facts. Include a "sources" array with 1-2 reliable reference names or types.
       4. TONE: Professional yet engaging urban historian.
-      5. SENSORY & ATMOSPHERE: Gently incorporate 1-2 sensory details (e.g., the specific light, typical sounds, or the "feel" of the materials/stone) without being overly dramatic or "chatty".
-      6. COUNTER-FACTUAL (Optional): In 1 short sentence, you may mention a "what if" scenario only if it adds significant insight into the place's history.
+      5. SENSORY & ATMOSPHERE: Gently incorporate 1-2 sensory details (e.g., the light, typical sounds, or the feel of the materials) without being overly dramatic.
       
       JSON SCHEMA: { 
         "historicalAnalysis": "3-5 paragraphs in ${langName} with deep history and verified facts...", 
@@ -175,7 +195,8 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
         "narrative": "A cohesive story of the place in ${langName}...", 
         "sections": [{"title": "Title in ${langName}", "content": "Content in ${langName}"}], 
         "sources": [{"title": "Source name/Organization", "url": "..."}],
-        "shareTeaser": "One intriguing, TRUE sentence for sharing."
+        "shareTeaser": "One intriguing, TRUE sentence for sharing.",
+        "isPremiumContent": ${isPremium}
       }`,
       config: { responseMimeType: "application/json" }
     });
@@ -184,11 +205,11 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     if (data.historicalAnalysis) {
       await cachePoiDetails(poiName, city, { ...data, lat, lng });
     }
-    return { ...data, isFullyLoaded: true };
+    return { ...data, isFullyLoaded: true, isPremiumContent: isPremium };
   } catch (e) { return null; }
 }
 
-export const generateWalkingRoute = async (city: string, location: any, preferences: UserPreferences, theme?: string, userId?: string | null): Promise<Route | null> => {
+export const generateWalkingRoute = async (city: string, location: any, preferences: UserPreferences, theme?: string, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
   try {
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
@@ -219,6 +240,13 @@ export const generateWalkingRoute = async (city: string, location: any, preferen
 
     const constraintsText = constraints.length > 0 ? `\nCRITICAL CONSTRAINTS (MUST FOLLOW): ${constraints.join(', ')}.` : '';
 
+    const premiumFlavor = isPremium ? `
+      PREMIUM MODE: The user is a Premium subscriber. 
+      - Provide "Insider" route segments that tourists usually miss.
+      - Add 1-2 "Hidden Gems" that aren't in standard guides.
+      - The tone should be like a private, elite guide.
+    ` : "";
+
     // Bilingual naming instruction - CRITICAL: First line = target language, Second line = original language
     const namingFormat = isHe
       ? 'CRITICAL POI NAME FORMAT: "Hebrew Translation (Original Name)" - Example: "כיכר הקפיטול (Place du Capitole)". The Hebrew name comes FIRST, then the original name in parentheses.'
@@ -226,6 +254,7 @@ export const generateWalkingRoute = async (city: string, location: any, preferen
 
     const response = await aiCall({
       contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, city, preferences)}
+${premiumFlavor}
       
 TASK: Create a verified walking tour for ${city} starting at coordinates ${location.lat}, ${location.lng}.
 
@@ -263,14 +292,7 @@ JSON SCHEMA:
       "travelFromPrevious": {
         "distance": "e.g., 400m",
         "duration": "e.g., 5 mins"
-      },
-      "premium": {
-        "deepNarrative": "5+ paragraphs of rich, engaging historical narrative in ${langName}. Include sensory details, personal stories, and verified historical facts.",
-        "hiddenStory": "A little-known anecdote or secret about this location (1-2 paragraphs in ${langName}). Something most tourists wouldn't know.",
-        "historicalImagePrompt": "Detailed image generation prompt for a historical reconstruction of this location. Example: 'Photorealistic reconstruction of [Place Name] in 1920, showing the original facade, horse-drawn carriages, people in period dress, sepia-toned'",
-        "architecturalDeepDive": "Detailed architectural analysis (1-2 paragraphs in ${langName})"
       }
-    }
     }
   ],
   "suggested_detours": [
@@ -283,9 +305,9 @@ JSON SCHEMA:
     }
   ]
 }
-      
-NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby (cafes, viewpoints, hidden stats) that are NOT in the main route list.
-PREMIUM CONTENT: The 'premium' object in each POI is REQUIRED and must contain rich, in-depth content.`,
+
+NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby.
+CRITICAL SPEED INSTRUCTION: Do NOT generate long descriptions or history yet. Keep 'summary' to 1-2 sentences maximum. We will generate deep content later. Focus on finding the BEST locations.`,
       config: { responseMimeType: "application/json" }
     });
 
@@ -300,11 +322,12 @@ PREMIUM CONTENT: The 'premium' object in each POI is REQUIRED and must contain r
     const estimatedDuration = Math.round((poiCount * 15) + (walkingDistanceKm * 20)); // 15 min per POI + 20 min per km
 
     return {
-      id: `r-${Date.now()}`,
+      id: `r - ${Date.now()} `,
       city,
       name: data.name || city,
       description: data.description || "",
       shareTeaser: data.shareTeaser || "",
+      isPremiumRoute: isPremium,
 
       durationMinutes: estimatedDuration,
       creator: "Urbanito AI",
@@ -318,7 +341,7 @@ PREMIUM CONTENT: The 'premium' object in each POI is REQUIRED and must contain r
   } catch (err) { throw err; }
 };
 
-export const generateStreetWalkRoute = async (streetName: string, location: any, preferences: UserPreferences, userId?: string | null): Promise<Route | null> => {
+export const generateStreetWalkRoute = async (streetName: string, location: any, preferences: UserPreferences, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
   try {
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
@@ -349,9 +372,16 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
     if (preferences.accessibleOnly) constraints.push('wheelchair accessible');
     const constraintsText = constraints.length > 0 ? `\nCRITICAL CONSTRAINTS: ${constraints.join(', ')}.` : '';
 
+    const premiumFlavor = isPremium ? `
+      PREMIUM MODE: The user is a Premium subscriber. 
+      - Provide "Insider" stories and architectural secrets.
+      - The tone should be like a private, elite guide.
+    ` : "";
+
     const response = await aiCall({
       contents: `${getGuidePrompt(preferences.explanationStyle, preferences.language, streetName, preferences)}
-      
+${premiumFlavor}
+
 TASK: Create a focused street walking tour along "${streetName}".
 
 ROUTE PARAMETERS:
@@ -382,14 +412,12 @@ JSON SCHEMA:
       "name": ${isHe ? '"שם בעברית (Original Name)"' : '"Name (Original Name)"'},
       "lat": <latitude>,
       "lng": <longitude>,
-      "summary": "1-2 sentence summary in ${langName} (FAST RESPONSE)",
+      "summary": "1-2 sentence summary in ${langName}",
       "category": "architecture|history|culture|art",
       "travelFromPrevious": {
         "distance": "e.g., 50m",
         "duration": "e.g., 1 min"
       }
-    }
-  ]
     }
   ],
   "suggested_detours": [
@@ -402,8 +430,8 @@ JSON SCHEMA:
     }
   ]
 }
-      
-NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby (cafe, viewpoint, hidden courtyard) that are NOT in the main route list. Keep POI descriptions to 1-2 sentences for speed.`,
+
+NOTE: Keep 'summary' to 1-2 sentences. We will generate deep content later.`,
       config: { responseMimeType: "application/json" }
     });
 
@@ -411,14 +439,14 @@ NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nea
     const pois = (data.pois || []).map((p: any) => ({
       ...p,
       id: generateStableId(p.name, p.lat, p.lng),
-      isFullyLoaded: false
+      isFullyLoaded: false // Force lazy loading
     }));
 
     // Calculate duration: 10 min per POI for street walks
     const estimatedDuration = poiCount * 10;
 
     return {
-      id: `st-${Date.now()}`,
+      id: `st - ${Date.now()} `,
       city: streetName,
       name: data.name || streetName,
       description: data.description || "",
@@ -430,7 +458,7 @@ NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nea
   } catch (err) { throw err; }
 };
 
-export const generateSpeech = async (text: string, language: string) => {
+export const generateSpeech = async (text: string, language: string, isPremium: boolean = false) => {
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -438,22 +466,41 @@ export const generateSpeech = async (text: string, language: string) => {
       return "";
     }
     const ai = new GoogleGenAI({ apiKey });
+
+    // Premium users get more sophisticated voices
+    const voiceName = isPremium
+      ? (language === 'he' ? 'Kore' : 'Aoede')
+      : (language === 'he' ? 'Kore' : 'Puck');
+
+    console.log(`[generateSpeech] Generating audio... Model: gemini-1.5-flash-002, Voice: ${voiceName}, Length: ${text.length}`);
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash-002", // Reverted to -002 as per user request
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: language === 'he' ? 'Kore' : 'Puck'
+              voiceName
             }
           }
         }
       }
     });
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
-  } catch (e) { return ""; }
+
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+    if (!audioData) {
+      console.error("[generateSpeech] API returned no audio data.", JSON.stringify(response, null, 2));
+      return "";
+    }
+
+    return audioData;
+  } catch (e: any) {
+    console.error("[generateSpeech] Failed:", e.message, e);
+    return "";
+  }
 };
 
 /**
@@ -495,7 +542,7 @@ export async function runOrchestrator(userMessage: string): Promise<{ reply: str
   if (msg.includes('fix') || msg.includes('bug') || msg.includes('color') || msg.includes('button') || msg.includes('ui') || msg.includes('code') || msg.includes('תקן') || msg.includes('באג')) {
     delegations.push({
       agentId: 'builder',
-      taskDescription: `Diagnostics running. Patching system for: "${userMessage}"`
+      taskDescription: `Diagnostics running.Patching system for: "${userMessage}"`
     });
     if (!reply) reply = "System anomaly detected. Builder is deploying a hotfix.";
   }
@@ -505,13 +552,13 @@ export async function runOrchestrator(userMessage: string): Promise<{ reply: str
     if (msg.includes('hello') || msg.includes('hi') || msg.includes('help') || msg.includes('status')) {
       reply = "Alpha System v2.1 active. All agents on standby. Awaiting your directive.";
     } else {
-      reply = `Command "${userMessage}" acknowledged. No specific agent protocol found, but logged for review.`;
+      reply = `Command "${userMessage}" acknowledged.No specific agent protocol found, but logged for review.`;
     }
   }
 
   // Combine multiple agents response if needed
   if (delegations.length > 1) {
-    reply = `Multi-agent protocol initiated. Synchronizing ${delegations.map(d => d.agentId).join(' and ')} for execution.`;
+    reply = `Multi - agent protocol initiated.Synchronizing ${delegations.map(d => d.agentId).join(' and ')} for execution.`;
   }
 
   // ... (existing runOrchestrator code)
@@ -524,8 +571,8 @@ export async function runOrchestrator(userMessage: string): Promise<{ reply: str
  * 1. Generates missing Hebrew/English titles
  * 2. Hydrates POIs with detailed historical context
  */
-export async function enrichRoute(route: Route, preferences: UserPreferences): Promise<Route> {
-  let updatedRoute = { ...route };
+export async function enrichRoute(route: Route, preferences: UserPreferences, isPremium: boolean = false): Promise<Route> {
+  let updatedRoute = { ...route, isPremiumRoute: isPremium };
   const isHe = preferences.language === 'he';
 
   // 1. Enrich Route Metadata (Titles/Descriptions) if missing
@@ -537,19 +584,19 @@ export async function enrichRoute(route: Route, preferences: UserPreferences): P
   const missingEn = !names.en;
 
   if (missingHe || missingEn) {
-    console.log(`[enrichRoute] Generating missing titles for: ${route.name}`);
+    console.log(`[enrichRoute] Generating missing titles for: ${route.name} `);
     try {
       // Very simple prompt to get just the translations
       const response = await aiCall({
         contents: `Translate the route title "${route.name}" and description "${route.description || ''}" for a walking tour in ${route.city}.
         
         RETURN JSON ONLY:
-        {
-          "names": { "he": "...", "en": "..." },
-          "descriptions": { "he": "...", "en": "..." }
-        }
-        
-        - Hebrew title should be catchy and professional.
+{
+  "names": { "he": "...", "en": "..." },
+  "descriptions": { "he": "...", "en": "..." }
+}
+
+- Hebrew title should be catchy and professional.
         - English title should be standard.
         `,
         config: { responseMimeType: "application/json" }
@@ -577,14 +624,15 @@ export async function enrichRoute(route: Route, preferences: UserPreferences): P
       return poi;
     }
 
-    console.log(`[enrichRoute] Hydrating POI: ${poi.name}`);
-    const extendedDetails = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng);
+    console.log(`[enrichRoute] Hydrating POI: ${poi.name} (Premium: ${isPremium})`);
+    const extendedDetails = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng, isPremium);
 
     if (extendedDetails) {
       return {
         ...poi,
         ...extendedDetails,
-        isFullyLoaded: true
+        isFullyLoaded: true,
+        isPremiumContent: isPremium
       };
     }
     return poi;

@@ -14,6 +14,7 @@ export interface UserPreferences {
   customPrompt?: string;
   jewishHistory?: boolean;
   audioMode?: 'free' | 'premium';
+  isPremium?: boolean;
 }
 
 export interface POICategory {
@@ -94,6 +95,7 @@ export interface POI {
   content?: any;
   /** Premium-only content (generated for all, but displayed only to Premium users) */
   premium?: PremiumPOIContent;
+  isPremiumContent?: boolean;
 }
 
 export interface Route {
@@ -115,6 +117,7 @@ export interface Route {
   originalPoiCount?: number; // Track original count to detect content changes for public saving logic
   preferences?: any; // For localized names/descriptions and other metadata
   is_public?: boolean;
+  isPremiumRoute?: boolean;
 }
 
 export interface AudioState {

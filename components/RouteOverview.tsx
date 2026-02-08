@@ -580,20 +580,7 @@ export const RouteOverview: React.FC<Props> = ({
                         </div>
                       )}
                     </div>
-                    {(index + 1) % 3 === 0 && index !== route.pois.length - 1 && (
-                      <div className="py-2">
-                        <GoogleAd
-                          slot="3209745866"
-                          format="fluid"
-                          layout="-fb+5w+4e-db+86"
-                          className="rounded-[8px] border-none bg-slate-50 shadow-none opacity-100"
-                          style={{ minHeight: '100px', display: 'block' }}
-                        />
-                        <div className="text-[9px] text-center text-slate-300 mt-1 uppercase tracking-widest">
-                          {isHe ? 'מודעה' : 'Advertisement'}
-                        </div>
-                      </div>
-                    )}
+
                   </React.Fragment>
                 );
               })}
