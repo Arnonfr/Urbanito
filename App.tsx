@@ -1450,11 +1450,29 @@ const App: React.FC = () => {
 
         // 2. Try to save to server in background
         saveToCuratedRoutes(validatedRoute).then(res => {
-          if (res.error) {
+          if (res?.error) {
             console.warn("Background save failed (likely Guest RLS/Rate Limit), but route is active locally:", res.error);
             showToast(isHe ? "המסלול נוצר אך שמירה לשרת נכשלה. הוא נשמר מקומית." : "Route created, but server sync failed. It is saved locally.", "error");
-          } else {
-            // Only reload from server if save was ACTUALLY successful
+          } else if (res?.routeId) {
+            // CRITICAL: Update the persistent ID to prevent duplicates!
+            const finalId = res.routeId;
+            console.log("✅ Route saved to server with ID:", finalId);
+
+            // Update open routes with the real ID
+            setOpenRoutes(prev => prev.map(r => r.id === tempId ? { ...r, id: finalId } : r));
+
+            // Update local storage to use the persistent ID
+            try {
+              const localRoutes = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+              const updatedLocalRoutes = localRoutes.map((r: any) =>
+                r.id === tempId ? { ...r, id: finalId } : r
+              );
+              localStorage.setItem('urbanito_local_routes', JSON.stringify(updatedLocalRoutes));
+            } catch (e) {
+              console.error("Local ID sync failed:", e);
+            }
+
+            // Now reload - the deduplication by ID in loadGlobalContent will handle it.
             loadGlobalContent();
           }
         }).catch(e => console.error("Save crashed:", e));

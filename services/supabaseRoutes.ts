@@ -69,8 +69,8 @@ export const saveRouteToNewSchema = async (
             return {
                 id: contentHash, // We send the hash as the ID for deduplication logic on server
                 name: poi.name,
-                lat: poi.lat,
-                lng: poi.lng,
+                lat: Number(poi.lat),
+                lng: Number(poi.lng),
                 order_index: index,
                 travel_data: poi.travelFromPrevious || null,
                 data: {
