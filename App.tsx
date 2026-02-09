@@ -2223,8 +2223,10 @@ const App: React.FC = () => {
                             </div>
                           ) : (
                             <div className="space-y-12 px-6">
-                              {/* Local Guides Section */}
-                              <LocalGuidesSection city={viewingCity || ''} className="mb-8" onPostClick={handleGuidePostClick} />
+                              {/* Local Guides Section - ARCHIVED FROM PRODUCTION (Experimental) */}
+                              {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || localStorage.getItem('urbanito_debug_mode') === 'true') && (
+                                <LocalGuidesSection city={viewingCity || ''} className="mb-8" onPostClick={handleGuidePostClick} />
+                              )}
 
                               {/* Existing Routes */}
                               {citySpecificRoutes.length > 0 && (
