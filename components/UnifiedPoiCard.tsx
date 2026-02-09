@@ -10,7 +10,8 @@ import { GoogleImage } from './GoogleImage';
 import { useAudio } from '../contexts/AudioContext';
 import { usePremium } from '../contexts/PremiumContext';
 import { PremiumLockOverlay } from './PremiumLockOverlay';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, MapPinCheck } from 'lucide-react';
+import { getDistanceFromLatLonInMeters } from '../utils/geocoding';
 
 interface Props {
   poi: POI;
@@ -27,10 +28,11 @@ interface Props {
   showToast?: (m: string, t?: 'success' | 'error') => void;
   isSaved?: boolean;
   onSave?: () => void;
+  userLocation?: { lat: number, lng: number } | null;
 }
 
 export const UnifiedPoiCard: React.FC<Props> = ({
-  poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast, isSaved, onSave
+  poi, route, onClose, preferences, isExpanded, setIsExpanded, onNext, onPrev, currentIndex, totalCount, showToast, isSaved, onSave, userLocation
 }) => {
   const isHe = preferences.language === 'he';
 
@@ -227,6 +229,16 @@ export const UnifiedPoiCard: React.FC<Props> = ({
             </span>
             <h2 className="text-2xl font-semibold text-white leading-tight">{mainTitle}</h2>
             {subTitle && <span className="text-[11px] font-normal text-white/50 mt-0.5 tracking-wide uppercase">{subTitle}</span>}
+
+            {/* Proximity Badge */}
+            {userLocation && getDistanceFromLatLonInMeters(userLocation.lat, userLocation.lng, poi.lat, poi.lng) < 50 && (
+              <div className="flex items-center gap-1.5 mt-2 text-[#14B8A6] animate-pulse">
+                <MapPinCheck size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">
+                  {isHe ? "אתה כאן!" : "You are here!"}
+                </span>
+              </div>
+            )}
           </div>
 
           <button

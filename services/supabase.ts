@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../types';
-import { globalCache } from './cacheUtils';
+import { globalCache, cityCache } from './cacheUtils';
+export { globalCache, cityCache };
 import { saveRouteToNewSchema, getRouteFromNewSchema, getUserRoutesFromNewSchema, deleteRouteFromNewSchema } from './supabaseRoutes';
 
 // @ts-ignore - import.meta is a Vite feature
@@ -22,6 +23,7 @@ export const normalize = (s: string) => {
   if (!s) return "";
   return s.trim()
     .toLowerCase()
+    .replace(/-/g, ' ') // Replace hyphens with spaces (e.g. Notre-Dame -> notre dame)
     .split(',')[0]
     .replace(/\([^)]*\)/g, '')
     .replace(/[^\w\s\u0590-\u05FF\d]/g, '')
@@ -260,9 +262,10 @@ export const updateSavedRouteData = async (dbId: string, userId: string, route: 
 export const getSavedRoutesFromSupabase = async (userId: string) => {
   if (!userId) return [];
   const routes = await getUserRoutesFromNewSchema(userId);
-  // Filter to only show PRIVATE routes in "My Saved", to avoid showing all public curated routes
-  const privateRoutes = routes.filter(r => !r.is_public);
-  return privateRoutes.map(r => ({
+  // Filter to only show FAVORITE routes in "My Saved", to avoid showing all generated routes
+  // Every generation saves to DB for recent history, but only "Hearted" ones have is_favorite: true
+  const favoriteRoutes = routes; // Show all user routes in the library, not just favorites
+  return favoriteRoutes.map(r => ({
     id: r.id,
     user_id: userId,
     route_data: r,
@@ -270,8 +273,13 @@ export const getSavedRoutesFromSupabase = async (userId: string) => {
   }));
 };
 
-export const deleteRouteFromSupabase = async (id: string, userId: string) => {
-  return await deleteRouteFromNewSchema(id, userId);
+export const deleteRouteFromSupabase = async (id: string, userId: string, city?: string) => {
+  const success = await deleteRouteFromNewSchema(id, userId);
+  if (success && city) {
+    cityCache.invalidatePattern(`city-hub-${normalize(city)}`);
+    globalCache.invalidatePattern('all-recent-routes');
+  }
+  return success;
 };
 
 export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route, isPublic: boolean = false) => {
@@ -332,81 +340,89 @@ export const submitFeedback = async (userId: string | null, feedback: FeedbackDa
   } catch (e) { return false; }
 };
 
-export const getAllRecentRoutes = async (limit: number = 100): Promise<Route[]> => {
-  console.log('[getAllRecentRoutes] Fetching routes with limit (Deep Query):', limit);
+export const getAllRecentRoutes = async (limit: number = 100, userId?: string): Promise<Route[]> => {
+  const cacheKey = `all-recent-routes-${limit}-${userId || 'anon'}`;
+  return globalCache.fetch(cacheKey, async () => {
+    console.log('[getAllRecentRoutes] Fetching routes with limit (Deep Query):', limit, 'for user:', userId || 'anon');
 
-  try {
-    const { data: routes, error } = await supabase
-      .from('routes')
-      .select(`
-        *,
-        route_pois (
-          order_index,
-          travel_data,
-          pois (
-            id,
-            name,
-            lat,
-            lng,
-            data
+    try {
+      let query = supabase
+        .from('routes')
+        .select(`
+          *,
+          route_pois (
+            order_index,
+            travel_data,
+            pois (
+              id,
+              name,
+              lat,
+              lng,
+              data
+            )
           )
-        )
-      `)
-      .eq('is_public', true)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+        `);
 
-    if (error || !routes) {
-      console.error('[getAllRecentRoutes] Error fetching routes:', error);
+      if (userId) {
+        query = query.or(`is_public.eq.true,user_id.eq.${userId}`);
+      } else {
+        query = query.eq('is_public', true);
+      }
+
+      const { data: routes, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !routes) {
+        console.error('[getAllRecentRoutes] Error fetching routes:', error);
+        return [];
+      }
+
+      console.log(`[getAllRecentRoutes] Found ${routes.length} routes via Deep Query`);
+
+      // Map to Route interface
+      const mappedRoutes: Route[] = routes.map((r: any) => {
+        // Sort POIs by order_index
+        const sortedPois = (r.route_pois || [])
+          .sort((a: any, b: any) => a.order_index - b.order_index)
+          .map((rp: any) => {
+            const p = rp.pois;
+            return {
+              id: p.id || generateStableId(p.name, p.lat, p.lng),
+              name: p.name,
+              lat: p.lat,
+              lng: p.lng,
+              ...p.data,
+              travelFromPrevious: rp.travel_data
+            };
+          });
+
+        return {
+          id: r.id,
+          name: r.name,
+          city: r.city,
+          description: r.description || '',
+          durationMinutes: r.duration_minutes || 0,
+          creator: r.user_id,
+          directionsData: r.directions_data,
+          pois: sortedPois,
+          preferences: r.preferences || {},
+          originalPoiCount: sortedPois.length,
+          is_public: r.is_public
+        };
+      });
+
+      return mappedRoutes;
+
+    } catch (e) {
+      console.error("[getAllRecentRoutes] failure:", e);
       return [];
     }
-
-    console.log(`[getAllRecentRoutes] Found ${routes.length} routes via Deep Query`);
-
-    // Map to Route interface
-    const mappedRoutes: Route[] = routes.map((r: any) => {
-      // Sort POIs by order_index
-      const sortedPois = (r.route_pois || [])
-        .sort((a: any, b: any) => a.order_index - b.order_index)
-        .map((rp: any) => {
-          const p = rp.pois;
-          return {
-            id: p.id || generateStableId(p.name, p.lat, p.lng),
-            name: p.name,
-            lat: p.lat,
-            lng: p.lng,
-            ...p.data,
-            travelFromPrevious: rp.travel_data
-          };
-        });
-
-      return {
-        id: r.id,
-        name: r.name,
-        city: r.city,
-        description: r.description || '',
-        durationMinutes: r.duration_minutes || 0,
-        creator: r.user_id,
-        directionsData: r.directions_data,
-        pois: sortedPois,
-        preferences: r.preferences || {},
-        originalPoiCount: sortedPois.length,
-        is_public: r.is_public
-      };
-    });
-
-    // Filter out corrupted routes (no POIs? maybe allow them but prefer valid ones)
-    // For now, return all valid formatted ones
-    return mappedRoutes;
-
-  } catch (e) {
-    console.error("[getAllRecentRoutes] failure:", e);
-    return [];
-  }
+  }, { ttl: 300000 }); // Cache for 5 minutes
 };
 
-export const getRecentCuratedRoutes = async (limit: number = 24): Promise<Route[]> => {
-  return await getAllRecentRoutes(limit);
+export const getRecentCuratedRoutes = async (limit: number = 24, userId?: string): Promise<Route[]> => {
+  return await getAllRecentRoutes(limit, userId);
 };
 
 export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string, preferredLanguage?: 'he' | 'en'): Promise<Route[]> => {
@@ -415,16 +431,18 @@ export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string, 
   const langSuffix = preferredLanguage || 'all';
   const cacheKey = `city-hub-${normHe}-${normEn}-${langSuffix}`;
 
-  return globalCache.fetch(cacheKey, async () => {
+  return cityCache.fetch(cacheKey, async () => {
     try {
+      // Use shorter limit for city hub to improve performance (Promise.all is slow)
       const { data: routes, error } = await supabase
         .from('routes')
         .select('id')
         .or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`)
         .eq('is_public', true)
-        .limit(30);
+        .order('created_at', { ascending: false })
+        .limit(20);
 
-      if (error || !routes) return [];
+      if (error || !routes || routes.length === 0) return [];
 
       const fullRoutes = await Promise.all(
         routes.map(r => getRouteFromNewSchema(r.id))
@@ -432,13 +450,22 @@ export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string, 
 
       let validRoutes = fullRoutes.filter(r => r !== null) as Route[];
 
-      // Filter by language if specified
+      // Sort by language preference instead of filtering out
       if (preferredLanguage) {
-        validRoutes = validRoutes.filter(r => {
-          // Check first POI name for language detection
-          const firstPoiName = r.pois?.[0]?.name || r.name || '';
-          const hasHebrewChars = /[\u0590-\u05FF]/.test(firstPoiName);
-          return preferredLanguage === 'he' ? hasHebrewChars : !hasHebrewChars;
+        validRoutes.sort((a, b) => {
+          const aName = a.pois?.[0]?.name || a.name || '';
+          const bName = b.pois?.[0]?.name || b.name || '';
+          const aHasHe = /[\u0590-\u05FF]/.test(aName);
+          const bHasHe = /[\u0590-\u05FF]/.test(bName);
+
+          if (preferredLanguage === 'he') {
+            if (aHasHe && !bHasHe) return -1;
+            if (!aHasHe && bHasHe) return 1;
+          } else {
+            if (!aHasHe && bHasHe) return -1;
+            if (aHasHe && !bHasHe) return 1;
+          }
+          return 0;
         });
       }
 
@@ -447,7 +474,7 @@ export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string, 
       console.error("City hub fetch failed:", e);
       return [];
     }
-  }, { ttl: 300000 });
+  }, { ttl: 60000 }); // Reduce TTL to 1 minute for fresher community results
 };
 
 export const getRouteById = async (routeId: string): Promise<Route | null> => {

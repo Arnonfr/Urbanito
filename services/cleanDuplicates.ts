@@ -23,11 +23,11 @@ export const cleanDuplicateRoutes = async (userId: string): Promise<number> => {
 
         console.log(`[cleanDuplicateRoutes] Found ${routes.length} total routes`);
 
-        // Group routes by normalized name + city
+        // Group routes by normalized city + name (matching App.tsx logic)
         const routeGroups = new Map<string, typeof routes>();
 
         for (const route of routes) {
-            const key = `${route.name}|${normalize(route.city)}`;
+            const key = `${normalize(route.city || '')}:${normalize(route.name || '')}`.toLowerCase();
             if (!routeGroups.has(key)) {
                 routeGroups.set(key, []);
             }
@@ -41,12 +41,25 @@ export const cleanDuplicateRoutes = async (userId: string): Promise<number> => {
             if (group.length > 1) {
                 console.log(`[cleanDuplicateRoutes] Found ${group.length} duplicates for: ${key}`);
 
-                // Keep the first PRIVATE route if exists, otherwise keep the oldest
-                const privateRoute = group.find(r => !r.is_public);
-                const toKeep = privateRoute || group[0];
+                // Priority:
+                // 1. Routes with a proper UUID (persistent) over temp IDs (gen- or r-)
+                // 2. Private routes over public routes (usually user's own version)
+                // 3. Oldest routes over newer ones
 
-                // Delete all others
-                const toDelete = group.filter(r => r.id !== toKeep.id);
+                const sortedGroup = [...group].sort((a, b) => {
+                    const aIsTemp = a.id.startsWith('gen-') || a.id.startsWith('r-');
+                    const bIsTemp = b.id.startsWith('gen-') || b.id.startsWith('r-');
+                    if (aIsTemp && !bIsTemp) return 1;
+                    if (!aIsTemp && bIsTemp) return -1;
+
+                    if (a.is_public && !b.is_public) return 1;
+                    if (!a.is_public && b.is_public) return -1;
+
+                    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                });
+
+                const toKeep = sortedGroup[0];
+                const toDelete = sortedGroup.slice(1);
 
                 for (const duplicate of toDelete) {
                     console.log(`[cleanDuplicateRoutes] Deleting duplicate: ${duplicate.id} (public: ${duplicate.is_public})`);

@@ -63,7 +63,9 @@ import {
   getSavedPoisFromSupabase,
   savePoiToSupabase,
   deletePoiFromSupabase,
-  forkRoute
+  forkRoute,
+  cityCache,
+  globalCache
 } from './services/supabase';
 
 import { nativeBridge } from './utils/nativeBridge';
@@ -253,8 +255,9 @@ const App: React.FC = () => {
           normalize(r.route_data.city) === normalize(currentRoute.city)
         );
 
-        if (isAlreadySaved) {
-          await saveRouteToSupabase(user.id, enriched, enriched.preferences || {}, false, enriched.parent_route_id);
+        if (isAlreadySaved && user?.id) {
+          // We save it once to DB so it persists in Recent Global too, but is_favorite is false
+          await saveRouteToSupabase(user.id, enriched, { ...enriched.preferences, is_favorite: false }, false, enriched.parent_route_id);
           console.log(`[Auto-Hydrate] Updated saved route: ${enriched.name}`);
         } else {
           console.log(`[Auto-Hydrate] Enriched route (not saving - user hasn't saved it yet): ${enriched.name}`);
@@ -428,59 +431,72 @@ const App: React.FC = () => {
     }
   };
 
+  const lastLibraryRefresh = useRef(0);
   const isLoadingGlobal = useRef(false);
   const loadGlobalContent = async () => {
     if (isLoadingGlobal.current) return;
     isLoadingGlobal.current = true;
     try {
       console.log('🔄 loadGlobalContent: Fetching...');
-      const global = await getAllRecentRoutes(30);
+      const global = await getAllRecentRoutes(30, user?.id);
 
-      // Merge with pending local routes
+      // 1. Load and Validate Local Routes
       let localRoutes: RouteType[] = [];
       try {
-        localRoutes = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+        const rawLocal = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
+        // Filter out garbage: must have ID, Name, City, and Content
+        // Also remove "Stuck" routes: created > 24h ago and NOT in global (orphaned drafts)
+        const now = Date.now();
+        const globalIds = new Set((global || []).map(g => g.id));
+
+        localRoutes = rawLocal.filter((r: RouteType) => {
+          if (!r.id || !r.name || !r.city) return false;
+          if (!r.pois || r.pois.length === 0) return false;
+
+          const created = new Date(r.created_at || 0).getTime();
+          // Keep if recent (< 24h) OR if it exists in global (synced)
+          if ((now - created) > 86400000 && !globalIds.has(r.id)) return false;
+
+          return true;
+        });
+
+        // Update storage if we cleaned anything (fixes "stuck" elements)
+        if (localRoutes.length !== rawLocal.length) {
+          console.log(`🧹 Cleaned ${rawLocal.length - localRoutes.length} invalid/stuck local routes`);
+          localStorage.setItem('urbanito_local_routes', JSON.stringify(localRoutes));
+        }
       } catch (e) {
         console.error("Failed to parse local routes", e);
       }
 
-      // Combine: Local first (they are newest/user's own), then global. 
-      // Deduplicate by Name + City (normalized) to catch ID mismatches (tempId vs uuid)
-      const combined = [...localRoutes, ...(global || [])];
-      const seen = new Set<string>();
-      const unique: RouteType[] = [];
+      // 2. Robust Merge Strategy
+      // Start with Global (Truth)
+      const uniqueRoutes = [...(global || [])];
+      const globalKeyMap = new Set(uniqueRoutes.map(r =>
+        `${normalize(r.city)}:${normalize(r.name)}`.toLowerCase()
+      ));
+      const globalIdMap = new Set(uniqueRoutes.map(r => r.id));
 
-      for (const route of combined) {
-        // Create a stable key from name and city
-        const key = `${normalize(route.city || '')}:${normalize(route.name || '')}`.toLowerCase();
+      // Merge Local: Only add if truly unique
+      localRoutes.forEach(local => {
+        // If exact ID match exists, skip (Global wins)
+        if (globalIdMap.has(local.id)) return;
 
-        // If we have an ID-based match already, skip.
-        // Actually, if we use Name+City as the key, it's more robust against tempId/uuid drift.
-        if (!seen.has(key)) {
-          seen.add(key);
-          unique.push(route);
-        } else {
-          // If we see a duplicate, prefer the one with a proper UUID (not tempId)
-          const existingIdx = unique.findIndex(r =>
-            `${normalize(r.city || '')}:${normalize(r.name || '')}`.toLowerCase() === key
-          );
-          if (existingIdx !== -1) {
-            const existing = unique[existingIdx];
-            // If the new one has a GUID but existing one is tempId, swap them
-            const isExistingTemp = existing.id.startsWith('gen-') || existing.id.startsWith('r-');
-            const isNewPersistent = !route.id.startsWith('gen-') && !route.id.startsWith('r-');
+        // If Name+City match exists AND local is temporary ID -> Skip (Assume Global is the synced UUID version)
+        // If local is UUID (persistent) but different ID -> Keep (It's a different route with same name)
+        const key = `${normalize(local.city)}:${normalize(local.name)}`.toLowerCase();
+        const isTemp = local.id.startsWith('gen-') || local.id.startsWith('r-');
 
-            if (isExistingTemp && isNewPersistent) {
-              unique[existingIdx] = route;
-            }
-          }
-        }
-      }
+        if (globalKeyMap.has(key) && isTemp) return;
 
-      setRecentGlobalRoutes(unique);
+        // Otherwise add unique local route
+        uniqueRoutes.push(local);
+      });
+
+      setRecentGlobalRoutes(uniqueRoutes);
     } catch (err) {
       console.error("❌ Failed to load global routes:", err);
-      // Fallback: show at least local routes
+      // Fallback: show local routes
       try {
         const local = JSON.parse(localStorage.getItem('urbanito_local_routes') || '[]');
         setRecentGlobalRoutes(local);
@@ -493,10 +509,16 @@ const App: React.FC = () => {
   // Refresh library content when navigating to library tab
   useEffect(() => {
     if (activeTab === 'library') {
-      console.log('Navigated to library - refreshing content');
-      loadGlobalContent();
+      const now = Date.now();
+      // Only refresh if empty or 1 minute has passed
+      if (recentGlobalRoutes.length === 0 || (now - lastLibraryRefresh.current > 60000)) {
+        console.log('Navigated to library - refreshing content');
+        loadGlobalContent();
+        if (user?.id) refreshSavedContent(user.id);
+        lastLibraryRefresh.current = now;
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, user?.id]);
 
   // IMMEDIATE LOAD: Load local routes on mount to ensure they are visible ASAP
   useEffect(() => {
@@ -555,28 +577,16 @@ const App: React.FC = () => {
     if (!googleMap.current) return;
     setIsAiMenuOpen(false);
 
-    // Helper to wrap locateUser in promise
-    const getRealLocation = () => new Promise<{ lat: number, lng: number }>((resolve, reject) => {
-      showToast(isHe ? "מאתר מיקום..." : "Locating...", "success");
-      locateUser(
-        (pos) => resolve(pos),
-        () => reject('Failed to locate')
-      );
-    });
+    const mapCenter = {
+      lat: googleMap.current.getCenter()?.lat() || 0,
+      lng: googleMap.current.getCenter()?.lng() || 0
+    };
 
-    let searchCenter = { lat: googleMap.current.getCenter()?.lat() || 0, lng: googleMap.current.getCenter()?.lng() || 0 };
+    console.log("[handleFindNearbyRoutes] Searching at map center:", mapCenter);
 
-    try {
-      // 1. Try to get REAL user location
-      const userPos = await getRealLocation();
-      searchCenter = userPos;
-    } catch (e) {
-      // 2. Fallback to map center if location fails
-      console.warn("Could not locate user, falling back to map center");
-      showToast(isHe ? "לא ניתן לאתר מיקום, מחפש באזור הנוכחי" : "Location unavailable, searching here", "error");
-    }
-
-    const routes = await searchNearby(searchCenter.lat, searchCenter.lng);
+    // We search at map center directly now, fulfilling the user request: 
+    // "environment where the map is located, not where I am"
+    const routes = await searchNearby(mapCenter.lat, mapCenter.lng);
 
     if (routes.length > 0) {
       // Filter primarily by distance to avoid "World View" zoom
@@ -1475,9 +1485,9 @@ const App: React.FC = () => {
           if (res?.error) {
             console.warn("Background save failed (likely Guest RLS/Rate Limit), but route is active locally:", res.error);
             showToast(isHe ? "המסלול נוצר אך שמירה לשרת נכשלה. הוא נשמר מקומית." : "Route created, but server sync failed. It is saved locally.", "error");
-          } else if (res?.routeId) {
+          } else if (res?.data && res.data[0]?.id) {
             // CRITICAL: Update the persistent ID to prevent duplicates!
-            const finalId = res.routeId;
+            const finalId = res.data[0].id;
             console.log("✅ Route saved to server with ID:", finalId);
 
             // Update open routes with the real ID
@@ -1581,7 +1591,7 @@ const App: React.FC = () => {
         const saved = await saveRouteToSupabase(
           user.id,
           currentRoute,
-          preferences,
+          { ...preferences, is_favorite: true }, // Explicitly marked as favorite when clicking heart
           isContentModified, // Public if modified
           currentRoute.id // Parent is current ID
         );
@@ -1609,7 +1619,13 @@ const App: React.FC = () => {
         }
       }
       // Wait a moment for DB propagation then refresh
-      setTimeout(() => refreshSavedContent(user.id), 100);
+      setTimeout(() => {
+        refreshSavedContent(user.id);
+        // Force invalidate the city cache to reflect the new state in hubs
+        if (currentRoute?.city) {
+          cityCache.invalidatePattern(`city-hub-${normalize(currentRoute.city)}`);
+        }
+      }, 100);
     } catch (err) {
       showToast(isHe ? 'שגיאה בפעולה' : 'Action failed', 'error');
     }
@@ -2194,7 +2210,7 @@ const App: React.FC = () => {
                           <div className="relative w-full h-[320px] mb-6 shadow-2xl">
                             <div className="absolute inset-0 animate-in fade-in duration-500">
                               {viewingCityData?.img_url ? (
-                                <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity} />
+                                <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity || undefined} />
                               ) : (
                                 <GoogleImage query={`${viewingCity} landmark`} className="w-full h-full object-cover" />
                               )}
@@ -2268,7 +2284,7 @@ const App: React.FC = () => {
                                               }
                                             } else if (viewingCityData?.lat && viewingCityData?.lng) {
                                               setLocation({ lat: viewingCityData.lat, lng: viewingCityData.lng });
-                                              setSearchQuery(viewingCity);
+                                              setSearchQuery(viewingCity || '');
                                               setViewingCity(null);
                                               window.scrollTo(0, 0);
                                               navigate('/');
@@ -2394,7 +2410,7 @@ const App: React.FC = () => {
                       )}
                     </div>
                   )}
-                  <div className="pointer-events-auto h-full">
+                  <div className={`h-full ${isGeneratingActive || currentRoute ? 'pointer-events-auto' : 'pointer-events-none'}`}>
                     {isGeneratingActive ? (
                       <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div>
                     ) : currentRoute ? (
@@ -2429,7 +2445,7 @@ const App: React.FC = () => {
               } />
               <Route path="/library" element={
                 <div className="absolute inset-0 z-[3000] pointer-events-none">
-                  <div key={viewingCity || 'library-main'} className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}>
+                  <div key={viewingCity || 'library-main'} className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-48 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}>
                     {!viewingCity && <div className="px-1">
                       <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area">
                         <h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2>
@@ -2569,7 +2585,20 @@ const App: React.FC = () => {
                                   className="group flex flex-col gap-2 shrink-0 w-[140px] snap-start text-right transition-transform active:scale-95"
                                 >
                                   <div className="relative aspect-[3/4] overflow-hidden shadow-lg rounded-[16px] bg-slate-200 w-full">
-                                    <img src={city.img_url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={city.name} />
+                                    {city.img_url ? (
+                                      <img
+                                        src={city.img_url}
+                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                        alt={city.name}
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).style.display = 'none';
+                                          // Force parent to show fallback if possible, or just hide
+                                        }}
+                                      />
+                                    ) : null}
+                                    {(!city.img_url) && (
+                                      <GoogleImage query={`${city.name} landmark`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                    )}
                                     <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
                                     <div className="absolute bottom-3 right-3 left-3">
                                       <span className="text-white text-[15px] font-bold leading-tight block shadow-sm">{city.name}</span>
@@ -2757,7 +2786,11 @@ const App: React.FC = () => {
               <Route path="/profile" element={
                 <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500">
                   <div className="top-safe-area space-y-6">
-                    <PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => user?.id && deleteRouteFromSupabase(id, user.id).then(() => refreshSavedContent(user.id))} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} />
+                    <PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => {
+                      const routeToDelete = savedRoutes.find(r => r.id === id);
+                      const city = routeToDelete?.route_data?.city || routeToDelete?.city;
+                      return user?.id && deleteRouteFromSupabase(id, user.id, city).then(() => refreshSavedContent(user.id))
+                    }} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} />
                     <div className="pt-8 border-t border-slate-50">
                       <PremiumProfileSection isHe={isHe} />
                     </div>
@@ -2821,6 +2854,7 @@ const App: React.FC = () => {
                 showToast={showToast}
                 isSaved={savedPois.some(p => p.id === selectedPoi.id)}
                 onSave={() => handleTogglePoiSave(selectedPoi)}
+                userLocation={location}
               />
             </Suspense>
           )}

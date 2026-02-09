@@ -151,6 +151,10 @@ export const WalkModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 // Audio Trigger
                 if (!triggeredPoisRef.current.has(potentialTarget.id) && !isPlaying) {
                     triggeredPoisRef.current.add(potentialTarget.id);
+                    // Haptic Feedback
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                        navigator.vibrate(200);
+                    }
                     // Decide what text to read (Short vs Long)
                     const text = potentialTarget.summary || potentialTarget.description || potentialTarget.name;
                     playText(text, 'en', potentialTarget.id, 'normal'); // Default to EN for now or pass lang prop

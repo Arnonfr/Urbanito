@@ -15,6 +15,9 @@ export interface UserPreferences {
   jewishHistory?: boolean;
   audioMode?: 'free' | 'premium';
   isPremium?: boolean;
+  is_favorite?: boolean;
+  names?: { he?: string; en?: string };
+  descriptions?: { he?: string; en?: string };
 }
 
 export interface POICategory {
@@ -118,6 +121,7 @@ export interface Route {
   preferences?: any; // For localized names/descriptions and other metadata
   is_public?: boolean;
   isPremiumRoute?: boolean;
+  created_at?: string;
 }
 
 export interface AudioState {
