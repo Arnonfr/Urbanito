@@ -8,9 +8,9 @@ export const PremiumProfileSection: React.FC<{ isHe: boolean }> = ({ isHe }) => 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
-    const handleRedeem = () => {
+    const handleRedeem = async () => {
         if (!coupon.trim()) return;
-        const result = unlockWithCoupon(coupon);
+        const result = await unlockWithCoupon(coupon);
         if (result) {
             setSuccess(true);
             setError('');
@@ -46,46 +46,65 @@ export const PremiumProfileSection: React.FC<{ isHe: boolean }> = ({ isHe }) => 
 
     // Free Tier View
     return (
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-            <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-                    <Gift className="w-5 h-5 text-slate-500" />
-                </div>
-                <div>
-                    <h3 className="font-bold text-slate-800">
-                        {isHe ? 'יש לך קוד קופון?' : 'Got a Gift Code?'}
+        <div className="space-y-4">
+            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+
+                <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Sparkles className="w-5 h-5 text-indigo-200 fill-indigo-200/20" />
+                        <span className="text-xs font-bold tracking-widest uppercase text-indigo-100">Limited Offer</span>
+                    </div>
+                    <h3 className="text-2xl font-black mb-1 leading-tight">
+                        {isHe ? 'שדרג ל-Premium' : 'Go Premium'}
                     </h3>
-                    <p className="text-xs text-slate-500">
-                        {isHe ? 'הזן אותו כאן כדי לשדרג לפרימיום' : 'Enter it here to unlock Premium'}
+                    <p className="text-sm text-indigo-100/90 mb-5 font-medium">
+                        {isHe ? 'קבל גישה לכל המסלולים, אודיו באיכות גבוהה ותג פרימיום יוקרתי.' : 'Unlock all routes, high-quality audio, and a premium badge.'}
+                    </p>
+
+                    <button
+                        onClick={() => setCoupon('DEV-UNLOCK')} // Auto-fill for now as requested/testing
+                        className="w-full bg-white text-indigo-600 py-3 rounded-xl font-bold text-sm shadow-sm hover:bg-slate-50 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                        <Crown size={16} />
+                        {isHe ? 'פתח חברות לכל החיים' : 'Unlock Lifetime Access'}
+                    </button>
+                    <p className="text-[10px] text-center mt-3 text-indigo-200 font-medium">
+                        {isHe ? 'תשלום חד פעמי. גישה לכל החיים.' : 'Single payment. Lifetime access.'}
                     </p>
                 </div>
             </div>
 
-            <div className="flex gap-2">
-                <input
-                    type="text"
-                    value={coupon}
-                    onChange={(e) => setCoupon(e.target.value)}
-                    placeholder={isHe ? 'לדוגמה: URBAN-PRO-2026' : 'Ex: URBAN-PRO-2026'}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-center uppercase tracking-wider font-medium placeholder:normal-case placeholder:tracking-normal"
-                />
-                <button
-                    onClick={handleRedeem}
-                    className="bg-slate-900 text-white px-5 rounded-xl font-medium text-sm hover:bg-slate-800 active:scale-95 transition-all"
-                >
-                    {isHe ? 'החל' : 'Apply'}
-                </button>
+            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
+                        <Gift className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-slate-700 text-sm">
+                            {isHe ? 'יש לך קוד קופון?' : 'Got a Gift Code?'}
+                        </h4>
+                    </div>
+                </div>
+
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={coupon}
+                        onChange={(e) => setCoupon(e.target.value)}
+                        placeholder={isHe ? 'הזן קוד...' : 'Enter code...'}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all uppercase font-bold text-slate-600"
+                    />
+                    <button
+                        onClick={handleRedeem}
+                        className="bg-slate-900 text-white px-5 rounded-xl font-medium text-sm hover:bg-slate-800 active:scale-95 transition-all"
+                    >
+                        {isHe ? 'החל' : 'Apply'}
+                    </button>
+                </div>
+                {error && <p className="text-red-500 text-[10px] mt-2 font-bold text-center">{error}</p>}
+                {success && <p className="text-green-600 text-[10px] mt-2 font-bold text-center flex items-center justify-center gap-1"><Check size={10} /> {isHe ? 'בוצע!' : 'Done!'}</p>}
             </div>
-            {error && (
-                <p className="text-red-500 text-xs mt-2 font-medium text-center animate-in fade-in slide-in-from-top-1">
-                    {error}
-                </p>
-            )}
-            {success && (
-                <p className="text-green-600 text-xs mt-2 font-medium text-center flex items-center justify-center gap-1 animate-in fade-in slide-in-from-top-1">
-                    <Check size={12} /> {isHe ? 'הקוד נקלט בהצלחה!' : 'Code accepted! Welcome to Premium.'}
-                </p>
-            )}
         </div>
     );
 };

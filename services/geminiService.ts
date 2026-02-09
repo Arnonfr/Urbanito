@@ -12,6 +12,17 @@ import {
 } from "./supabase";
 
 /**
+ * Utility to generate a stable hash for strings to use as cache keys
+ */
+const generateTextHash = async (text: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+/**
  * Robustly retrieves the Gemini API Key from multiple possible environment sources.
  * Checks import.meta.env (Vite standard) and process.env (Legacy/Fallback).
  */
@@ -467,15 +478,37 @@ export const generateSpeech = async (text: string, language: string, isPremium: 
     }
     const ai = new GoogleGenAI({ apiKey });
 
-    // Premium users get more sophisticated voices
-    const voiceName = isPremium
-      ? (language === 'he' ? 'Kore' : 'Aoede')
-      : (language === 'he' ? 'Kore' : 'Puck');
+    // ALL users now get the high-quality voices to simplify and wow
+    const voiceName = language === 'he' ? 'Kore' : 'Aoede';
 
-    console.log(`[generateSpeech] Generating audio... Model: gemini-1.5-flash-002, Voice: ${voiceName}, Length: ${text.length}`);
+    const textHash = await generateTextHash(text);
+    console.log(`[generateSpeech] Checking cache for hash: ${textHash.substring(0, 10)}...`);
+
+    try {
+      const { data: cached, error: cacheErr } = await supabase
+        .from('audio_cache')
+        .select('audio_content')
+        .eq('text_hash', textHash)
+        .eq('language', language)
+        .eq('voice_name', voiceName)
+        .limit(1)
+        .single();
+
+      if (cached?.audio_content) {
+        console.log("🚀 [generateSpeech] Cache hit! Returning cached audio.");
+        return cached.audio_content;
+      }
+      if (cacheErr && cacheErr.code !== 'PGRST116') {
+        console.warn("[generateSpeech] Cache check error:", cacheErr);
+      }
+    } catch (e) {
+      console.warn("[generateSpeech] Cache read failed:", e);
+    }
+
+    console.log(`[generateSpeech] Cache miss. Generating fresh audio... Model: gemini-3-flash-preview, Voice: ${voiceName}, Length: ${text.length}`);
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash-002", // Reverted to -002 as per user request
+      model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
@@ -495,6 +528,20 @@ export const generateSpeech = async (text: string, language: string, isPremium: 
       console.error("[generateSpeech] API returned no audio data.", JSON.stringify(response, null, 2));
       return "";
     }
+
+    // Save to cache in background - don't catch here as Postgrest returns a PromiseLike that might not have .catch in some TS versions
+    supabase.from('audio_cache').insert({
+      text_hash: textHash,
+      language,
+      voice_name: voiceName,
+      audio_content: audioData
+    }).then(
+      ({ error }) => {
+        if (error) console.warn("[generateSpeech] Failed to save to cache:", error);
+        else console.log("💾 [generateSpeech] Audio saved to server cache.");
+      },
+      (err) => console.error("[generateSpeech] Background cache save failed:", err)
+    );
 
     return audioData;
   } catch (e: any) {

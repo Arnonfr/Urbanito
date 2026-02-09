@@ -444,16 +444,38 @@ const App: React.FC = () => {
         console.error("Failed to parse local routes", e);
       }
 
-      // Combine: Local first (they are newest/user's own), then global. Deduplicate by ID.
+      // Combine: Local first (they are newest/user's own), then global. 
+      // Deduplicate by Name + City (normalized) to catch ID mismatches (tempId vs uuid)
       const combined = [...localRoutes, ...(global || [])];
-      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      const seen = new Set<string>();
+      const unique: RouteType[] = [];
 
-      // Sort by creation time if possible (assuming local are newest for now) rather than relying on map order?
-      // Actually standard map approach preserves insertion order for first occurrence, so localRoutes (if newer) should be at top if they are first in array.
-      // But we want to ensure latest created are top.
-      // Since `global` is already sorted by created_at desc.
-      // And `localRoutes` we just pushed to top.
-      // So simple concat is fine, assuming user just created it.
+      for (const route of combined) {
+        // Create a stable key from name and city
+        const key = `${normalize(route.city || '')}:${normalize(route.name || '')}`.toLowerCase();
+
+        // If we have an ID-based match already, skip.
+        // Actually, if we use Name+City as the key, it's more robust against tempId/uuid drift.
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(route);
+        } else {
+          // If we see a duplicate, prefer the one with a proper UUID (not tempId)
+          const existingIdx = unique.findIndex(r =>
+            `${normalize(r.city || '')}:${normalize(r.name || '')}`.toLowerCase() === key
+          );
+          if (existingIdx !== -1) {
+            const existing = unique[existingIdx];
+            // If the new one has a GUID but existing one is tempId, swap them
+            const isExistingTemp = existing.id.startsWith('gen-') || existing.id.startsWith('r-');
+            const isNewPersistent = !route.id.startsWith('gen-') && !route.id.startsWith('r-');
+
+            if (isExistingTemp && isNewPersistent) {
+              unique[existingIdx] = route;
+            }
+          }
+        }
+      }
 
       setRecentGlobalRoutes(unique);
     } catch (err) {
