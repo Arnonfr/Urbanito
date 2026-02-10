@@ -258,7 +258,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               </h3>
             </div>
             <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontClasses[fontLevel]}`}>
-              {!poi.isFullyLoaded ? (
+              {!poi.isFullyLoaded && !poi.description && !poi.historicalAnalysis && !poi.summary ? (
                 <div className="space-y-6">
                   <p className="opacity-90 leading-relaxed text-lg">
                     {poi.summary || poi.description || (isHe ? 'מאתר מידע על המקום...' : 'Fetching location details...')}

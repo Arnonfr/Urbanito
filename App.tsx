@@ -236,10 +236,16 @@ const App: React.FC = () => {
     // Heuristic: Is it sparse?
     const isHe = preferences.language === 'he';
     const missingHeTitle = isHe && !((currentRoute as any).preferences?.names?.he || (currentRoute as any).name_he);
-    const isSparse = currentRoute.pois.length > 0 && currentRoute.pois.slice(0, 2).some(p => !p.historicalContext && !(p as any).data?.historicalAnalysis);
+    // Fix: If description exists, it's valid enough. Don't force re-generation for historicalContext.
+    const isSparse = currentRoute.pois.length > 0 && currentRoute.pois.slice(0, 2).some(p =>
+      !p.isFullyLoaded &&
+      !p.historicalContext &&
+      !p.description &&
+      !(p as any).data?.historicalAnalysis
+    );
 
     if ((missingHeTitle || isSparse) && !isGeocoding) {
-      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Starting enrichment (Silently)...`);
+      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Missing: ${missingHeTitle ? 'HE_Title' : ''} ${isSparse ? 'Content' : ''}`);
 
       // Removed annoying toast and UI blocking state (setGeneratingRouteIds)
       // This allows enrichment to happen in the background without locking the UI or confusing the user
