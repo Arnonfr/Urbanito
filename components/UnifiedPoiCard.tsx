@@ -273,8 +273,8 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
                   {(() => {
-                    const mainContent = extendedData?.historicalAnalysis || poi.description;
-                    const paragraphs = mainContent.split('\n').filter((p: string) => p.trim());
+                    const mainContent = extendedData?.historicalAnalysis || poi.description || (isHe ? "אין מידע נוסף זמין עבור מקום זה." : "No additional details available for this location.");
+                    const paragraphs = mainContent ? mainContent.split('\n').filter((p: string) => p.trim()) : [];
 
                     return paragraphs.map((paragraph: string, idx: number) => {
                       const isHeading = paragraph.length < 60 && (

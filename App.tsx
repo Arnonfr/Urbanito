@@ -250,29 +250,43 @@ const App: React.FC = () => {
       // Removed annoying toast and UI blocking state (setGeneratingRouteIds)
       // This allows enrichment to happen in the background without locking the UI or confusing the user
 
-      enrichRoute(currentRoute, preferences, isPremium).then(async (enriched) => {
-        // Update Local State
-        setOpenRoutes(prev => prev.map(r => r.id === currentRoute.id ? enriched : r));
+      // Use a timeout wrapper to ensure the UI never gets stuck on a spinner, even if AI hangs
+      const safeEnrich = async () => {
+        try {
+          const enriched = await Promise.race([
+            enrichRoute(currentRoute, preferences, isPremium),
+            new Promise<RouteType>((resolve) => setTimeout(() => {
+              console.warn("[Auto-Hydrate] Enrichment timed out - forcing UI unlock");
+              resolve({
+                ...currentRoute,
+                pois: currentRoute.pois.map(p => ({ ...p, isFullyLoaded: true }))
+              });
+            }, 8000)) // 8s max wait
+          ]);
 
-        // Only update in Supabase if this route was already saved by the user
-        // This prevents creating duplicate entries
-        const isAlreadySaved = savedRoutes.some(r =>
-          normalize(r.route_data.name) === normalize(currentRoute.name) &&
-          normalize(r.route_data.city) === normalize(currentRoute.city)
-        );
+          // Update Local State
+          setOpenRoutes(prev => prev.map(r => r.id === currentRoute.id ? enriched : r));
 
-        if (isAlreadySaved && user?.id) {
-          // We save it once to DB so it persists in Recent Global too, but is_favorite is false
-          await saveRouteToSupabase(user.id, enriched, { ...enriched.preferences, is_favorite: false }, false, enriched.parent_route_id);
-          console.log(`[Auto-Hydrate] Updated saved route: ${enriched.name}`);
-        } else {
-          console.log(`[Auto-Hydrate] Enriched route (not saving - user hasn't saved it yet): ${enriched.name}`);
+          // Only update in Supabase if this route was already saved by the user
+          // This prevents creating duplicate entries or zombie data
+          const isAlreadySaved = savedRoutes.some(r =>
+            normalize(r.route_data.name) === normalize(currentRoute.name) &&
+            normalize(r.route_data.city) === normalize(currentRoute.city)
+          );
+
+          if (isAlreadySaved && user?.id) {
+            // We save it once to DB so it persists in Recent Global too, but is_favorite is false
+            await saveRouteToSupabase(user.id, enriched, { ...enriched.preferences, is_favorite: false }, false, enriched.parent_route_id);
+            console.log(`[Auto-Hydrate] Updated saved route: ${enriched.name}`);
+          } else {
+            console.log(`[Auto-Hydrate] Enriched route (local only): ${enriched.name}`);
+          }
+        } catch (err) {
+          console.error("[Auto-Hydrate] Failed:", err);
         }
+      };
 
-        console.log(`[Auto-Hydrate] Complete for ${enriched.name}`);
-      }).catch(err => {
-        console.error("[Auto-Hydrate] Failed:", err);
-      });
+      safeEnrich();
     }
 
   }, [currentRoute?.id]);
