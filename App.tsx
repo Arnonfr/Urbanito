@@ -267,17 +267,19 @@ const App: React.FC = () => {
           // Update Local State
           setOpenRoutes(prev => prev.map(r => r.id === currentRoute.id ? enriched : r));
 
-          // Only update in Supabase if this route was already saved by the user
-          // This prevents creating duplicate entries or zombie data
+          // Only update in Supabase if this route was already saved by the user OR if the user is the creator.
+          // This prevents creating duplicate entries or zombie data, but allows creators to "repair" their own broken routes.
           const isAlreadySaved = savedRoutes.some(r =>
             normalize(r.route_data.name) === normalize(currentRoute.name) &&
             normalize(r.route_data.city) === normalize(currentRoute.city)
           );
+          const isCreator = currentRoute.creator === user?.id;
 
-          if (isAlreadySaved && user?.id) {
-            // We save it once to DB so it persists in Recent Global too, but is_favorite is false
-            await saveRouteToSupabase(user.id, enriched, { ...enriched.preferences, is_favorite: false }, false, enriched.parent_route_id);
-            console.log(`[Auto-Hydrate] Updated saved route: ${enriched.name}`);
+          if ((isAlreadySaved || isCreator) && user?.id) {
+            // We save it once to DB so it persists in Recent Global too. 
+            // Preserve is_favorite status if it was already saved, otherwise false.
+            await saveRouteToSupabase(user.id, enriched, { ...enriched.preferences, is_favorite: isAlreadySaved }, false, enriched.parent_route_id);
+            console.log(`[Auto-Hydrate] Updated route in DB (Saved/Creator): ${enriched.name}`);
           } else {
             console.log(`[Auto-Hydrate] Enriched route (local only): ${enriched.name}`);
           }
