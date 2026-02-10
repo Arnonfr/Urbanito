@@ -1,70 +1,61 @@
+/**
+ * Supabase client and data fetching utilities
+ */
+
 import { createClient } from '@supabase/supabase-js';
-import { Route, RouteConcept, FeedbackData, POI, UserPreferences } from '../types';
-import { globalCache, cityCache } from './cacheUtils';
-export { globalCache, cityCache };
-import { saveRouteToNewSchema, getRouteFromNewSchema, getUserRoutesFromNewSchema, deleteRouteFromNewSchema } from './supabaseRoutes';
+import { Route, UserPreferences, POI } from '../types';
 
-// @ts-ignore - import.meta is a Vite feature
-const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://xrawvyvcyewjmlzypnqc.supabase.co';
-// @ts-ignore - import.meta is a Vite feature
-const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
+const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    storageKey: 'urbanito-auth-v1',
-    storage: window.localStorage
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Helper to normalize strings for comparison (lowercase, trimmed)
+export const normalize = (str: string = '') => str.toLowerCase().trim();
+
+/**
+ * Cache Management
+ */
+class SimpleCache {
+  private cache: Map<string, { data: any; expiry: number }> = new Map();
+
+  async fetch<T>(key: string, fetchFn: () => Promise<T>, ttl: number = 300000): Promise<T> {
+    const now = Date.now();
+    const cached = this.cache.get(key);
+    if (cached && cached.expiry > now) return cached.data;
+
+    const data = await fetchFn();
+    this.cache.set(key, { data, expiry: now + ttl });
+    return data;
   }
-});
 
-export const normalize = (s: string) => {
-  if (!s) return "";
-  return s.trim()
-    .toLowerCase()
-    .replace(/-/g, ' ') // Replace hyphens with spaces (e.g. Notre-Dame -> notre dame)
-    .split(',')[0]
-    .replace(/\([^)]*\)/g, '')
-    .replace(/[^\w\s\u0590-\u05FF\d]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
+  clear() { this.cache.clear(); }
+}
 
-export const generateStableId = (name: string, lat: number, lng: number) => {
-  const clean = normalize(name);
-  return `poi-${clean}-${lat.toFixed(4)}-${lng.toFixed(4)}`.replace(/\s+/g, '-');
-};
+export const globalCache = new SimpleCache();
+export const cityCache = new SimpleCache();
 
-export const getUserPreferences = async (userId: string): Promise<UserPreferences | null> => {
-  try {
-    const { data, error } = await supabase.from('user_profiles').select('preferences').eq('id', userId).maybeSingle();
-    if (error || !data) return null;
-    return data.preferences as UserPreferences;
-  } catch (e) { return null; }
-};
-
-export const saveUserPreferences = async (userId: string, preferences: UserPreferences) => {
-  try {
-    await supabase.from('user_profiles').upsert({
-      id: userId,
-      preferences,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'id' });
-  } catch (e) { }
-};
-
+/**
+ * POI Details Cache
+ */
 export const getCachedPoiDetails = async (poiName: string, city: string, lat?: number, lng?: number) => {
   try {
     const normName = normalize(poiName);
     const normCity = normalize(city);
-    const { data } = await supabase.from('poi_details').select('details_data, image_url, google_place_id').eq('poi_name', normName).eq('city', normCity).maybeSingle();
-    if (data) return {
+
+    const { data, error } = await supabase
+      .from('poi_details')
+      .select('details_data, image_url, google_place_id')
+      .eq('poi_name', normName)
+      .eq('city', normCity)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return {
       ...data.details_data,
-      imageUrl: data.image_url || data.details_data.imageUrl,
-      googlePlaceId: data.google_place_id || data.details_data.googlePlaceId
+      imageUrl: data.image_url,
+      googlePlaceId: data.google_place_id
     };
-    return null;
   } catch (e) { return null; }
 };
 
@@ -108,244 +99,132 @@ export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl
 };
 
 /**
- * Ensures there is a logged in user.
- * Tries Anonymous login first. If disabled, creates a temporary "guest" account.
+ * User Preferences
  */
-/**
- * Ensures there is a logged in user.
- * Tries Anonymous login first. If disabled, uses cached guest credentials or creates a new "guest" account.
- * Prevents hitting rate limits by reusing guest accounts.
- */
-export const ensureAuthenticatedUser = async (): Promise<string | null> => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) return user.id;
-
-  console.log('User not logged in. Attempting auto-login...');
-
-  // 1. Try Anonymous (if enabled in Supabase)
-  const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-  if (!anonError && anonData.user) {
-    console.log('Logged in anonymously:', anonData.user.id);
-    return anonData.user.id;
-  }
-
-  console.warn('Anonymous login failed (likely disabled). Using persistent guest strategy...');
-
-  // 2. Strategy: Reuse Guest Credentials from LocalStorage
-  // This prevents 'Email Rate Limit Exceeded' errors by avoiding constant SignUps.
-  const STORAGE_KEY = 'urbanito_guest_creds';
-  const storedCreds = localStorage.getItem(STORAGE_KEY);
-
-  if (storedCreds) {
-    try {
-      const { email, password } = JSON.parse(storedCreds);
-      console.log('Found cached guest credentials. Attempting login...');
-
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (!signInError && signInData.user) {
-        console.log('✅ Successfully reused guest account:', signInData.user.id);
-        return signInData.user.id;
-      }
-
-      console.warn('Cached guest login failed (auth revoked or invalid). generating new identity...', signInError);
-    } catch (e) {
-      console.error('Error parsing stored credentials', e);
-    }
-  }
-
-  // 3. Fallback: Create a NEW random guest account
-  const guestEmail = `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}@urbanito.local`;
-  const guestPassword = `GuestPass${Date.now()}!`;
-
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email: guestEmail,
-    password: guestPassword,
-  });
-
-  if (signUpData?.user) {
-    console.log('✅ Created and logged in as NEW temporary guest:', signUpData.user.id);
-
-    // Cache the credentials for next time
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ email: guestEmail, password: guestPassword }));
-
-    return signUpData.user.id;
-  }
-
-  // If signUp fails, we are likely rate limited or blocked.
-  console.error('Guest login fallback failed (Rate Limit/Error):', signUpError);
-  return null;
-}
-
-/**
- * Save a route as a curated route (system-owned, public)
- */
-export const saveToCuratedRoutes = async (route: Route, theme: string = 'general') => {
+export const getUserPreferences = async (userId: string): Promise<UserPreferences | null> => {
   try {
-    console.log('[saveToCuratedRoutes] Starting save for route:', route.name);
-
-    // Ensure we have a user to satisfy RLS
-    const userId = await ensureAuthenticatedUser();
-
-    if (!userId) {
-      console.warn('[saveToCuratedRoutes] Could not authenticate user. Falling back to System User (public save).');
-      // Continue execution with userId = null
-    }
-
-    console.log('[saveToCuratedRoutes] Saving using User ID:', userId);
-
-    const result = await saveRouteToNewSchema(userId, route, { theme }, undefined, true);
-
-    if (result?.success) {
-      console.log('[saveToCuratedRoutes] Route saved successfully with ID:', result.routeId);
-      // Invalidate caches
-      globalCache.invalidatePattern('all-recent-routes');
-      globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
-      return { data: [{ route_data: route, id: result.routeId }], error: null };
-    }
-
-    // If save failed (likely due to RLS/anonymous auth disabled), try server-side fallback
-    console.warn('[saveToCuratedRoutes] Save failed client-side - attempting server-side fallback');
-    try {
-      const resp = await fetch('/api/save-route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ route, preferences: { theme }, isPublic: true })
-      });
-
-      if (resp.ok) {
-        const json = await resp.json();
-        const serverRouteId = json.routeId || (json.routeId && json.routeId[0]) || null;
-        console.log('[saveToCuratedRoutes] Server-side save success:', serverRouteId);
-        globalCache.invalidatePattern('all-recent-routes');
-        globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
-        return { data: [{ route_data: route, id: serverRouteId }], error: null };
-      } else {
-        const txt = await resp.text();
-        console.error('[saveToCuratedRoutes] Server fallback failed:', resp.status, txt);
-        return { data: null, error: 'Save failed' };
-      }
-    } catch (e) {
-      console.error('[saveToCuratedRoutes] Server fallback exception:', e);
-      return { data: null, error: 'Save failed' };
-    }
-  } catch (e) {
-    console.error("[saveToCuratedRoutes] Auto-save failed:", e);
-    return { data: null, error: (e as Error).message };
-  }
-};
-
-// Update saveRouteToSupabase to accept options
-export const saveRouteToSupabase = async (
-  userId: string,
-  route: Route,
-  preferences?: UserPreferences,
-  isPublic: boolean = false,
-  parentRouteId?: string
-) => {
-  try {
-    const result = await saveRouteToNewSchema(userId, route, preferences, parentRouteId, isPublic);
-    if (result?.success) {
-      globalCache.invalidatePattern('all-recent-routes');
-      globalCache.invalidatePattern(`city-hub-${normalize(route.city)}`);
-      return { id: result.routeId, route_data: route, user_id: userId };
-    }
-    return null;
-  } catch (e) {
-    console.error("saveRouteToSupabase failed:", e);
-    return null;
-  }
-};
-
-export const updateSavedRouteData = async (dbId: string, userId: string, route: Route) => {
-  try {
-    // Updates are handled by saveRouteToNewSchema (upsert logic)
-    // If updating an existing route, we keep its public status unless specified? 
-    // Ideally we should read current RLS, but for now we assume Private for simple updates unless it's a Fork
-    await saveRouteToNewSchema(userId, route);
-  } catch (e) { }
-};
-
-export const getSavedRoutesFromSupabase = async (userId: string) => {
-  if (!userId) return [];
-  const routes = await getUserRoutesFromNewSchema(userId);
-  // Filter to only show FAVORITE routes in "My Saved", to avoid showing all generated routes
-  // Every generation saves to DB for recent history, but only "Hearted" ones have is_favorite: true
-  const favoriteRoutes = routes; // Show all user routes in the library, not just favorites
-  return favoriteRoutes.map(r => ({
-    id: r.id,
-    user_id: userId,
-    route_data: r,
-    created_at: new Date().toISOString()
-  }));
-};
-
-export const deleteRouteFromSupabase = async (id: string, userId: string, city?: string) => {
-  const success = await deleteRouteFromNewSchema(id, userId);
-  if (success && city) {
-    cityCache.invalidatePattern(`city-hub-${normalize(city)}`);
-    globalCache.invalidatePattern('all-recent-routes');
-  }
-  return success;
-};
-
-export const forkRoute = async (userId: string, originalRoute: Route, newRouteData: Route, isPublic: boolean = false) => {
-  try {
-    const result = await saveRouteToNewSchema(userId, newRouteData, {}, originalRoute.id, isPublic);
-    if (result?.success) {
-      globalCache.invalidatePattern('all-recent-routes');
-      // If public, we might want to log it or do something else
-      return { id: result.routeId, route_data: newRouteData, user_id: userId, created_at: new Date().toISOString() };
-    }
-    throw new Error("Failed to fork route");
-  } catch (e) {
-    console.error("forkRoute failed:", e);
-    return null;
-  }
-};
-
-export const savePoiToSupabase = async (userId: string, poi: POI) => {
-  try {
-    const { data, error } = await supabase.from('saved_pois').upsert([{
-      user_id: userId,
-      poi_id: poi.id,
-      poi_data: poi
-    }], { onConflict: 'user_id,poi_id' }).select();
-    if (error) throw error;
-    return data ? data[0] : null;
+    const { data, error } = await supabase.from('user_preferences').select('preferences_data').eq('user_id', userId).maybeSingle();
+    return (data && data.preferences_data) || null;
   } catch (e) { return null; }
 };
 
-export const getSavedPoisFromSupabase = async (userId: string) => {
+export const saveUserPreferences = async (userId: string, preferences: UserPreferences) => {
   try {
-    const { data } = await supabase.from('saved_pois').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    return data || [];
-  } catch (e) { return []; }
+    await supabase.from('user_preferences').upsert({ user_id: userId, preferences_data: preferences, updated_at: new Date().toISOString() });
+    return true;
+  } catch (e) { return false; }
 };
 
-export const deletePoiFromSupabase = async (poiId: string, userId: string) => {
-  try { await supabase.from('saved_pois').delete().eq('poi_id', poiId).eq('user_id', userId); } catch (e) { }
-};
-
-export const logUsage = async (userId: string | null, city: string) => {
-  try { await supabase.from('usage_logs').insert([{ user_id: userId, city: normalize(city) }]); } catch (e) { }
-};
-
-export const logPremiumInterest = async (userId: string | null) => {
-  try { await supabase.from('premium_interest').insert([{ user_id: userId, created_at: new Date().toISOString() }]); } catch (e) { }
-};
-
-export const submitFeedback = async (userId: string | null, feedback: FeedbackData, language: string) => {
+/**
+ * Routes Persistence
+ */
+export const saveRouteToSupabase = async (userId: string, route: Route, preferences: UserPreferences, is_favorite: boolean = false, parent_route_id?: string) => {
   try {
-    const { error } = await supabase.from('app_feedback').insert([{
-      user_id: userId,
-      feedback_data: feedback,
-      language,
-      created_at: new Date().toISOString()
-    }]);
+    // 1. Call RPC to handle complex insert (route + pois + junction)
+    const { data: routeId, error } = await supabase.rpc('save_generated_route', {
+      p_user_id: userId,
+      p_name: route.name,
+      p_city: route.city,
+      p_description: route.description,
+      p_duration_minutes: route.durationMinutes,
+      p_preferences: preferences,
+      p_is_public: route.is_public || false,
+      p_is_favorite: is_favorite,
+      p_parent_route_id: parent_route_id || route.parent_route_id,
+      p_pois: route.pois.map((p, idx) => ({
+        name: p.name,
+        lat: p.lat,
+        lng: p.lng,
+        order_index: idx,
+        travel_data: null, // Could be enhanced later
+        poi_data: {
+          description: p.description,
+          historicalContext: p.historicalContext,
+          historicalAnalysis: p.historicalAnalysis,
+          architecturalAnalysis: p.architecturalAnalysis,
+          narrative: p.narrative,
+          imageUrl: p.imageUrl,
+          isPremiumContent: p.isPremiumContent
+        }
+      }))
+    });
+
+    if (error) throw error;
+    return routeId;
+  } catch (err) {
+    console.error("Save error:", err);
+    return null;
+  }
+};
+
+export const getSavedRoutesFromSupabase = async (userId: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('user_saved_routes')
+      .select(`
+        is_favorite,
+        route_id,
+        routes (
+          id,
+          name,
+          city,
+          description,
+          duration_minutes,
+          preferences,
+          user_id,
+          is_public,
+          parent_route_id,
+          route_pois (
+            order_index,
+            pois (
+              id,
+              name,
+              lat,
+              lng,
+              data
+            )
+          )
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map((item: any) => {
+      const r = item.routes;
+      const sortedPois = (r.route_pois || [])
+        .sort((a: any, b: any) => a.order_index - b.order_index)
+        .map((rp: any) => ({
+          ...rp.pois,
+          ...rp.pois.data,
+          isFullyLoaded: !!(rp.pois.data?.historicalAnalysis || rp.pois.data?.description)
+        }));
+
+      return {
+        id: r.id,
+        is_favorite: item.is_favorite,
+        route_data: {
+          ...r,
+          durationMinutes: r.duration_minutes,
+          pois: sortedPois,
+          isFullyLoaded: sortedPois.some((p: any) => p.isFullyLoaded)
+        }
+      };
+    });
+  } catch (err) { return []; }
+};
+
+export const updateSavedRouteData = async (routeId: string, updates: any) => {
+  try {
+    const { error } = await supabase.from('routes').update(updates).eq('id', routeId);
+    return !error;
+  } catch (e) { return false; }
+};
+
+export const deleteRouteFromSupabase = async (userId: string, routeId: string) => {
+  try {
+    const { error } = await supabase.from('user_saved_routes').delete().eq('user_id', userId).eq('route_id', routeId);
     return !error;
   } catch (e) { return false; }
 };
@@ -397,13 +276,17 @@ export const getAllRecentRoutes = async (limit: number = 100, userId?: string): 
           .sort((a: any, b: any) => a.order_index - b.order_index)
           .map((rp: any) => {
             const p = rp.pois;
+            const poiData = p.data || {};
+            const hasContent = !!(poiData.historicalAnalysis || poiData.description || poiData.historicalContext);
+
             return {
               id: p.id || generateStableId(p.name, p.lat, p.lng),
               name: p.name,
               lat: p.lat,
               lng: p.lng,
-              ...p.data,
-              travelFromPrevious: rp.travel_data
+              ...poiData,
+              travelFromPrevious: rp.travel_data,
+              isFullyLoaded: hasContent
             };
           });
 
@@ -419,104 +302,204 @@ export const getAllRecentRoutes = async (limit: number = 100, userId?: string): 
           preferences: r.preferences || {},
           originalPoiCount: sortedPois.length,
           is_public: r.is_public,
-          // CRITICAL FIX: If we have historical data from DB, mark as fully loaded to stop AI loops
-          isFullyLoaded: sortedPois.some((p: any) => p.historicalAnalysis || p.historicalContext || p.description)
+          isFullyLoaded: sortedPois.some((p: any) => p.isFullyLoaded)
         };
       });
 
       return mappedRoutes;
-
-    } catch (e) {
-      console.error("[getAllRecentRoutes] failure:", e);
+    } catch (err) {
+      console.error('[getAllRecentRoutes] CRITICAL ERROR:', err);
       return [];
     }
-  }, { ttl: 300000 }); // Cache for 5 minutes
+  });
 };
 
-export const getRecentCuratedRoutes = async (limit: number = 24, userId?: string): Promise<Route[]> => {
-  return await getAllRecentRoutes(limit, userId);
-};
-
-export const getRoutesByCityHub = async (cityName: string, cityNameEn?: string, preferredLanguage?: 'he' | 'en'): Promise<Route[]> => {
-  const normHe = normalize(cityName);
-  const normEn = cityNameEn ? normalize(cityNameEn) : normHe;
-  const langSuffix = preferredLanguage || 'all';
-  const cacheKey = `city-hub-${normHe}-${normEn}-${langSuffix}`;
-
+export const getRoutesByCityHub = async (city: string): Promise<Route[]> => {
+  const cacheKey = `city-hub-${normalize(city)}`;
   return cityCache.fetch(cacheKey, async () => {
     try {
-      // Use shorter limit for city hub to improve performance (Promise.all is slow)
-      const { data: routes, error } = await supabase
+      const { data, error } = await supabase
         .from('routes')
-        .select('id')
-        .or(`city.ilike.%${normHe}%,city.ilike.%${normEn}%`)
+        .select(`
+          *,
+          route_pois (
+            order_index,
+            pois (
+              id,
+              name,
+              lat,
+              lng,
+              data
+            )
+          )
+        `)
+        .eq('city', city)
         .eq('is_public', true)
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(10);
 
-      if (error || !routes || routes.length === 0) return [];
+      if (error || !data) return [];
 
-      const fullRoutes = await Promise.all(
-        routes.map(r => getRouteFromNewSchema(r.id))
-      );
+      return data.map((r: any) => {
+        const sortedPois = (r.route_pois || [])
+          .sort((a: any, b: any) => a.order_index - b.order_index)
+          .map((rp: any) => ({
+            ...rp.pois,
+            ...rp.pois.data,
+            isFullyLoaded: !!(rp.pois.data?.historicalAnalysis || rp.pois.data?.description)
+          }));
 
-      let validRoutes = fullRoutes.filter(r => r !== null) as Route[];
-
-      // Sort by language preference instead of filtering out
-      if (preferredLanguage) {
-        validRoutes.sort((a, b) => {
-          const aName = a.pois?.[0]?.name || a.name || '';
-          const bName = b.pois?.[0]?.name || b.name || '';
-          const aHasHe = /[\u0590-\u05FF]/.test(aName);
-          const bHasHe = /[\u0590-\u05FF]/.test(bName);
-
-          if (preferredLanguage === 'he') {
-            if (aHasHe && !bHasHe) return -1;
-            if (!aHasHe && bHasHe) return 1;
-          } else {
-            if (!aHasHe && bHasHe) return -1;
-            if (aHasHe && !bHasHe) return 1;
-          }
-          return 0;
-        });
-      }
-
-      return validRoutes;
-    } catch (e) {
-      console.error("City hub fetch failed:", e);
-      return [];
-    }
-  }, { ttl: 60000 }); // Reduce TTL to 1 minute for fresher community results
+        return {
+          ...r,
+          durationMinutes: r.duration_minutes,
+          pois: sortedPois,
+          isFullyLoaded: sortedPois.some((p: any) => p.isFullyLoaded)
+        };
+      });
+    } catch (e) { return []; }
+  });
 };
 
-export const getRouteById = async (routeId: string): Promise<Route | null> => {
-  return await getRouteFromNewSchema(routeId);
-};
-
-export const signInWithGoogle = async () => {
+/**
+ * POIs Persistence
+ */
+export const getSavedPoisFromSupabase = async (userId: string): Promise<any[]> => {
   try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        }
+    const { data, error } = await supabase.from('user_saved_pois').select('*, pois(*)').eq('user_id', userId);
+    return data || [];
+  } catch (e) { return []; }
+};
+
+export const savePoiToSupabase = async (userId: string, poi: POI) => {
+  try {
+    // 1. Ensure POI exists
+    const { data: poiRecord, error: pError } = await supabase.from('pois').upsert({
+      name: poi.name,
+      lat: poi.lat,
+      lng: poi.lng,
+      data: poi
+    }, { onConflict: 'name,lat,lng' }).select().single();
+
+    if (pError) throw pError;
+
+    // 2. Link to user
+    await supabase.from('user_saved_pois').upsert({ user_id: userId, poi_id: poiRecord.id });
+    return true;
+  } catch (e) { return false; }
+};
+
+export const deletePoiFromSupabase = async (userId: string, poiId: string) => {
+  try {
+    await supabase.from('user_saved_pois').delete().eq('user_id', userId).eq('poi_id', poiId);
+    return true;
+  } catch (e) { return false; }
+};
+
+/**
+ * Auth
+ */
+export const signInWithGoogle = async () => {
+  return await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
       }
-    });
-    if (error) throw error;
-  } catch (err) { }
+    }
+  });
 };
 
 export const signOut = async () => {
-  try {
-    await supabase.auth.signOut();
-    window.localStorage.removeItem('urbanito-auth-v1');
-    window.location.reload();
-  } catch (err) { }
+  await supabase.auth.signOut();
 };
 
-export const clearAllCache = () => {
-  globalCache.clear();
+/**
+ * Utils
+ */
+const generateStableId = (name: string, lat: number, lng: number) => {
+  return `poi-${normalize(name)}-${lat.toFixed(4)}-${lng.toFixed(4)}`;
+};
+
+export const logUsage = async (userId: string, action: string, details: any) => {
+  try {
+    await supabase.from('usage_logs').insert({ user_id: userId, action, details });
+  } catch (e) { }
+};
+
+export const saveToCuratedRoutes = async (routeId: string) => {
+  try {
+    await supabase.from('routes').update({ is_public: true }).eq('id', routeId);
+  } catch (e) { }
+};
+
+export const forkRoute = async (routeId: string, userId: string) => {
+  try {
+    const { data: route, error } = await supabase.from('routes').select('*').eq('id', routeId).single();
+    if (error) throw error;
+
+    const { data: newRoute, error: nError } = await supabase.from('routes').insert({
+      ...route,
+      id: undefined,
+      user_id: userId,
+      is_public: false,
+      parent_route_id: routeId,
+      created_at: new Date().toISOString()
+    }).select().single();
+
+    if (nError) throw nError;
+    return newRoute.id;
+  } catch (e) { return null; }
+};
+
+export const getRecentCuratedRoutes = async (limit = 10) => {
+  try {
+    const { data, error } = await supabase
+      .from('routes')
+      .select('*, route_pois(pois(*))')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    return data || [];
+  } catch (e) { return []; }
+};
+
+export const getRouteById = async (id: string): Promise<Route | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('routes')
+      .select(`
+        *,
+        route_pois (
+          order_index,
+          pois (
+            id,
+            name,
+            lat,
+            lng,
+            data
+          )
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return null;
+
+    const sortedPois = (data.route_pois || [])
+      .sort((a: any, b: any) => a.order_index - b.order_index)
+      .map((rp: any) => ({
+        ...rp.pois,
+        ...rp.pois.data,
+        isFullyLoaded: !!(rp.pois.data?.historicalAnalysis || rp.pois.data?.description)
+      }));
+
+    return {
+      ...data,
+      durationMinutes: data.duration_minutes,
+      pois: sortedPois,
+      isFullyLoaded: sortedPois.some((p: any) => p.isFullyLoaded)
+    };
+  } catch (e) { return null; }
 };
