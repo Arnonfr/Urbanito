@@ -222,6 +222,40 @@ export const updateSavedRouteData = async (routeId: string, updates: any) => {
   } catch (e) { return false; }
 };
 
+// CRITICAL FIX: Ensure enriched POI data is saved to the shared 'pois' table
+export const updateSharedPoiData = async (poi: POI) => {
+  try {
+    // Generate the stable ID used for deduplication
+    const contentHash = generateStableId(poi.name, poi.lat, poi.lng);
+
+    // We only update if we have actual content to save
+    if (!poi.description && !poi.historicalAnalysis) return;
+
+    // Remove UI-only flags before saving
+    const { isFullyLoaded, ...dataToSave } = poi as any;
+
+    console.log(`[updateSharedPoiData] Persisting enriched data for: ${poi.name}`);
+
+    // Update the 'pois' table directly using the content_hash
+    // This ensures that future fetches by ANY user will see the enriched data
+    const { error } = await supabase
+      .from('pois')
+      .update({ data: dataToSave })
+      .eq('id', contentHash); // Using stable ID as the match key
+
+    if (error) {
+      // Fallback: try matching by name/lat/lng if ID match fails (legacy data)
+      await supabase.from('pois')
+        .update({ data: dataToSave })
+        .eq('name', poi.name)
+        .eq('lat', poi.lat)
+        .eq('lng', poi.lng);
+    }
+  } catch (e) {
+    console.error("[updateSharedPoiData] Failed to update shared POI:", e);
+  }
+};
+
 export const deleteRouteFromSupabase = async (userId: string, routeId: string) => {
   try {
     const { error } = await supabase.from('user_saved_routes').delete().eq('user_id', userId).eq('route_id', routeId);

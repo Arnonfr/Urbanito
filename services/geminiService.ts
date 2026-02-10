@@ -3,9 +3,9 @@ import { GoogleGenAI, Modality, Type, HarmCategory, HarmBlockThreshold } from "@
 // Fallback manual definition since SchemaType export is missing in this version
 const SchemaType = { OBJECT: "OBJECT", STRING: "STRING", ARRAY: "ARRAY" };
 import { UserPreferences, Route, POI } from "../types";
-import {
-  getCachedPoiDetails,
+getCachedPoiDetails,
   cachePoiDetails,
+  updateSharedPoiData,
   logUsage,
   generateStableId,
   supabase
@@ -137,8 +137,8 @@ async function aiCall(params: any, retries = 3): Promise<any> {
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  // Hardened retry logic with exponential backoff and fallback model
-  const models = ['gemini-3-flash-preview', 'gemini-3-flash-preview', 'gemini-3-flash-preview', 'gemini-1.5-flash', 'gemini-1.5-flash'];
+  // Hardened retry logic with exponential backoff and correct model names
+  const models = ['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-1.5-flash', 'gemini-1.5-flash', 'gemini-1.5-flash'];
   const model = models[5 - retries] || 'gemini-1.5-flash';
 
   console.log('🚀 Making Gemini API call:', {
@@ -188,6 +188,8 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     // If cached and has some content, use it. Don't be too strict on length or premium to avoid loops.
     if (cached && (cached.historicalAnalysis || cached.description)) {
       console.log(`[geminiService] Using cached content for: ${poiName} (Size: ${JSON.stringify(cached).length})`);
+      // CRITICAL: Ensure this cached data is synced to the shared POIs table so future loads see it immediately
+      updateSharedPoiData({ ...cached, name: poiName, lat: lat || 0, lng: lng || 0 });
       return { ...cached, isFullyLoaded: true };
     }
 
@@ -227,6 +229,8 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     const data = JSON.parse(cleanJson(response.text || '{}'));
     if (data.historicalAnalysis) {
       await cachePoiDetails(poiName, city, { ...data, lat, lng });
+      // CRITICAL: Also update the shared POIs table to prevent "sparse" detection on next load
+      updateSharedPoiData({ ...data, name: poiName, lat: lat || 0, lng: lng || 0 });
     }
     return { ...data, isFullyLoaded: true, isPremiumContent: isPremium };
   } catch (e) { return null; }
