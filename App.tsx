@@ -241,6 +241,7 @@ const App: React.FC = () => {
       !p.isFullyLoaded &&
       !p.historicalContext &&
       !p.description &&
+      !(p as any).historicalAnalysis &&
       !(p as any).data?.historicalAnalysis
     );
 

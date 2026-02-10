@@ -408,7 +408,9 @@ export const getAllRecentRoutes = async (limit: number = 100, userId?: string): 
           pois: sortedPois,
           preferences: r.preferences || {},
           originalPoiCount: sortedPois.length,
-          is_public: r.is_public
+          is_public: r.is_public,
+          // CRITICAL FIX: If we have historical data from DB, mark as fully loaded to stop AI loops
+          isFullyLoaded: sortedPois.some((p: any) => p.historicalAnalysis || p.historicalContext || p.description)
         };
       });
 
