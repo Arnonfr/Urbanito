@@ -436,8 +436,8 @@ const App: React.FC = () => {
       const deletedCount = await cleanDuplicateRoutes(userId);
       if (deletedCount > 0) {
         console.log(`[refreshSavedContent] Cleaned ${deletedCount} duplicate routes`);
-        // Refresh global routes too since duplicates might be public
-        loadGlobalContent();
+        // Refresh global routes with the specific user ID to ensure sync
+        loadGlobalContent({ id: userId });
       }
 
       const routesPromise = getSavedRoutesFromSupabase(userId);
@@ -455,12 +455,22 @@ const App: React.FC = () => {
 
   const lastLibraryRefresh = useRef(0);
   const isLoadingGlobal = useRef(false);
-  const loadGlobalContent = async () => {
-    if (isLoadingGlobal.current) return;
+  const loadingUserId = useRef<string | null>(null);
+
+  const loadGlobalContent = async (forcedUser?: any) => {
+    const effectiveUser = forcedUser !== undefined ? forcedUser : user;
+    const effectiveUserId = effectiveUser?.id || 'anon';
+
+    // If already loading FOR THIS SPECIFIC USER/ANON, skip.
+    // If user changed while loading, we MUST allow it to restart for the new user.
+    if (isLoadingGlobal.current && loadingUserId.current === effectiveUserId) return;
+
     isLoadingGlobal.current = true;
+    loadingUserId.current = effectiveUserId;
+
     try {
-      console.log('🔄 loadGlobalContent: Fetching...');
-      const global = await getAllRecentRoutes(30, user?.id);
+      console.log(`🔄 loadGlobalContent: Fetching for ${effectiveUserId}...`);
+      const global = await getAllRecentRoutes(30, effectiveUser?.id);
 
       // 1. Load and Validate Local Routes
       let localRoutes: RouteType[] = [];
@@ -535,7 +545,7 @@ const App: React.FC = () => {
       // Only refresh if empty or 1 minute has passed
       if (recentGlobalRoutes.length === 0 || (now - lastLibraryRefresh.current > 60000)) {
         console.log('Navigated to library - refreshing content');
-        loadGlobalContent();
+        loadGlobalContent(user);
         if (user?.id) refreshSavedContent(user.id);
         lastLibraryRefresh.current = now;
       }
@@ -1021,7 +1031,7 @@ const App: React.FC = () => {
 
       // Only load global content on sign in/out or the very first time.
       // event === 'INITIAL_SESSION' is also fine.
-      loadGlobalContent();
+      loadGlobalContent(u);
 
       if (u) {
         refreshSavedContent(u.id);
@@ -1765,7 +1775,7 @@ const App: React.FC = () => {
     if (selectionCircle.current) { selectionCircle.current.setMap(null); selectionCircle.current = null; }
 
     if (tab === 'library') {
-      loadGlobalContent();
+      loadGlobalContent(user);
     }
     if (tab === 'route' && currentRoute) renderRouteMarkers(currentRoute);
   };
