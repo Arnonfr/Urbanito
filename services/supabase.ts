@@ -72,7 +72,9 @@ export const cachePoiDetails = async (poiName: string, city: string, details: an
   try {
     const normName = normalize(poiName);
     const normCity = normalize(city);
-    await supabase.from('poi_details').upsert({
+    console.log(`[cachePoiDetails] Attempting to save cache for: ${normName} in ${normCity}`);
+
+    const { error } = await supabase.from('poi_details').upsert({
       poi_name: normName,
       city: normCity,
       details_data: details,
@@ -80,7 +82,15 @@ export const cachePoiDetails = async (poiName: string, city: string, details: an
       google_place_id: details.googlePlaceId || null,
       updated_at: new Date().toISOString()
     }, { onConflict: 'poi_name,city' });
-  } catch (e) { }
+
+    if (error) {
+      console.error("[cachePoiDetails] Supabase error during upsert:", error);
+    } else {
+      console.log(`✅ [cachePoiDetails] Successfully cached: ${normName}`);
+    }
+  } catch (e) {
+    console.error("[cachePoiDetails] Unexpected failure:", e);
+  }
 };
 
 export const updatePoiImageInDb = async (poiName: string, city: string, imageUrl: string, googlePlaceId?: string) => {

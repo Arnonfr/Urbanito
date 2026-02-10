@@ -185,9 +185,10 @@ async function aiCall(params: any, retries = 3): Promise<any> {
 export async function fetchExtendedPoiDetails(poiName: string, city: string, preferences: UserPreferences, lat?: number, lng?: number, isPremium: boolean = false) {
   try {
     const cached = await getCachedPoiDetails(poiName, city, lat, lng);
-    // If cached and fully loaded, return (but upgrade if premium and cache is light)
-    if (cached && cached.description && cached.historicalAnalysis && cached.historicalAnalysis.length > 500) {
-      if (!isPremium || cached.isPremiumContent) return { ...cached, isFullyLoaded: true };
+    // If cached and has some content, use it. Don't be too strict on length or premium to avoid loops.
+    if (cached && (cached.historicalAnalysis || cached.description)) {
+      console.log(`[geminiService] Using cached content for: ${poiName} (Size: ${JSON.stringify(cached).length})`);
+      return { ...cached, isFullyLoaded: true };
     }
 
     const isHe = preferences.language === 'he';
