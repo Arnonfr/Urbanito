@@ -138,8 +138,9 @@ async function aiCall(params: any, retries = 3): Promise<any> {
 
   const ai = new GoogleGenAI({ apiKey });
   // Hardened retry logic with exponential backoff and correct model names
-  const models = ['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-1.5-flash', 'gemini-1.5-flash', 'gemini-1.5-flash'];
-  const model = models[5 - retries] || 'gemini-1.5-flash';
+  // USER PREFERENCE: Always use the latest Flash model (2.0/3.0 preview)
+  const models = ['gemini-2.0-flash-exp', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-exp'];
+  const model = models[5 - retries] || 'gemini-2.0-flash-exp';
 
   console.log('🚀 Making Gemini API call:', {
     model,
