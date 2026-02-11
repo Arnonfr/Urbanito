@@ -3,7 +3,8 @@ import { GoogleGenAI, Modality, Type, HarmCategory, HarmBlockThreshold } from "@
 // Fallback manual definition since SchemaType export is missing in this version
 const SchemaType = { OBJECT: "OBJECT", STRING: "STRING", ARRAY: "ARRAY" };
 import { UserPreferences, Route, POI } from "../types";
-getCachedPoiDetails,
+import {
+  getCachedPoiDetails,
   cachePoiDetails,
   updateSharedPoiData,
   logUsage,
@@ -138,9 +139,9 @@ async function aiCall(params: any, retries = 3): Promise<any> {
 
   const ai = new GoogleGenAI({ apiKey });
   // Hardened retry logic with exponential backoff and correct model names
-  // USER PREFERENCE: Always use the latest Flash model (2.0/3.0 preview)
-  const models = ['gemini-2.0-flash-exp', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-exp'];
-  const model = models[5 - retries] || 'gemini-2.0-flash-exp';
+  // USER PREFERENCE: Always use the latest Flash model (Flash 3 / 3.0 Preview)
+  const models = ['gemini-3-flash-preview', 'gemini-3-flash-preview', 'gemini-3-flash-preview', 'gemini-3-flash-preview', 'gemini-3-flash-preview'];
+  const model = models[5 - retries] || 'gemini-3-flash-preview';
 
   console.log('🚀 Making Gemini API call:', {
     model,

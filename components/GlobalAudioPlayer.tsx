@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useAudio } from '../contexts/AudioContext';
 import { Headphones, Pause, Play, X, RotateCcw, RotateCw, ChevronDown } from 'lucide-react';
 import { Route } from '../types';
+import { GoogleImage } from './GoogleImage';
 
 interface Props {
   isHe: boolean;
@@ -26,7 +27,20 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
   if (!currentItem || !isVisible) return null;
 
   // Find POI name if it belongs to a route
-  const poiName = currentRoute?.pois.find(p => p.id === currentItem.poiId)?.name || currentItem.text.slice(0, 30);
+  // Find POI name if it belongs to a route
+  const foundPoi = currentRoute?.pois.find(p => p.id === currentItem.poiId);
+  const rawTitle = foundPoi?.name || currentItem.text.slice(0, 30);
+
+  // Parse title: "Hebrew Name (Original Name)" -> start split
+  const parenMatch = rawTitle.match(/(.*?)\s*\((.*?)\)/);
+  const hebrewName = parenMatch ? parenMatch[1].trim() : rawTitle;
+  const originalName = parenMatch ? parenMatch[2].trim() : "";
+
+  const displayTitle = hebrewName;
+  const displaySubtitle = originalName;
+
+  // Use GoogleImage query constructed from city + POI name
+  const imageQuery = foundPoi ? `${foundPoi.name} ${currentRoute?.city || ''}` : rawTitle;
 
   const rates = [0.75, 1, 1.25, 1.5, 2];
 
@@ -72,7 +86,7 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
         <div className={`flex items-center justify-between ${isExpanded ? 'px-6 mt-4 flex-col text-center' : ''}`}>
 
           <div className={`flex items-center ${isExpanded ? 'flex-col gap-4' : 'gap-3'} overflow-hidden w-full`}>
-            {/* Icon Box */}
+            {/* Icon Box / Image */}
             <button
               onClick={(e) => {
                 if (!isExpanded) {
@@ -80,22 +94,45 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
                   setIsExpanded(true);
                 }
               }}
-              className={`flex items-center justify-center transition-all shadow-sm ${isExpanded
-                ? 'w-24 h-24 rounded-[32px] bg-indigo-50 text-indigo-500 mb-2 shadow-inner'
-                : 'w-10 h-10 rounded-xl bg-slate-100 text-slate-500 shrink-0'
+              className={`flex items-center justify-center transition-all shadow-sm overflow-hidden relative ${isExpanded
+                ? 'w-full aspect-[4/3] rounded-[24px] mb-6 shadow-lg'
+                : 'w-12 h-12 rounded-[12px] bg-slate-100 shrink-0'
                 } ${isPlaying && !isExpanded ? 'ring-2 ring-indigo-500/20' : ''}`}
             >
-              <Headphones size={isExpanded ? 40 : 20} className={isPlaying && !isExpanded ? 'animate-pulse' : ''} />
+              {currentItem && (
+                <div className={`w-full h-full relative`}>
+                  <GoogleImage
+                    query={imageQuery}
+                    className="w-full h-full object-cover"
+                  />
+                  {/* Gradient overlay for expanded view text visibility if we put text over it? No, text is below. */}
+                  {/* Play overlay for expanded view? */}
+                  {!isPlaying && isExpanded && (
+                    <div className="absolute inset-x-0 inset-y-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+                      <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+                        <Play size={32} className="fill-white text-white ml-1" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </button>
 
             {/* Texts */}
-            <div className={`flex flex-col min-w-0 flex-1 justify-center ${isExpanded ? 'items-center' : 'items-start'}`}>
-              <span className={`text-slate-800 font-bold leading-tight truncate w-full ${isExpanded ? 'text-2xl whitespace-normal' : 'text-[14px]'}`}>
-                {poiName || (isHe ? 'טוען...' : 'Loading...')}
+            <div className={`flex flex-col min-w-0 flex-1 justify-center ${isExpanded ? 'items-center text-center px-4' : 'items-start'}`}>
+              <span className={`text-slate-900 font-bold leading-tight line-clamp-2 ${isExpanded ? 'text-2xl mb-1' : 'text-[14px]'}`}>
+                {displayTitle || (isHe ? 'טוען...' : 'Loading...')}
               </span>
-              <span className={`font-medium text-slate-400 leading-none mt-1.5 ${isExpanded ? 'text-sm' : 'text-[11px]'}`}>
-                {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing Now') : (isHe ? 'מושהה' : 'Paused')}
-              </span>
+              {displaySubtitle && (
+                <span className={`font-medium text-slate-500 leading-snug ${isExpanded ? 'text-lg' : 'text-[12px] line-clamp-1'}`} dir="ltr">
+                  {displaySubtitle}
+                </span>
+              )}
+              {isExpanded && (
+                <span className="font-medium text-indigo-500 text-sm mt-3 bg-indigo-50 px-3 py-1 rounded-full">
+                  {isPlaying ? (isHe ? 'מתנגן כעת' : 'Playing Now') : (isHe ? 'מושהה' : 'Paused')}
+                </span>
+              )}
             </div>
 
             {/* Compact Controls (Play/Pause/Close) */}

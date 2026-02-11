@@ -301,53 +301,28 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return () => clearInterval(interval);
     }, [isPlaying, audioMode, playbackRate]);
 
-    const playWithWebSpeech = (text: string, language: 'he' | 'en') => {
-        if (!window.speechSynthesis) return;
+
+    const playWithWebSpeech = (text: string, lang: string) => {
+        if (!window.speechSynthesis) {
+            console.error("Web Speech API not supported");
+            return;
+        }
 
         window.speechSynthesis.cancel();
+        setIsPlaying(true);
+        isPlayingRef.current = true; // Sync ref immediately
 
-        const MAX_CHUNK_LENGTH = 160;
-        const chunks: string[] = [];
-        const sourceText = text.replace(/([.?!])\s*/g, "$1|").split("|");
-
-        let currentCombined = "";
-        for (const part of sourceText) {
-            if ((currentCombined + part).length > MAX_CHUNK_LENGTH) {
-                if (currentCombined) chunks.push(currentCombined.trim());
-                currentCombined = part;
-            } else {
-                currentCombined += (currentCombined ? " " : "") + part;
-            }
-        }
-        if (currentCombined) chunks.push(currentCombined.trim());
-
-        currentChunksRef.current = chunks;
+        // Sanitize text
+        const cleanText = text.replace(/[*#]/g, '');
+        const chunks = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
         currentChunkIndexRef.current = 0;
 
-        const voices = window.speechSynthesis.getVoices();
-        const langCode = language === 'he' ? 'he-IL' : 'en-US';
-
-        let voice = null;
-
-        // Premium Fallback: Try to find a "better" system voice if Gemini failed or is loading
-        if (audioMode === 'premium') {
-            // Priority list for premium-feeling system voices
-            const premiumKeywords = ['Premium', 'Enhanced', 'Natural', 'Daniel', 'Samantha', 'Karen', 'Moira', 'Rishi'];
-            voice = voices.find(v => v.lang === langCode && premiumKeywords.some(k => v.name.includes(k)));
-
-            // If English, maybe try UK/Australian for a different "flavor" if mostly US users
-            if (!voice && language === 'en') {
-                voice = voices.find(v => v.lang === 'en-GB' && v.name.includes('Google'));
-            }
-        }
-
-        if (!voice) {
-            voice = voices.find(v => v.lang === langCode && v.name.includes('Google'))
-                || voices.find(v => v.lang === langCode);
-        }
+        // Ensure voices are loaded
+        let voices = window.speechSynthesis.getVoices();
 
         const speakNext = () => {
             if (!isPlayingRef.current || currentChunkIndexRef.current >= chunks.length) {
+                console.log("[AudioContext] Playback finished or stopped.");
                 setIsPlaying(false);
                 isPlayingRef.current = false;
                 setCurrentItem(null);
@@ -356,48 +331,60 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
 
             const utterance = new SpeechSynthesisUtterance(chunks[currentChunkIndexRef.current]);
-            if (voice) utterance.voice = voice;
-            utterance.lang = langCode;
+
+            const langCode = lang === 'he' ? 'he-IL' : 'en-US';
+            const availableVoices = window.speechSynthesis.getVoices();
+            // Prefer "Google" voices for better quality if available
+            const currentVoice = availableVoices.find(v => v.lang === langCode && v.name.includes("Google"))
+                || availableVoices.find(v => v.lang === langCode);
+
+            if (currentVoice) utterance.voice = currentVoice;
+
+
+            utterance.lang = lang === 'he' ? 'he-IL' : 'en-US';
             utterance.rate = playbackRate;
             utterance.pitch = 1.0;
 
             utterance.onstart = () => {
-                setIsPlaying(true);
-                isPlayingRef.current = true;
-                const p = (currentChunkIndexRef.current / chunks.length) * 100;
-                setProgress(p);
-                // Estimate duration based on avg chars per second (approx 15 chars/sec)
-                const totalChars = chunks.reduce((acc, val) => acc + val.length, 0);
-                const estimatedDuration = totalChars / 15;
-                setDuration(estimatedDuration);
-                setCurrentTime((p / 100) * estimatedDuration);
+                console.log(`[AudioContext] Speaking chunk ${currentChunkIndexRef.current + 1}/${chunks.length}`);
             };
 
             utterance.onend = () => {
                 if (!isPlayingRef.current) return;
                 currentChunkIndexRef.current++;
-                speakNext();
+                // Small pause between chunks
+                setTimeout(speakNext, 200);
             };
 
             utterance.onerror = (e) => {
-                console.error("Speech error:", e);
-                if (!isPlayingRef.current) return;
+                console.error("[AudioContext] Speech Error:", e);
+                // Skip to next chunk on error to avoid hanging
                 currentChunkIndexRef.current++;
                 speakNext();
             };
 
             speechRef.current = utterance;
+            console.log("[AudioContext] Calling window.speechSynthesis.speak for chunk:", chunks[currentChunkIndexRef.current].substring(0, 20) + "...");
             window.speechSynthesis.speak(utterance);
         };
 
-        isPlayingRef.current = true;
-        speakNext();
+        if (voices.length === 0) {
+            console.warn("[AudioContext] Voices not loaded yet, waiting for onvoiceschanged...");
+            window.speechSynthesis.onvoiceschanged = () => {
+                voices = window.speechSynthesis.getVoices();
+                speakNext();
+            };
+        } else {
+            speakNext();
+        }
     };
 
     const playItem = async (item: AudioItem) => {
+        console.log(`[AudioContext] playItem called. Mode: ${audioMode}, Text len: ${item.text.length}`);
         setCurrentItem(item);
 
         if (audioMode === 'free') {
+            console.log("[AudioContext] Playing with WebSpeech (Free Mode)");
             playWithWebSpeech(item.text, item.language);
             return;
         }
@@ -406,6 +393,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         try {
             let buffer = item.audioBuffer;
             if (!buffer) {
+                console.log("[AudioContext] Generating Premium Speech...");
                 const base64Data = await generateSpeech(item.text, item.language);
                 if (!base64Data) throw new Error("Failed to generate speech");
 
@@ -413,6 +401,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 if (!audioContextRef.current) initAudio();
                 buffer = await decodeAudioData(audioData, audioContextRef.current!, 24000, 1);
             }
+            console.log("[AudioContext] Playing Premium Buffer");
             await playBuffer(buffer);
         } catch (err) {
             console.error("Premium playback failed, falling back to free mode:", err);
@@ -430,6 +419,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, [isPlaying, currentItem, queue]);
 
     const playText = async (text: string, language: 'he' | 'en', id?: string, priority: 'normal' | 'high' = 'normal') => {
+        console.log(`[AudioContext] playText called for ID: ${id}, Priority: ${priority}, Text: ${text.substring(0, 30)}...`);
         const newItem: AudioItem = {
             id: id || `audio-${Date.now()}`,
             poiId: id,

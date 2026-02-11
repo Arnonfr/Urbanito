@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Route, UserPreferences, POI } from '../types';
 
 const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
+const SUPABASE_ANON_KEY = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -30,6 +30,15 @@ class SimpleCache {
   }
 
   clear() { this.cache.clear(); }
+
+  invalidatePattern(pattern: string) {
+    const keys = Array.from(this.cache.keys());
+    keys.forEach(key => {
+      if (key.includes(pattern)) {
+        this.cache.delete(key);
+      }
+    });
+  }
 }
 
 export const globalCache = new SimpleCache();
@@ -222,39 +231,7 @@ export const updateSavedRouteData = async (routeId: string, updates: any) => {
   } catch (e) { return false; }
 };
 
-// CRITICAL FIX: Ensure enriched POI data is saved to the shared 'pois' table
-export const updateSharedPoiData = async (poi: POI) => {
-  try {
-    // Generate the stable ID used for deduplication
-    const contentHash = generateStableId(poi.name, poi.lat, poi.lng);
 
-    // We only update if we have actual content to save
-    if (!poi.description && !poi.historicalAnalysis) return;
-
-    // Remove UI-only flags before saving
-    const { isFullyLoaded, ...dataToSave } = poi as any;
-
-    console.log(`[updateSharedPoiData] Persisting enriched data for: ${poi.name}`);
-
-    // Update the 'pois' table directly using the content_hash
-    // This ensures that future fetches by ANY user will see the enriched data
-    const { error } = await supabase
-      .from('pois')
-      .update({ data: dataToSave })
-      .eq('id', contentHash); // Using stable ID as the match key
-
-    if (error) {
-      // Fallback: try matching by name/lat/lng if ID match fails (legacy data)
-      await supabase.from('pois')
-        .update({ data: dataToSave })
-        .eq('name', poi.name)
-        .eq('lat', poi.lat)
-        .eq('lng', poi.lng);
-    }
-  } catch (e) {
-    console.error("[updateSharedPoiData] Failed to update shared POI:", e);
-  }
-};
 
 export const deleteRouteFromSupabase = async (userId: string, routeId: string) => {
   try {
@@ -348,11 +325,11 @@ export const getAllRecentRoutes = async (limit: number = 100, userId?: string): 
   });
 };
 
-export const getRoutesByCityHub = async (city: string): Promise<Route[]> => {
-  const cacheKey = `city-hub-${normalize(city)}`;
+export const getRoutesByCityHub = async (cityName: string, cityEn?: string, language?: string): Promise<Route[]> => {
+  const cacheKey = `city-hub-${normalize(cityName)}-${normalize(cityEn || '')}-${language || 'any'}`;
   return cityCache.fetch(cacheKey, async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('routes')
         .select(`
           *,
@@ -366,14 +343,31 @@ export const getRoutesByCityHub = async (city: string): Promise<Route[]> => {
               data
             )
           )
-        `)
-        .eq('city', city)
+        `);
+
+      if (cityEn) {
+        query = query.or(`city.eq.${cityName},city.eq.${cityEn}`);
+      } else {
+        query = query.eq('city', cityName);
+      }
+
+      const { data, error } = await query
         .eq('is_public', true)
-        .limit(10);
+        .order('created_at', { ascending: false })
+        .limit(30);
 
       if (error || !data) return [];
 
-      return data.map((r: any) => {
+      let filtered = data;
+      if (language) {
+        const isHe = language === 'he';
+        filtered = data.filter((r: any) => {
+          const hasHebrew = /[\u0590-\u05FF]/.test(r.name || '');
+          return isHe ? hasHebrew : !hasHebrew;
+        });
+      }
+
+      return filtered.map((r: any) => {
         const sortedPois = (r.route_pois || [])
           .sort((a: any, b: any) => a.order_index - b.order_index)
           .map((rp: any) => ({
@@ -451,39 +445,149 @@ export const signOut = async () => {
 /**
  * Utils
  */
-const generateStableId = (name: string, lat: number, lng: number) => {
+export const generateStableId = (name: string, lat: number, lng: number) => {
   return `poi-${normalize(name)}-${lat.toFixed(4)}-${lng.toFixed(4)}`;
 };
 
-export const logUsage = async (userId: string, action: string, details: any) => {
+// CRITICAL FIX: Ensure enriched POI data is saved to the shared 'pois' table
+export const updateSharedPoiData = async (poi: POI) => {
   try {
-    await supabase.from('usage_logs').insert({ user_id: userId, action, details });
-  } catch (e) { }
+    // We only update if we have actual content to save
+    if (!poi.description && !poi.historicalAnalysis) return;
+
+    // Remove UI-only flags and ID before saving (we don't want to overwrite ID with a client string if inconsistent)
+    const { isFullyLoaded, id, ...dataToSave } = poi as any;
+
+    console.log(`[updateSharedPoiData] Persisting enriched data for: ${poi.name}`);
+
+    // Strategically find the record first to avoid ID type errors
+    // strict match on location to avoid overwriting wrong POIs
+    const { data: existing } = await supabase
+      .from('pois')
+      .select('id')
+      .eq('name', poi.name)
+      .eq('lat', poi.lat)
+      .eq('lng', poi.lng)
+      .maybeSingle();
+
+    if (existing) {
+      // Update existing record
+      await supabase
+        .from('pois')
+        .update({ data: dataToSave })
+        .eq('id', existing.id);
+    } else {
+      // Insert new record (letting DB generate UUID)
+      // Note: This might fail if user doesn't have INSERT permissions, but worth a try for persistence.
+      // If table has a unique constraint on name/lat/lng, this might also conflict, so we use upsert if possible,
+      // but without ID.
+      await supabase.from('pois').insert({
+        name: poi.name,
+        lat: poi.lat,
+        lng: poi.lng,
+        data: dataToSave
+      });
+    }
+  } catch (e) {
+    console.error("[updateSharedPoiData] Failed to update shared POI:", e);
+  }
 };
 
-export const saveToCuratedRoutes = async (routeId: string) => {
+export const logUsage = async (userId: string | null, action: string, details?: any) => {
   try {
-    await supabase.from('routes').update({ is_public: true }).eq('id', routeId);
-  } catch (e) { }
-};
-
-export const forkRoute = async (routeId: string, userId: string) => {
-  try {
-    const { data: route, error } = await supabase.from('routes').select('*').eq('id', routeId).single();
-    if (error) throw error;
-
-    const { data: newRoute, error: nError } = await supabase.from('routes').insert({
-      ...route,
-      id: undefined,
+    await supabase.from('usage_logs').insert({
       user_id: userId,
-      is_public: false,
-      parent_route_id: routeId,
+      action,
+      details,
       created_at: new Date().toISOString()
-    }).select().single();
+    });
+  } catch (e) { }
+};
 
-    if (nError) throw nError;
-    return newRoute.id;
-  } catch (e) { return null; }
+export const submitFeedback = async (userId: string | null, feedback: any, language?: string) => {
+  try {
+    await supabase.from('feedback').insert({
+      user_id: userId,
+      data: feedback,
+      language: language || 'he',
+      created_at: new Date().toISOString()
+    });
+    return true;
+  } catch (e) { return false; }
+};
+
+export const logPremiumInterest = async (userId: string | null, feature: string = 'general') => {
+  try {
+    await supabase.from('premium_interest').insert({
+      user_id: userId,
+      feature,
+      created_at: new Date().toISOString()
+    });
+    return true;
+  } catch (e) { return false; }
+};
+
+/**
+ * Automatically save a generated route to the curated list (Public)
+ */
+export const saveToCuratedRoutes = async (route: Route) => {
+  try {
+    console.log(`[saveToCuratedRoutes] Saving route ${route.name} as public...`);
+
+    // Use the RPC to ensure it's saved correctly with all POIs
+    // Note: We use the existing preferences in the route object or defaults
+    const preferences = route.preferences || {
+      language: (route.name.match(/[\u0590-\u05FF]/) ? 'he' : 'en'),
+      explanationStyle: 'standard'
+    };
+
+    const routeId = await saveRouteToSupabase(
+      (route as any).user_id || null,
+      { ...route, is_public: true },
+      preferences,
+      false // not favorite by default
+    );
+
+    if (routeId) {
+      console.log(`✅ [saveToCuratedRoutes] Successfully saved public route: ${routeId}`);
+      return { data: [{ id: routeId }] };
+    }
+    return { error: 'Failed to save via RPC' };
+  } catch (e: any) {
+    console.error("[saveToCuratedRoutes] Failed:", e);
+    return { error: e.message };
+  }
+};
+
+/**
+ * Fork a route (or update it by creating a new version linked to the parent)
+ */
+export const forkRoute = async (userId: string, parentRoute: Route, newRoute: Route, isPublic: boolean = false) => {
+  try {
+    console.log(`[forkRoute] Forking route ${parentRoute.name} for user ${userId}...`);
+
+    // Default preferences if missing
+    const preferences = newRoute.preferences || parentRoute.preferences || {
+      language: 'he',
+      explanationStyle: 'standard'
+    };
+
+    const newRouteId = await saveRouteToSupabase(
+      userId,
+      { ...newRoute, is_public: isPublic },
+      preferences,
+      false, // favorite
+      parentRoute.id // link to parent
+    );
+
+    if (newRouteId) {
+      return { id: newRouteId };
+    }
+    return null;
+  } catch (e) {
+    console.error("[forkRoute] Failed:", e);
+    return null;
+  }
 };
 
 export const getRecentCuratedRoutes = async (limit = 10) => {

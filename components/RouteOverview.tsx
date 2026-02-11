@@ -38,6 +38,7 @@ interface Props {
   nearbyRoutes?: Route[];
   onRouteSelect?: (route: Route) => void;
   recentRoutes?: Route[];
+  onLibraryClick?: () => void;
 }
 
 export const CATEGORY_ICONS: Record<POICategoryType, React.ReactNode> = {
@@ -51,7 +52,7 @@ export const CATEGORY_LABELS_HE: Record<POICategoryType, string> = {
 
 export const RouteOverview: React.FC<Props> = ({
   route, onPoiClick, onRemovePoi, onAddPoi, onSave, isSaved, onClose, preferences, onUpdatePreferences, isExpanded, setIsExpanded, onRegenerate, isRegenerating,
-  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute, showToast, nearbyRoutes = [], onRouteSelect, recentRoutes = []
+  openRoutes = [], activeRouteIndex = 0, onSwitchRoute, onCloseRoute, showToast, nearbyRoutes = [], onRouteSelect, recentRoutes = [], onLibraryClick
 }) => {
   const isHe = preferences.language === 'he';
 
@@ -175,14 +176,35 @@ export const RouteOverview: React.FC<Props> = ({
   }, [route]);
 
   const handlePlayPoi = async (poiToPlay: POI, idx: number) => {
+    console.log(`[RouteOverview] handlePlayPoi clicked for POI: ${poiToPlay.name}, index: ${idx}`);
     stop();
-    const currentText = (poiToPlay as any).audioText || poiToPlay.description || "";
+
+    // Aggressive text extraction from various possible fields
+    const extractText = (p: POI) => {
+      const data = (p as any);
+      return data.audioText ||
+        p.narrative ||
+        p.tourScript ||
+        p.description ||
+        p.summary ||
+        p.content?.description ||
+        p.content?.narrative ||
+        p.historicalContext ||
+        "";
+    };
+
+    const currentText = extractText(poiToPlay);
+    console.log(`[RouteOverview] Extracted text length: ${currentText.length}`);
+
     if (currentText) {
       await playText(currentText, preferences.language as 'he' | 'en', poiToPlay.id);
+    } else {
+      console.warn(`[RouteOverview] No text found to play for POI: ${poiToPlay.id}. Data:`, poiToPlay);
     }
+
     const nextPois = route.pois.slice(idx + 1);
     nextPois.forEach(nextPoi => {
-      const nextText = (nextPoi as any).audioText || nextPoi.description || "";
+      const nextText = extractText(nextPoi);
       if (nextText) {
         queueText(nextText, preferences.language as 'he' | 'en', nextPoi.id);
       }
@@ -319,7 +341,7 @@ export const RouteOverview: React.FC<Props> = ({
             {/* Back Button (Start) */}
             <div className="bg-black/30 backdrop-blur-md rounded-[8px] p-1 border border-white/10 pointer-events-auto">
               <button
-                onClick={(e) => { e.stopPropagation(); if (onClose) onClose(); }}
+                onClick={(e) => { e.stopPropagation(); if (onLibraryClick) onLibraryClick(); else if (onClose) onClose(); }}
                 className="w-10 h-10 flex items-center justify-center rounded-[8px] transition-all text-white/90 hover:text-white hover:bg-white/10 active:scale-95 group"
                 title={isHe ? 'לספריית המסלולים' : 'To Route Library'}
               >
@@ -533,7 +555,7 @@ export const RouteOverview: React.FC<Props> = ({
                                   'bg-slate-50 text-slate-500'
                             }`}>
                             {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
-                              ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement, { size: 10 })
+                              ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement<any>, { size: 10 })
                               : <MapPin size={10} />}
                           </div>
                           <span className="text-[10px] font-semibold text-slate-400/80 uppercase tracking-wide">

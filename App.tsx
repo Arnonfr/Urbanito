@@ -235,7 +235,10 @@ const App: React.FC = () => {
 
     // Heuristic: Is it sparse?
     const isHe = preferences.language === 'he';
-    const missingHeTitle = isHe && !((currentRoute as any).preferences?.names?.he || (currentRoute as any).name_he);
+    // Only flag missing HE title if the route is totally new or actually missing it, 
+    // but don't force hydration ONLY for this if content exists.
+    const hasHeName = !!((currentRoute as any).preferences?.names?.he || (currentRoute as any).name_he);
+    const missingHeTitle = isHe && !hasHeName;
     // Fix: If description exists, it's valid enough. Don't force re-generation for historicalContext.
     const isSparse = currentRoute.pois.length > 0 && currentRoute.pois.slice(0, 2).some(p =>
       !p.isFullyLoaded &&
@@ -245,8 +248,9 @@ const App: React.FC = () => {
       !(p as any).data?.historicalAnalysis
     );
 
-    if ((missingHeTitle || isSparse) && !isGeocoding) {
-      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Missing: ${missingHeTitle ? 'HE_Title' : ''} ${isSparse ? 'Content' : ''}`);
+    // Only trigger if sparse OR if missing title on a route that has NO content yet
+    if ((isSparse || (missingHeTitle && !isCurrentRouteSaved)) && !isGeocoding) {
+      console.log(`[Auto-Hydrate] Detected sparse route: ${currentRoute.id}. Sparse: ${isSparse} MissingTitle: ${missingHeTitle}`);
 
       // Removed annoying toast and UI blocking state (setGeneratingRouteIds)
       // This allows enrichment to happen in the background without locking the UI or confusing the user
@@ -914,7 +918,7 @@ const App: React.FC = () => {
         const routeWithDistances = await calculateRouteDistances(route);
 
         // Save to database
-        await saveToCuratedRoutes(routeWithDistances, suggestion.theme);
+        await saveToCuratedRoutes(routeWithDistances);
 
         // Load the route
         handleLoadSavedRoute(routeWithDistances.city, routeWithDistances);
@@ -1585,14 +1589,23 @@ const App: React.FC = () => {
 
   const handleSaveRoute = async () => {
     if (!currentRoute) return;
-    if (!user) {
-      showToast(isHe ? 'יש להתחבר כדי לשמור מסלולים' : 'Please login to save routes', 'error');
-      setActiveTab('profile');
-      return;
-    }
+
+    // Allow anonymous saving (it will save to 'routes' table but not 'user_saved_routes' unless utilizing a guest/device ID strategy in future)
+    // For now, we allow the RPC to handle null user_id (creating a public or orphaned route, effectively)
+    // Or we rely on Local Storage which is already handled?
+    // The requirement is "Check DB save". So we try to save to DB even if anon.
 
     try {
       if (isCurrentRouteSaved) {
+        if (!user) {
+          // If anon and "saved", it means it's in local storage or we treat it as saved.
+          // We can't really "unsave" from DB if we don't know who owns it, 
+          // but we can remove from local list.
+          // For now, let's just handle the authenticated case for unsaving or warn.
+          showToast(isHe ? 'לא ניתן להסיר שמירה כאורח' : 'Cannot unsave as guest', 'warning');
+          return;
+        }
+
         // Try finding by ID first
         let savedEntry = savedRoutes.find(r => r.id === currentRoute.id);
 
@@ -1615,40 +1628,48 @@ const App: React.FC = () => {
           showToast(isHe ? 'המסלול הוסר מהמועדפים' : 'Route removed from favorites');
         }
       } else {
-        // Check for content modification (Wiki Logic)
-        // If POIs changed -> Public Fork (updates Main Route)
-        // If only Prefs -> Private Save (Personal)
+        // SAVE Logic
         const isContentModified = currentRoute.originalPoiCount !== undefined &&
           currentRoute.pois.length !== currentRoute.originalPoiCount;
 
         const saved = await saveRouteToSupabase(
-          user.id,
+          user?.id || null, // Allow null for anon
           currentRoute,
-          { ...preferences, is_favorite: true }, // Explicitly marked as favorite when clicking heart
-          isContentModified, // Public if modified
-          currentRoute.id // Parent is current ID
+          { ...preferences, is_favorite: !!user }, // Only mark favorite if user exists
+          isContentModified || !user, // If anon, maybe default to public/modified? 
+          currentRoute.id
         );
 
         if (saved) {
           nativeBridge.hapticSuccess();
+          const message = user
+            ? (isHe ? `המסלול "${currentRoute.name}" נוסף למועדפים שלך.` : `"${currentRoute.name}" has been added to your favorites.`)
+            : (isHe ? `המסלול נשמר!` : `Route Saved!`);
+
           nativeBridge.showNotification(
             isHe ? 'מסלול נשמר!' : 'Route Saved!',
-            isHe ? `המסלול "${currentRoute.name}" נוסף למועדפים שלך.` : `"${currentRoute.name}" has been added to your favorites.`
+            message
           );
           showToast(isHe ? 'המסלול נשמר בהצלחה!' : 'Route saved successfully!');
 
           // Update local route ID to match the new forked ID
-          const newId = (saved as any).id || (saved as any).routeId;
+          const newId = (saved as any).id || (saved as any).routeId || saved; // RPC returns UUID string or object? 
+          // saveRouteToSupabase returns routeId (string) or null.
 
-          if (newId && newId !== currentRoute.id) {
+          if (newId && typeof newId === 'string' && newId !== currentRoute.id) {
             setOpenRoutes(prev => prev.map(r => {
               if (r.id === currentRoute.id) return { ...r, id: newId, originalPoiCount: r.pois.length };
               return r;
             }));
           }
         } else {
-          console.error("Save failed: saveRouteToSupabase returned null/false.");
-          showToast(isHe ? 'שגיאה בשמירת המסלול' : 'Error saving route', 'error');
+          // Failed to save to DB (maybe permission error if anon?)
+          // Fallback to "Saved Locally" toast
+          if (!user) {
+            showToast(isHe ? 'נשמר מקומית (התחבר לשמירה בענן)' : 'Saved locally (Login to sync)', 'success');
+          } else {
+            showToast(isHe ? 'שגיאה בשמירה' : 'Failed to save', 'error');
+          }
         }
       }
       // Wait a moment for DB propagation then refresh
@@ -1838,651 +1859,211 @@ const App: React.FC = () => {
   const isCardOpen = selectedPoi !== null || (activeTab === 'route' && currentRoute !== null);
 
   return (
-    <AudioProvider>
-      <div className="h-[100dvh] w-full flex flex-col relative bg-white overflow-hidden" dir={isHe ? 'rtl' : 'ltr'}>
-        <style>{`.liquid-indicator { transition: transform 0.4s cubic-bezier(0.68, -0.6, 0.32, 1.6); width: 33.33%; display: flex; justify-content: center; align-items: center; pointer-events: none; } .indicator-pill { width: 50%; height: 80%; background-color: #6366F1; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2); } .crosshair-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 9000; display: flex; flex-direction: column; align-items: center; transition: top 0.5s ease-in-out; } .crosshair-container.shifted { top: 65%; } .gen-tooltip { position: absolute; bottom: calc(100px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: #0F172A; color: white; padding: 12px 24px; border-radius: 8px; font-size: 11px; font-medium: 500; z-index: 5000; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; animation: in-out 0.3s ease-out; } @keyframes in-out { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } } .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom, 16px); min-height: calc(64px + env(safe-area-inset-bottom, 0px)); } .top-safe-area { padding-top: env(safe-area-inset-top, 24px); }`}</style>
+    <div className="h-[100dvh] w-full flex flex-col relative bg-white overflow-hidden" dir={isHe ? 'rtl' : 'ltr'}>
+      <style>{`.liquid-indicator { transition: transform 0.4s cubic-bezier(0.68, -0.6, 0.32, 1.6); width: 33.33%; display: flex; justify-content: center; align-items: center; pointer-events: none; } .indicator-pill { width: 50%; height: 80%; background-color: #6366F1; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2); } .crosshair-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 9000; display: flex; flex-direction: column; align-items: center; transition: top 0.5s ease-in-out; } .crosshair-container.shifted { top: 65%; } .gen-tooltip { position: absolute; bottom: calc(100px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: #0F172A; color: white; padding: 12px 24px; border-radius: 8px; font-size: 11px; font-medium: 500; z-index: 5000; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; animation: in-out 0.3s ease-out; } @keyframes in-out { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } } .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom, 16px); min-height: calc(64px + env(safe-area-inset-bottom, 0px)); } .top-safe-area { padding-top: env(safe-area-inset-top, 24px); }`}</style>
 
 
 
-        <Suspense fallback={null}>
-          {showOnboarding && <UserGuide isHe={isHe} onClose={() => { setShowOnboarding(false); localStorage.setItem('urbanito_onboarding_v2', 'true'); }} />}
-        </Suspense>
-        {toast && <div className={`fixed top-[calc(env(safe-area-inset-top)+12px)] left-1/2 -translate-x-1/2 z-[10000] px-6 py-3 rounded-[12px] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}><CheckCircle size={18} /><span className="text-sm font-medium whitespace-nowrap">{toast.message}</span></div>}
-        {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
-        {isSearchingNearby && <div className="fixed inset-0 z-[8000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-[8px] shadow-2xl flex flex-col items-center gap-4"><Loader2 size={40} className="animate-spin text-indigo-500" /><p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים בסביבה...' : 'Searching nearby...'}</p></div></div>}
+      <Suspense fallback={null}>
+        {showOnboarding && <UserGuide isHe={isHe} onClose={() => { setShowOnboarding(false); localStorage.setItem('urbanito_onboarding_v2', 'true'); }} />}
+      </Suspense>
+      {toast && <div className={`fixed top-[calc(env(safe-area-inset-top)+12px)] left-1/2 -translate-x-1/2 z-[10000] px-6 py-3 rounded-[12px] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}><CheckCircle size={18} /><span className="text-sm font-medium whitespace-nowrap">{toast.message}</span></div>}
+      {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
+      {isSearchingNearby && <div className="fixed inset-0 z-[8000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-[8px] shadow-2xl flex flex-col items-center gap-4"><Loader2 size={40} className="animate-spin text-indigo-500" /><p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים בסביבה...' : 'Searching nearby...'}</p></div></div>}
 
-        {/* Route Tabs - REMOVED per user request (replaced by header carousel) */}
-        {/* <RouteTabs ... /> */}
+      {/* Route Tabs - REMOVED per user request (replaced by header carousel) */}
+      {/* <RouteTabs ... /> */}
 
 
-        <main className="flex-1 relative h-full">
-          <div ref={mapRef} className="w-full h-full" />
+      <main className="flex-1 relative h-full">
+        <div ref={mapRef} className="w-full h-full" />
 
-          <Suspense fallback={<div className="absolute inset-0 z-[2000] flex items-center justify-center pointer-events-none"><SuspenseLoader isHe={isHe} /></div>}>
-            <Routes>
-              <Route path="/" element={
-                <>
-                  {streetConfirmData && !isAiMenuOpen && (
-                    <>
-                      <div className={`crosshair-container ${streetConfirmData.type === 'area' ? 'shifted' : ''}`}>
-                        <div className="animate-in zoom-in duration-300 flex flex-col items-center mb-2">
-                          {streetConfirmData.type === 'street' ? <MapPin size={28} className="text-[#6366F1] fill-indigo-100/50" strokeWidth={1.2} /> : <TargetIcon size={28} className="text-[#6366F1] animate-pulse" />}
-                        </div>
-                        <div className="pointer-events-auto animate-in slide-in-from-top-4 duration-500">
-                          <div className="w-[300px] bg-white rounded-[8px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100/50 overflow-hidden flex flex-col">
-                            <div className="p-5 pb-2">
-                              <div className="flex justify-between items-start mb-4">
-                                <div className="text-right flex-1 min-w-0">
-                                  <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">
-                                    {streetConfirmData.type === 'street'
-                                      ? (isHe ? 'מסלול רחוב - צור מסלול על רחוב ספיציפי' : 'Street Tour - Create a tour on a specific street')
-                                      : (isHe ? 'מסלול איזורי (צור מסלול ברדיוס סביבך)' : 'Area Tour (Create a route in a radius around you)')}
-                                  </h4>
-                                  <div className="relative group">
-                                    <input
-                                      type="text"
-                                      value={streetConfirmData.type === 'street' ? streetConfirmData.street : streetConfirmData.city}
-                                      onFocus={() => { isTypingLocation.current = true; }}
-                                      onBlur={() => {
-                                        setTimeout(() => { isTypingLocation.current = false; }, 500);
-                                      }}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setStreetConfirmData(prev => prev ? {
-                                          ...prev,
-                                          street: prev.type === 'street' ? val : "",
-                                          city: prev.type === 'area' ? val : prev.city
-                                        } : null);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          const val = (e.target as HTMLInputElement).value;
-                                          const geocoder = new google.maps.Geocoder();
-                                          setIsGeocoding(true);
-                                          geocoder.geocode({ address: val }, (results: any, status: string) => {
-                                            setIsGeocoding(false);
-                                            if (status === 'OK' && results[0] && googleMap.current) {
-                                              const pos = results[0].geometry.location;
-                                              googleMap.current.panTo(pos);
-                                              if (selectionCircle.current) selectionCircle.current.setCenter(pos);
-                                            }
-                                          });
-                                        }
-                                      }}
-                                      className={`w-full text-lg font-bold text-slate-900 bg-slate-50 border-none rounded-[12px] px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-100 transition-all ${isGeocoding ? 'opacity-30' : 'opacity-100'}`}
-                                    />
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-20 pointer-events-none">
-                                      <Edit3 size={14} />
-                                    </div>
-                                  </div>
-                                  {streetConfirmData.type === 'area' && (
-                                    <p className="text-[10px] text-slate-400 mt-2 font-medium tracking-wide">
-                                      {isHe ? 'רדיוס סיור:' : 'Radius:'} <span className="text-[#6366F1] font-medium">{dynamicRadius}km</span>
-                                    </p>
-                                  )}
-                                </div>
-                                <button onClick={() => { setStreetConfirmData(null); if (selectionCircle.current) { selectionCircle.current.setMap(null); selectionCircle.current = null; } }} className="p-1.5 text-slate-300 hover:text-slate-600 transition-colors bg-slate-50 rounded-[8px]"><X size={16} /></button>
-                              </div>
-                              <button onClick={() => setIsConfirmPrefsExpanded(true)} className="w-full flex items-center justify-between py-2 text-[10px] font-medium text-slate-400 border-t border-slate-50 mt-1 hover:text-[#6366F1] transition-colors">
-                                <span className="flex items-center gap-2"><Settings2 size={14} /> {isHe ? 'העדפות מסלול' : 'Route Preferences'}</span>
-                                <ChevronUp size={14} className="rotate-90" />
-                              </button>
-                            </div>
-
-                            <div className="p-5 pt-3">
-                              <button onClick={handleActionCreateRoute} className="w-full py-4 bg-[#0F172A] text-white rounded-[8px] font-medium text-[11px] uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                                <RouteTravelIcon className="w-5 h-5" animated={false} />
-                                {isHe ? 'בנה לי מסלול אישי' : 'Build My Tour'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+        <Suspense fallback={<div className="absolute inset-0 z-[2000] flex items-center justify-center pointer-events-none"><SuspenseLoader isHe={isHe} /></div>}>
+          <Routes>
+            <Route path="/" element={
+              <>
+                {streetConfirmData && !isAiMenuOpen && (
+                  <>
+                    <div className={`crosshair-container ${streetConfirmData.type === 'area' ? 'shifted' : ''}`}>
+                      <div className="animate-in zoom-in duration-300 flex flex-col items-center mb-2">
+                        {streetConfirmData.type === 'street' ? <MapPin size={28} className="text-[#6366F1] fill-indigo-100/50" strokeWidth={1.2} /> : <TargetIcon size={28} className="text-[#6366F1] animate-pulse" />}
                       </div>
-
-                      {/* Full Screen Preferences Modal */}
-                      {isConfirmPrefsExpanded && (
-                        <div className="fixed inset-0 z-[9000] bg-white/60 backdrop-blur-md flex flex-col animate-in slide-in-from-bottom duration-500">
-                          <div className="p-6 pb-2 top-safe-area bg-white border-b border-slate-100 flex items-center justify-between shadow-sm relative z-10">
-                            <button onClick={() => setIsConfirmPrefsExpanded(false)} className="w-10 h-10 flex items-center justify-center rounded-[12px] bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
-                              <ChevronDown size={20} />
+                      <div className="pointer-events-auto animate-in slide-in-from-top-4 duration-500">
+                        <div className="w-[300px] bg-white rounded-[8px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100/50 overflow-hidden flex flex-col">
+                          <div className="p-5 pb-2">
+                            <div className="flex justify-between items-start mb-4">
+                              <div className="text-right flex-1 min-w-0">
+                                <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">
+                                  {streetConfirmData.type === 'street'
+                                    ? (isHe ? 'מסלול רחוב - צור מסלול על רחוב ספיציפי' : 'Street Tour - Create a tour on a specific street')
+                                    : (isHe ? 'מסלול איזורי (צור מסלול ברדיוס סביבך)' : 'Area Tour (Create a route in a radius around you)')}
+                                </h4>
+                                <div className="relative group">
+                                  <input
+                                    type="text"
+                                    value={streetConfirmData.type === 'street' ? streetConfirmData.street : streetConfirmData.city}
+                                    onFocus={() => { isTypingLocation.current = true; }}
+                                    onBlur={() => {
+                                      setTimeout(() => { isTypingLocation.current = false; }, 500);
+                                    }}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setStreetConfirmData(prev => prev ? {
+                                        ...prev,
+                                        street: prev.type === 'street' ? val : "",
+                                        city: prev.type === 'area' ? val : prev.city
+                                      } : null);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const val = (e.target as HTMLInputElement).value;
+                                        const geocoder = new google.maps.Geocoder();
+                                        setIsGeocoding(true);
+                                        geocoder.geocode({ address: val }, (results: any, status: string) => {
+                                          setIsGeocoding(false);
+                                          if (status === 'OK' && results[0] && googleMap.current) {
+                                            const pos = results[0].geometry.location;
+                                            googleMap.current.panTo(pos);
+                                            if (selectionCircle.current) selectionCircle.current.setCenter(pos);
+                                          }
+                                        });
+                                      }
+                                    }}
+                                    className={`w-full text-lg font-bold text-slate-900 bg-slate-50 border-none rounded-[12px] px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-100 transition-all ${isGeocoding ? 'opacity-30' : 'opacity-100'}`}
+                                  />
+                                  <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-20 pointer-events-none">
+                                    <Edit3 size={14} />
+                                  </div>
+                                </div>
+                                {streetConfirmData.type === 'area' && (
+                                  <p className="text-[10px] text-slate-400 mt-2 font-medium tracking-wide">
+                                    {isHe ? 'רדיוס סיור:' : 'Radius:'} <span className="text-[#6366F1] font-medium">{dynamicRadius}km</span>
+                                  </p>
+                                )}
+                              </div>
+                              <button onClick={() => { setStreetConfirmData(null); if (selectionCircle.current) { selectionCircle.current.setMap(null); selectionCircle.current = null; } }} className="p-1.5 text-slate-300 hover:text-slate-600 transition-colors bg-slate-50 rounded-[8px]"><X size={16} /></button>
+                            </div>
+                            <button onClick={() => setIsConfirmPrefsExpanded(true)} className="w-full flex items-center justify-between py-2 text-[10px] font-medium text-slate-400 border-t border-slate-50 mt-1 hover:text-[#6366F1] transition-colors">
+                              <span className="flex items-center gap-2"><Settings2 size={14} /> {isHe ? 'העדפות מסלול' : 'Route Preferences'}</span>
+                              <ChevronUp size={14} className="rotate-90" />
                             </button>
-                            <h3 className="text-lg font-bold text-slate-800">{isHe ? 'העדפות מסלול' : 'Route Preferences'}</h3>
-                            <div className="w-10" />
                           </div>
-                          <div className="flex-1 overflow-y-auto p-6 pb-32 bg-white">
-                            <div className="max-w-md mx-auto">
-                              <Suspense fallback={<div className="p-4 flex justify-center"><Loader2 className="animate-spin text-indigo-500" /></div>}>
-                                <QuickRouteSetup preferences={preferences} onUpdatePreferences={setPreferences} onGenerate={() => { }} onCancel={() => setIsConfirmPrefsExpanded(false)} isEmbedded={false} hideActionButton={true} />
-                              </Suspense>
-                            </div>
-                          </div>
-                          <div className="p-6 bg-white border-t border-slate-100 bottom-nav-safe">
-                            <div className="max-w-md mx-auto">
-                              <button onClick={() => setIsConfirmPrefsExpanded(false)} className="w-full py-4 bg-[#0F172A] text-white rounded-[16px] font-bold text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                                {isHe ? 'שמור וסגור' : 'Save & Close'}
-                              </button>
-                            </div>
+
+                          <div className="p-5 pt-3">
+                            <button onClick={handleActionCreateRoute} className="w-full py-4 bg-[#0F172A] text-white rounded-[8px] font-medium text-[11px] uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                              <RouteTravelIcon className="w-5 h-5" animated={false} />
+                              {isHe ? 'בנה לי מסלול אישי' : 'Build My Tour'}
+                            </button>
                           </div>
                         </div>
-                      )}
-                    </>
-                  )}
-
-                  {!selectedPoi && !isAiMenuOpen && !streetConfirmData && (
-                    <div className="absolute top-0 inset-x-0 z-[1000] p-4 pt-12 transform transition-all duration-300">
-                      <div className="bg-white rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-slate-100 p-2 flex items-center gap-3">
-                        <Search className="text-slate-400 ml-2" size={20} />
-                        <input
-                          ref={searchInputRef}
-                          type="text"
-                          placeholder={isHe ? "לאן מטיילים?" : "Where to?"}
-                          className="flex-1 bg-transparent text-slate-800 placeholder-slate-400 text-[15px] outline-none font-medium h-10"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
-                          dir={isHe ? "rtl" : "ltr"}
-                        />
-                        {searchQuery && (
-                          <button
-                            onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
-                            className="p-1 text-slate-300 hover:text-slate-500 rounded-full hover:bg-slate-100 transition-all"
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
-                        <div className="w-px h-6 bg-slate-100 mx-1"></div>
-                        <button
-                          onClick={() => toggleTab('profile')}
-                          className="w-9 h-9 rounded-[10px] bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all overflow-hidden relative"
-                        >
-                          {user?.user_metadata?.avatar_url ? (
-                            <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" alt="avatar" />
-                          ) : (
-                            <UserIcon size={18} />
-                          )}
-
-                          {/* Premium Indicator Badge */}
-                          {isPremium && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in duration-300">
-                              <Crown size={8} className="text-white fill-white" />
-                            </div>
-                          )}
-                        </button>
                       </div>
                     </div>
-                  )}
 
-                  {!selectedPoi && (
-                    <button onClick={() => handleLocateUser()} className={`absolute bottom-24 ${isHe ? 'left-6' : 'right-6'} z-[1000] w-12 h-12 bg-white rounded-[16px] shadow-2xl border border-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition-all`}>
-                      {isLocating ? <Loader2 size={20} className="animate-spin text-[#6366F1]" /> : <LocateFixed size={20} />}
-                    </button>
-                  )}
-                </>
-              } />
+                    {/* Full Screen Preferences Modal */}
+                    {isConfirmPrefsExpanded && (
+                      <div className="fixed inset-0 z-[9000] bg-white/60 backdrop-blur-md flex flex-col animate-in slide-in-from-bottom duration-500">
+                        <div className="p-6 pb-2 top-safe-area bg-white border-b border-slate-100 flex items-center justify-between shadow-sm relative z-10">
+                          <button onClick={() => setIsConfirmPrefsExpanded(false)} className="w-10 h-10 flex items-center justify-center rounded-[12px] bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                            <ChevronDown size={20} />
+                          </button>
+                          <h3 className="text-lg font-bold text-slate-800">{isHe ? 'העדפות מסלול' : 'Route Preferences'}</h3>
+                          <div className="w-10" />
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 pb-32 bg-white">
+                          <div className="max-w-md mx-auto">
+                            <Suspense fallback={<div className="p-4 flex justify-center"><Loader2 className="animate-spin text-indigo-500" /></div>}>
+                              <QuickRouteSetup preferences={preferences} onUpdatePreferences={setPreferences} onGenerate={() => { }} onCancel={() => setIsConfirmPrefsExpanded(false)} isEmbedded={false} hideActionButton={true} />
+                            </Suspense>
+                          </div>
+                        </div>
+                        <div className="p-6 bg-white border-t border-slate-100 bottom-nav-safe">
+                          <div className="max-w-md mx-auto">
+                            <button onClick={() => setIsConfirmPrefsExpanded(false)} className="w-full py-4 bg-[#0F172A] text-white rounded-[16px] font-bold text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                              {isHe ? 'שמור וסגור' : 'Save & Close'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {!selectedPoi && !isAiMenuOpen && !streetConfirmData && (
+                  <div className="absolute top-0 inset-x-0 z-[1000] p-4 pt-12 transform transition-all duration-300">
+                    <div className="bg-white rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-slate-100 p-2 flex items-center gap-3">
+                      <Search className="text-slate-400 ml-2" size={20} />
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        placeholder={isHe ? "לאן מטיילים?" : "Where to?"}
+                        className="flex-1 bg-transparent text-slate-800 placeholder-slate-400 text-[15px] outline-none font-medium h-10"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
+                        dir={isHe ? "rtl" : "ltr"}
+                      />
+                      {searchQuery && (
+                        <button
+                          onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                          className="p-1 text-slate-300 hover:text-slate-500 rounded-full hover:bg-slate-100 transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                      <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                      <button
+                        onClick={() => toggleTab('profile')}
+                        className="w-9 h-9 rounded-[10px] bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all overflow-hidden relative"
+                      >
+                        {user?.user_metadata?.avatar_url ? (
+                          <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" alt="avatar" />
+                        ) : (
+                          <UserIcon size={18} />
+                        )}
+
+                        {/* Premium Indicator Badge */}
+                        {isPremium && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in duration-300">
+                            <Crown size={8} className="text-white fill-white" />
+                          </div>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!selectedPoi && (
+                  <button onClick={() => handleLocateUser()} className={`absolute bottom-24 ${isHe ? 'left-6' : 'right-6'} z-[1000] w-12 h-12 bg-white rounded-[16px] shadow-2xl border border-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition-all`}>
+                    {isLocating ? <Loader2 size={20} className="animate-spin text-[#6366F1]" /> : <LocateFixed size={20} />}
+                  </button>
+                )}
+              </>
+            } />
 
 
-              <Route path="/route" element={
-                <div className="absolute inset-0 z-[3000] pointer-events-none">
-                  {currentRoute && (
-                    <Suspense fallback={null}>
-                      <VoiceGuideManager route={currentRoute} language={preferences.language} />
-                    </Suspense>
-                  )}
-                  {/* Route tabs removed per user request */}
+            <Route path="/route" element={
+              <div className="absolute inset-0 z-[3000] pointer-events-none">
+                {currentRoute && (
+                  <Suspense fallback={null}>
+                    <VoiceGuideManager route={currentRoute} language={preferences.language} />
+                  </Suspense>
+                )}
+                {/* Route tabs removed per user request */}
 
-                  {/* DISABLED: This duplicate library block was causing cache issues.
+                {/* DISABLED: This duplicate library block was causing cache issues.
                       Library is now only rendered at /library path.
                       See lines 2289+ for the actual library implementation. */}
-                  {false && (
-                    <div
-                      key={viewingCity || 'library-main'}
-                      className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}
-                    >
-                      {(() => {
-                        console.log('[Library Render] viewingCity:', viewingCity, 'citySpecificRoutes:', citySpecificRoutes?.length);
-                        return null;
-                      })()}
-                      {!viewingCity && <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area"><h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2></div>}
-                      {!viewingCity ? (
-                        <div className="space-y-8">
-                          {/* Library Header Stack */}
-                          <div className="sticky top-0 -mx-6 px-6 bg-slate-50/95 backdrop-blur-md pt-4 pb-4 z-10 space-y-3 border-b border-slate-100/50">
-                            {/* Search */}
-                            <div className="relative shadow-sm rounded-[12px]">
-                              <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                              <input
-                                type="text"
-                                value={librarySearchQuery}
-                                onChange={(e) => setLibrarySearchQuery(e.target.value)}
-                                placeholder={isHe ? 'חיפוש עיר...' : 'Search city...'}
-                                className="w-full bg-white border border-slate-200 rounded-[12px] py-3 pr-10 pl-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                              />
-                            </div>
-
-                            {/* Category Badges */}
-                            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-2 px-2">
-                              <button
-                                onClick={() => setSelectedLibraryCategory(null)}
-                                className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1.5 ${!selectedLibraryCategory ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600'}`}
-                              >
-                                <Globe size={12} /> {isHe ? 'הכל' : 'All'}
-                              </button>
-                              {CATEGORY_FILTERS.map(cat => (
-                                <button
-                                  key={cat.id}
-                                  onClick={() => setSelectedLibraryCategory(selectedLibraryCategory === cat.id ? null : cat.id)}
-                                  className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1.5 ${selectedLibraryCategory === cat.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600'}`}
-                                >
-                                  <span>{cat.icon}</span>
-                                  <span>{isHe ? cat.he : cat.en}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <section>
-                            <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                              <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
-                            </h3>
-                            <div
-                              ref={citiesScrollRef}
-                              className="flex overflow-x-auto snap-x scroll-pl-6 pb-4 -mx-6 px-6 gap-3 no-scrollbar"
-                            >
-                              {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
-                                .filter(city => {
-                                  // Filter by City Name
-                                  const matchesSearch = !librarySearchQuery ||
-                                    city.name.includes(librarySearchQuery) ||
-                                    city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
-
-                                  // Filter by Routes content within the city (Deep Search) - Fixed per user request
-                                  const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
-                                  const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
-                                    (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
-                                    (r.description && r.description.toLowerCase().includes(librarySearchQuery.toLowerCase()))
-                                  );
-
-                                  const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
-
-                                  return (matchesSearch || hasMatchingRoute) && matchesCategory;
-                                })
-                                .map(city => {
-                                  // Calculate route count for this city
-                                  const routeCount = recentGlobalRoutes.filter(r =>
-                                    r.city === city.name ||
-                                    r.city === city.name_en ||
-                                    (r.city && city.name_en && r.city.toLowerCase() === city.name_en.toLowerCase())
-                                  ).length;
-
-                                  return (
-                                    <button
-                                      key={city.id}
-                                      type="button"
-                                      onClick={(e) => {
-                                        console.log('City clicked:', city.name);
-                                        handleCitySelect(city);
-                                      }}
-                                      className="group flex flex-col gap-2 shrink-0 w-[160px] snap-start text-right relative z-10 transition-transform active:scale-[0.98] focus:outline-none cursor-pointer"
-                                    >
-                                      {/* Removed pointer-events-none from here */}
-                                      <div className="relative aspect-[4/5] overflow-hidden shadow-md group-hover:shadow-xl rounded-[24px] bg-slate-200 w-full transition-all duration-300 group-hover:-translate-y-1">
-                                        <img
-                                          src={city.img_url}
-                                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                          alt={city.name}
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80" />
-
-                                        {/* Route Count Badge */}
-                                        {routeCount > 0 && (
-                                          <div className="absolute top-3 left-3 bg-white/20 backdrop-blur-md border border-white/30 text-white text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                                            <MapPin size={8} className="fill-white" />
-                                            {routeCount}
-                                          </div>
-                                        )}
-
-                                        <div className="absolute bottom-4 right-4 left-4 text-right">
-                                          <span className="text-white text-[18px] font-bold leading-none block drop-shadow-md mb-1">{city.name}</span>
-                                          <span className="text-white/80 text-[11px] font-medium tracking-wide block font-serif italic">{city.name_en}</span>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                            </div>
-                            {/* Empty State for Search */}
-                            {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
-                              .filter(city => {
-                                const matchesSearch = !librarySearchQuery || city.name.includes(librarySearchQuery) || city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
-
-                                const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
-                                const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
-                                  (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
-                                  (r.description && r.description.toLowerCase().includes(librarySearchQuery.toLowerCase()))
-                                );
-
-                                const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
-                                return (matchesSearch || hasMatchingRoute) && matchesCategory;
-                              }).length === 0 && (
-                                <div className="text-center py-8 text-slate-400 text-xs">
-                                  {isHe ? 'לא נמצאו ערים תואמות' : 'No matching cities found'}
-                                </div>
-                              )}
-                          </section>
-
-                          {recentGlobalRoutes.length > 0 && (
-                            <section>
-                              <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                                <History size={12} className="text-amber-500" /> {isHe ? 'מסלולים אחרונים בקהילה' : 'Recent Community Tours'}
-                              </h3>
-                              <div className="grid grid-cols-1 gap-3">
-                                {recentGlobalRoutes.slice(0, 30).map((route, idx) => {
-                                  // Resolve Localized Names
-                                  const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
-                                    ? (route.preferences?.names?.he || (route as any).name_he)
-                                    : route.name).replace(/✨/g, '').trim();
-
-                                  // Get the original name (opposite language)
-                                  const originalName = isHe
-                                    ? route.name.replace(/✨/g, '').trim()
-                                    : (route.preferences?.names?.he || (route as any).name_he || '').replace(/✨/g, '').trim();
-
-                                  // Resolve Localized City Name
-                                  const cityObj = popularCities.find(c =>
-                                    c.name === route.city ||
-                                    c.name_en === route.city ||
-                                    (route.city && c.name_en && route.city.toLowerCase() === c.name_en.toLowerCase())
-                                  );
-                                  const localizedCity = isHe && cityObj ? cityObj.name : (cityObj?.name_en || route.city);
-
-                                  // Parse title: "Long Description (Short Name)" -> use Short Name
-                                  const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
-                                  const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
-
-                                  const originalParenMatch = originalName.match(/(.*?)\s*\((.*?)\)/);
-                                  const shortOriginalTitle = originalParenMatch ? originalParenMatch[2].trim() : originalName;
-
-                                  // Only show original if it's different from localized
-                                  const showOriginal = originalName && shortOriginalTitle !== shortTitle;
-
-                                  return (
-                                    <button
-                                      key={idx}
-                                      onClick={() => handleLoadSavedRoute(route.city, route)}
-                                      className="w-full flex items-center gap-4 bg-white p-4 rounded-[12px] shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.98] transition-all group"
-                                      dir={isHe ? 'rtl' : 'ltr'}
-                                    >
-                                      <div className="w-20 h-20 rounded-[10px] overflow-hidden bg-slate-100 shrink-0 shadow-sm">
-                                        <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full group-hover:scale-105 transition-transform duration-300" />
-                                      </div>
-                                      <div className="flex-1 min-w-0 text-right">
-                                        <h4 className="text-[15px] font-semibold text-slate-900 truncate leading-tight mb-1" dir={isHe ? 'rtl' : 'ltr'}>
-                                          {shortTitle}
-                                        </h4>
-                                        {showOriginal && (
-                                          <p className="text-[11px] text-slate-400 truncate leading-tight" dir={!isHe ? 'rtl' : 'ltr'}>
-                                            {shortOriginalTitle}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col items-center gap-1 shrink-0">
-                                        <MapPin size={14} className="text-indigo-500" />
-                                        <span className="text-[10px] font-medium text-indigo-600 whitespace-nowrap">{localizedCity}</span>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </section>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="animate-in slide-in-from-bottom duration-500 pb-20">
-                          {/* Hero Section */}
-                          {/* Hero Section - Static Image */}
-                          <div className="relative w-full h-[320px] mb-6 shadow-2xl">
-                            <div className="absolute inset-0 animate-in fade-in duration-500">
-                              {viewingCityData?.img_url ? (
-                                <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity || undefined} />
-                              ) : (
-                                <GoogleImage query={`${viewingCity} landmark`} className="w-full h-full object-cover" />
-                              )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/20" />
-                            </div>
-
-                            <div className="absolute top-0 left-0 right-0 p-6 pt-16 flex justify-between items-start z-10">
-                              <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-black/20 backdrop-blur-md border border-white/30 rounded-[12px] flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
-                                <ArrowRight size={18} />
-                              </button>
-                            </div>
-
-                            <div className="absolute bottom-8 right-6 left-6 text-right z-10">
-                              <span className="text-indigo-300 font-bold uppercase tracking-[0.2em] text-[11px] mb-2 block animate-in slide-in-from-right duration-700 delay-100 drop-shadow-md">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
-                              <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-xl animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
-                              <p className="text-slate-200 text-sm font-medium animate-in fade-in duration-700 delay-300 drop-shadow-md">{viewingCityData?.name_en}</p>
-                            </div>
-                          </div>
-
-
-
-                          {isLoadingCityRoutes ? (
-                            <div className="flex flex-col items-center py-20 gap-4">
-                              <Loader2 className="animate-spin text-indigo-500" />
-                              <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים פנומנליים...' : 'Searching Tours...'}</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-12 px-6">
-                              {/* Local Guides Section - ARCHIVED FROM PRODUCTION (Experimental) */}
-                              {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || localStorage.getItem('urbanito_debug_mode') === 'true') && (
-                                <LocalGuidesSection city={viewingCity || ''} className="mb-8" onPostClick={handleGuidePostClick} />
-                              )}
-
-                              {/* Existing Routes */}
-                              {citySpecificRoutes.length > 0 && (
-                                <section>
-                                  <div className="flex items-center gap-3 mb-4">
-                                    <h4 className="text-[14px] font-bold text-slate-800">{isHe ? `מסלולים נבחרים` : `Curated Tours`}</h4>
-                                    <div className="h-px bg-slate-100 flex-1" />
-
-                                    <button
-                                      onClick={() => setIsPeekMapMode(!isPeekMapMode)}
-                                      className={`h-7 px-3 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${isPeekMapMode ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-200' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                                    >
-                                      {isPeekMapMode ? (
-                                        <span className="flex items-center gap-1.5"><MapIcon size={12} fill="currentColor" /> {isHe ? 'הסתר מפה' : 'Hide Map'}</span>
-                                      ) : (
-                                        <span className="flex items-center gap-1.5"><MapIcon size={12} /> {isHe ? 'הצג על מפה' : 'Show Map'}</span>
-                                      )}
-                                    </button>
-                                  </div>
-
-                                  {/* Integrated Map Container - Slides down when active */}
-                                  <div className={`overflow-hidden transition-all duration-500 ease-in-out relative mb-4 ${isPeekMapMode ? 'h-[280px] opacity-100 rounded-[16px] shadow-sm border border-slate-100/50' : 'h-0 opacity-0'}`}>
-                                    {isPeekMapMode && (
-                                      <>
-                                        <div ref={cityMapContainerRef} className="w-full h-full bg-slate-100" />
-                                        <button
-                                          onClick={() => {
-                                            // Use the center of the current preview map as the target
-                                            if (cityMapInstance.current) {
-                                              const center = cityMapInstance.current.getCenter();
-                                              if (center) {
-                                                const lat = center.lat();
-                                                const lng = center.lng();
-                                                setLocation({ lat, lng });
-                                                setSearchQuery(viewingCity || '');
-                                                setViewingCity(null);
-                                                window.scrollTo(0, 0);
-                                                navigate('/');
-                                              }
-                                            } else if (viewingCityData?.lat && viewingCityData?.lng) {
-                                              setLocation({ lat: viewingCityData.lat, lng: viewingCityData.lng });
-                                              setSearchQuery(viewingCity || '');
-                                              setViewingCity(null);
-                                              window.scrollTo(0, 0);
-                                              navigate('/');
-                                            }
-                                          }}
-                                          className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-md shadow-sm border border-slate-100 rounded-full flex items-center justify-center text-slate-600 hover:bg-white hover:text-indigo-600 transition-all z-10"
-                                        >
-                                          <Maximize2 size={14} />
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                  <div className="space-y-3">
-                                    {citySpecificRoutes
-                                      .filter(route => {
-                                        if (!librarySearchQuery) return true;
-                                        const q = librarySearchQuery.toLowerCase();
-                                        return route.name.toLowerCase().includes(q) || (route.description && route.description.toLowerCase().includes(q));
-                                      })
-                                      .map((route, idx) => {
-                                        // Resolve Localized Names
-                                        const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
-                                          ? (route.preferences?.names?.he || (route as any).name_he)
-                                          : route.name).replace(/✨/g, '').trim();
-
-                                        // Get the original name (opposite language)
-                                        const originalName = isHe
-                                          ? route.name.replace(/✨/g, '').trim()
-                                          : (route.preferences?.names?.he || (route as any).name_he || '').replace(/✨/g, '').trim();
-
-                                        const localizedDescription = isHe && (route.preferences?.descriptions?.he || (route as any).description_he)
-                                          ? (route.preferences?.descriptions?.he || (route as any).description_he)
-                                          : route.description;
-
-                                        // Parse titles
-                                        const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
-                                        const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
-
-                                        const originalParenMatch = originalName.match(/(.*?)\s*\((.*?)\)/);
-                                        const shortOriginalTitle = originalParenMatch ? originalParenMatch[2].trim() : originalName;
-
-                                        // Only show original if different
-                                        const showOriginal = originalName && shortOriginalTitle !== shortTitle;
-
-                                        return (
-                                          <button
-                                            key={idx}
-                                            onClick={() => handleLoadSavedRoute(route.city, route)}
-                                            className="w-full flex items-center gap-4 bg-white p-4 rounded-[12px] shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.98] transition-all text-right group"
-                                          >
-                                            <div className="w-20 h-20 rounded-[10px] overflow-hidden bg-slate-100 shrink-0 relative shadow-sm">
-                                              <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full group-hover:scale-105 transition-transform duration-300" />
-                                              {route.pois?.length > 0 && <div className="absolute bottom-1 right-1 bg-indigo-600/90 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]">{route.pois.length} stops</div>}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <h4 className="text-[15px] font-semibold text-slate-900 truncate leading-tight mb-1">
-                                                {shortTitle}
-                                              </h4>
-                                              {showOriginal && (
-                                                <p className="text-[11px] text-slate-400 truncate leading-tight mb-1" dir={!isHe ? 'rtl' : 'ltr'}>
-                                                  {shortOriginalTitle}
-                                                </p>
-                                              )}
-                                              <p className="text-[11px] text-slate-500 line-clamp-1">
-                                                {localizedDescription || (isHe ? 'מסלול הליכה מרתק העובר בין הנקודות המרכזיות בעיר.' : 'A fascinating walking tour through the main points of the city.')}
-                                              </p>
-                                            </div>
-                                          </button>
-                                        );
-                                      })}
-                                  </div>
-                                </section>
-                              )}
-
-                              {/* Suggested Routes */}
-                              {citySuggestions.length > 0 && (
-                                <section>
-                                  <div className="flex items-center gap-3 mb-4">
-                                    <Layers size={14} className="text-indigo-500" />
-                                    <h4 className="text-[14px] font-bold text-slate-800">{isHe ? 'הצעות למסלולים' : 'Suggested Tours'}</h4>
-                                    <div className="h-px bg-slate-100 flex-1" />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-3">
-                                    {citySuggestions.map((suggestion) => (
-                                      <button
-                                        key={suggestion.id}
-                                        onClick={() => handleGenerateSuggestion(suggestion)}
-                                        disabled={generatingSuggestionId === suggestion.id}
-                                        className="flex flex-col gap-3 bg-gradient-to-br from-white to-slate-50 p-4 rounded-lg border border-slate-100 hover:border-indigo-200 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-center relative overflow-hidden group"
-                                      >
-                                        <div className="w-12 h-12 rounded-full bg-white mx-auto flex items-center justify-center text-2xl shadow-sm border border-slate-50 group-hover:scale-110 transition-transform">
-                                          {generatingSuggestionId === suggestion.id ? (
-                                            <Loader2 size={24} className="animate-spin text-indigo-500" />
-                                          ) : (
-                                            suggestion.icon
-                                          )}
-                                        </div>
-                                        <div className="min-w-0">
-                                          <h4 className="text-[13px] font-bold text-slate-900 truncate">
-                                            {isHe ? suggestion.nameHe : suggestion.nameEn}
-                                          </h4>
-                                          <p className="text-[10px] text-indigo-500 font-medium mt-1">
-                                            {generatingSuggestionId === suggestion.id
-                                              ? (isHe ? 'בונה מסלול...' : 'Building...')
-                                              : (isHe ? 'לחץ לבנייה' : 'Create')
-                                            }
-                                          </p>
-                                        </div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </section>
-                              )}
-
-                              {citySpecificRoutes.length === 0 && citySuggestions.length === 0 && (
-                                <div className="p-12 text-center text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
-                                  <p className="text-[11px] uppercase tracking-widest">{isHe ? 'אין עדיין מסלולים בעיר זו' : 'No tours for this city yet'}</p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div className={`h-full ${isGeneratingActive || currentRoute ? 'pointer-events-auto' : 'pointer-events-none'}`}>
-                    {isGeneratingActive ? (
-                      <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div>
-                    ) : currentRoute ? (
-                      <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
-                        <RouteOverview
-                          route={currentRoute}
-                          onPoiClick={setSelectedPoi}
-                          onRemovePoi={() => { }}
-                          onAddPoi={handleAddPoi}
-                          onSave={handleSaveRoute}
-                          preferences={preferences}
-                          onUpdatePreferences={setPreferences}
-                          onRequestRefine={() => { }}
-                          user={user}
-                          isSaved={isCurrentRouteSaved}
-                          onClose={() => navigate('/library')}
-                          isExpanded={isCardExpanded}
-                          setIsExpanded={setIsCardExpanded}
-                          onRegenerate={handleActionCreateRoute}
-                          openRoutes={openRoutes}
-                          activeRouteIndex={activeRouteIndex}
-                          onSwitchRoute={(idx) => { setActiveRouteIndex(idx); renderRouteMarkers(openRoutes[idx]); }}
-                          onCloseRoute={handleCloseRoute}
-                          showToast={showToast}
-                        />
-                      </div>
-                    ) : (
-                      <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>
-                    )}
-                  </div>
-                </div>
-              } />
-              <Route path="/library" element={
-                <div className="absolute inset-0 z-[3000] pointer-events-none">
-                  <div key={viewingCity || 'library-main'} className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-48 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}>
-                    {!viewingCity && <div className="px-1">
-                      <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area">
-                        <h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2>
-                      </div>
+                {false && (
+                  <div
+                    key={viewingCity || 'library-main'}
+                    className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}
+                  >
+                    {(() => {
+                      console.log('[Library Render] viewingCity:', viewingCity, 'citySpecificRoutes:', citySpecificRoutes?.length);
+                      return null;
+                    })()}
+                    {!viewingCity && <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area"><h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2></div>}
+                    {!viewingCity ? (
                       <div className="space-y-8">
                         {/* Library Header Stack */}
                         <div className="sticky top-0 -mx-6 px-6 bg-slate-50/95 backdrop-blur-md pt-4 pb-4 z-10 space-y-3 border-b border-slate-100/50">
@@ -2493,7 +2074,7 @@ const App: React.FC = () => {
                               type="text"
                               value={librarySearchQuery}
                               onChange={(e) => setLibrarySearchQuery(e.target.value)}
-                              placeholder={isHe ? 'חיפוש ערים, מסלולים ומקומות...' : 'Search cities, routes & places...'}
+                              placeholder={isHe ? 'חיפוש עיר...' : 'Search city...'}
                               className="w-full bg-white border border-slate-200 rounded-[12px] py-3 pr-10 pl-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                             />
                           </div>
@@ -2519,79 +2100,22 @@ const App: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Search Results - Show matching routes when searching */}
-                        {librarySearchQuery.trim() && (() => {
-                          const q = librarySearchQuery.toLowerCase();
-                          const matchingRoutes = recentGlobalRoutes.filter(r =>
-                            r.name?.toLowerCase().includes(q) ||
-                            r.description?.toLowerCase().includes(q) ||
-                            r.city?.toLowerCase().includes(q) ||
-                            r.pois?.some((p: any) => p.name?.toLowerCase().includes(q))
-                          ).slice(0, 10);
-
-                          if (matchingRoutes.length === 0) return null;
-
-                          return (
-                            <section className="mb-4">
-                              <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                                <Search size={12} className="text-indigo-500" /> {isHe ? 'תוצאות חיפוש' : 'Search Results'}
-                              </h3>
-                              <div className="grid grid-cols-1 gap-2">
-                                {matchingRoutes.map((route, idx) => {
-                                  const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
-                                    ? (route.preferences?.names?.he || (route as any).name_he)
-                                    : route.name).replace(/✨/g, '').trim();
-
-                                  // Find matching POIs to show which ones matched
-                                  const matchingPois = route.pois?.filter((p: any) => p.name?.toLowerCase().includes(q)) || [];
-
-                                  return (
-                                    <button
-                                      key={route.id || idx}
-                                      onClick={() => handleLoadSavedRoute(route.city, route)}
-                                      className="w-full flex items-center gap-3 bg-white p-3 rounded-[12px] shadow-sm border border-indigo-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.99] transition-all text-right"
-                                    >
-                                      <div className="w-12 h-12 rounded-[8px] overflow-hidden bg-indigo-50 shrink-0 flex items-center justify-center">
-                                        <MapPin size={20} className="text-indigo-400" />
-                                      </div>
-                                      <div className="flex flex-col min-w-0 flex-1">
-                                        <span className="font-semibold text-slate-800 text-[13px] truncate">{localizedName}</span>
-                                        <span className="text-[10px] text-slate-400 truncate">{route.city}</span>
-                                        {matchingPois.length > 0 && (
-                                          <span className="text-[9px] text-indigo-500 truncate mt-0.5">
-                                            {isHe ? 'כולל:' : 'Includes:'} {matchingPois.map((p: any) => p.name).join(', ')}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 font-medium">
-                                        <span>{route.pois?.length || 0}</span>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </section>
-                          );
-                        })()}
-
                         <section>
                           <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                             <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
                           </h3>
                           <div
                             ref={citiesScrollRef}
-                            className="flex overflow-x-auto snap-x scroll-pl-6 pb-4 -mx-6 px-6 gap-3 no-scrollbar cursor-grab active:cursor-grabbing"
-                            onMouseDown={handleCarouselMouseDown}
-                            onMouseMove={handleCarouselMouseMove}
-                            onMouseUp={handleCarouselMouseUp}
-                            onMouseLeave={handleCarouselMouseLeave}
+                            className="flex overflow-x-auto snap-x scroll-pl-6 pb-4 -mx-6 px-6 gap-3 no-scrollbar"
                           >
                             {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
                               .filter(city => {
+                                // Filter by City Name
                                 const matchesSearch = !librarySearchQuery ||
                                   city.name.includes(librarySearchQuery) ||
                                   city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
 
+                                // Filter by Routes content within the city (Deep Search) - Fixed per user request
                                 const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
                                 const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
                                   (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
@@ -2599,48 +2123,71 @@ const App: React.FC = () => {
                                 );
 
                                 const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
-                                return (matchesSearch || hasMatchingRoute) && matchesCategory && city.img_url; // Filter out cities without images
+
+                                return (matchesSearch || hasMatchingRoute) && matchesCategory;
                               })
-                              .map(city => (
-                                <button
-                                  key={city.id}
-                                  onClick={(e) => {
-                                    if (hasDragged.current) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      return;
-                                    }
-                                    handleCitySelect(city);
-                                    // Navigating to /route here forces the "Active Route" view if one exists.
-                                    // We want to stay in the Library context to see the City View.
-                                    // navigate('/route'); 
-                                  }}
-                                  className="group flex flex-col gap-2 shrink-0 w-[140px] snap-start text-right transition-transform active:scale-95"
-                                >
-                                  <div className="relative aspect-[3/4] overflow-hidden shadow-lg rounded-[16px] bg-slate-200 w-full">
-                                    {city.img_url ? (
+                              .map(city => {
+                                // Calculate route count for this city
+                                const routeCount = recentGlobalRoutes.filter(r =>
+                                  r.city === city.name ||
+                                  r.city === city.name_en ||
+                                  (r.city && city.name_en && r.city.toLowerCase() === city.name_en.toLowerCase())
+                                ).length;
+
+                                return (
+                                  <button
+                                    key={city.id}
+                                    type="button"
+                                    onClick={(e) => {
+                                      console.log('City clicked:', city.name);
+                                      handleCitySelect(city);
+                                    }}
+                                    className="group flex flex-col gap-2 shrink-0 w-[160px] snap-start text-right relative z-10 transition-transform active:scale-[0.98] focus:outline-none cursor-pointer"
+                                  >
+                                    {/* Removed pointer-events-none from here */}
+                                    <div className="relative aspect-[4/5] overflow-hidden shadow-md group-hover:shadow-xl rounded-[24px] bg-slate-200 w-full transition-all duration-300 group-hover:-translate-y-1">
                                       <img
                                         src={city.img_url}
                                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                         alt={city.name}
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).style.display = 'none';
-                                          // Force parent to show fallback if possible, or just hide
-                                        }}
                                       />
-                                    ) : null}
-                                    {(!city.img_url) && (
-                                      <GoogleImage query={`${city.name} landmark`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                                    )}
-                                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
-                                    <div className="absolute bottom-3 right-3 left-3">
-                                      <span className="text-white text-[15px] font-bold leading-tight block shadow-sm">{city.name}</span>
-                                      <span className="text-white/70 text-[10px] uppercase font-medium tracking-wider block mt-0.5">{city.name_en}</span>
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80" />
+
+                                      {/* Route Count Badge */}
+                                      {routeCount > 0 && (
+                                        <div className="absolute top-3 left-3 bg-white/20 backdrop-blur-md border border-white/30 text-white text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                                          <MapPin size={8} className="fill-white" />
+                                          {routeCount}
+                                        </div>
+                                      )}
+
+                                      <div className="absolute bottom-4 right-4 left-4 text-right">
+                                        <span className="text-white text-[18px] font-bold leading-none block drop-shadow-md mb-1">{city.name}</span>
+                                        <span className="text-white/80 text-[11px] font-medium tracking-wide block font-serif italic">{city.name_en}</span>
+                                      </div>
                                     </div>
-                                  </div>
-                                </button>
-                              ))}
+                                  </button>
+                                );
+                              })}
                           </div>
+                          {/* Empty State for Search */}
+                          {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
+                            .filter(city => {
+                              const matchesSearch = !librarySearchQuery || city.name.includes(librarySearchQuery) || city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
+
+                              const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
+                              const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
+                                (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
+                                (r.description && r.description.toLowerCase().includes(librarySearchQuery.toLowerCase()))
+                              );
+
+                              const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
+                              return (matchesSearch || hasMatchingRoute) && matchesCategory;
+                            }).length === 0 && (
+                              <div className="text-center py-8 text-slate-400 text-xs">
+                                {isHe ? 'לא נמצאו ערים תואמות' : 'No matching cities found'}
+                              </div>
+                            )}
                         </section>
 
                         {recentGlobalRoutes.length > 0 && (
@@ -2650,10 +2197,17 @@ const App: React.FC = () => {
                             </h3>
                             <div className="grid grid-cols-1 gap-3">
                               {recentGlobalRoutes.slice(0, 30).map((route, idx) => {
+                                // Resolve Localized Names
                                 const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
                                   ? (route.preferences?.names?.he || (route as any).name_he)
                                   : route.name).replace(/✨/g, '').trim();
 
+                                // Get the original name (opposite language)
+                                const originalName = isHe
+                                  ? route.name.replace(/✨/g, '').trim()
+                                  : (route.preferences?.names?.he || (route as any).name_he || '').replace(/✨/g, '').trim();
+
+                                // Resolve Localized City Name
                                 const cityObj = popularCities.find(c =>
                                   c.name === route.city ||
                                   c.name_en === route.city ||
@@ -2661,26 +2215,40 @@ const App: React.FC = () => {
                                 );
                                 const localizedCity = isHe && cityObj ? cityObj.name : (cityObj?.name_en || route.city);
 
+                                // Parse title: "Long Description (Short Name)" -> use Short Name
                                 const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
                                 const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
+
+                                const originalParenMatch = originalName.match(/(.*?)\s*\((.*?)\)/);
+                                const shortOriginalTitle = originalParenMatch ? originalParenMatch[2].trim() : originalName;
+
+                                // Only show original if it's different from localized
+                                const showOriginal = originalName && shortOriginalTitle !== shortTitle;
 
                                 return (
                                   <button
                                     key={idx}
                                     onClick={() => handleLoadSavedRoute(route.city, route)}
-                                    className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
+                                    className="w-full flex items-center gap-4 bg-white p-4 rounded-[12px] shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.98] transition-all group"
                                     dir={isHe ? 'rtl' : 'ltr'}
                                   >
-                                    <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
-                                      <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                                    <div className="w-20 h-20 rounded-[10px] overflow-hidden bg-slate-100 shrink-0 shadow-sm">
+                                      <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full group-hover:scale-105 transition-transform duration-300" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex flex-col items-start gap-0.5 min-w-0" dir={isHe ? 'rtl' : 'ltr'}>
-                                        <span className="text-[10px] uppercase font-bold text-[#6366F1] tracking-wider">{localizedCity}</span>
-                                        <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight w-full">{shortTitle}</h4>
-                                      </div>
+                                    <div className="flex-1 min-w-0 text-right">
+                                      <h4 className="text-[15px] font-semibold text-slate-900 truncate leading-tight mb-1" dir={isHe ? 'rtl' : 'ltr'}>
+                                        {shortTitle}
+                                      </h4>
+                                      {showOriginal && (
+                                        <p className="text-[11px] text-slate-400 truncate leading-tight" dir={!isHe ? 'rtl' : 'ltr'}>
+                                          {shortOriginalTitle}
+                                        </p>
+                                      )}
                                     </div>
-                                    <ChevronLeft size={16} className="text-slate-300" />
+                                    <div className="flex flex-col items-center gap-1 shrink-0">
+                                      <MapPin size={14} className="text-indigo-500" />
+                                      <span className="text-[10px] font-medium text-indigo-600 whitespace-nowrap">{localizedCity}</span>
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -2688,15 +2256,14 @@ const App: React.FC = () => {
                           </section>
                         )}
                       </div>
-                    </div>
-                    }
-
-                    {viewingCity && (
+                    ) : (
                       <div className="animate-in slide-in-from-bottom duration-500 pb-20">
+                        {/* Hero Section */}
+                        {/* Hero Section - Static Image */}
                         <div className="relative w-full h-[320px] mb-6 shadow-2xl">
                           <div className="absolute inset-0 animate-in fade-in duration-500">
                             {viewingCityData?.img_url ? (
-                              <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity} />
+                              <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity || undefined} />
                             ) : (
                               <GoogleImage query={`${viewingCity} landmark`} className="w-full h-full object-cover" />
                             )}
@@ -2716,50 +2283,176 @@ const App: React.FC = () => {
                           </div>
                         </div>
 
+
+
                         {isLoadingCityRoutes ? (
                           <div className="flex flex-col items-center py-20 gap-4">
                             <Loader2 className="animate-spin text-indigo-500" />
-                            <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים...' : 'Searching Tours...'}</p>
+                            <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים פנומנליים...' : 'Searching Tours...'}</p>
                           </div>
                         ) : (
                           <div className="space-y-12 px-6">
-                            {/* <LocalGuidesSection city={viewingCity || ''} className="mb-8" onPostClick={handleGuidePostClick} /> */}
+                            {/* Local Guides Section - ARCHIVED FROM PRODUCTION (Experimental) */}
+                            {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || localStorage.getItem('urbanito_debug_mode') === 'true') && (
+                              <LocalGuidesSection city={viewingCity || ''} className="mb-8" onPostClick={handleGuidePostClick} />
+                            )}
 
+                            {/* Existing Routes */}
                             {citySpecificRoutes.length > 0 && (
                               <section>
                                 <div className="flex items-center gap-3 mb-4">
                                   <h4 className="text-[14px] font-bold text-slate-800">{isHe ? `מסלולים נבחרים` : `Curated Tours`}</h4>
                                   <div className="h-px bg-slate-100 flex-1" />
+
+                                  <button
+                                    onClick={() => setIsPeekMapMode(!isPeekMapMode)}
+                                    className={`h-7 px-3 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${isPeekMapMode ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-200' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                  >
+                                    {isPeekMapMode ? (
+                                      <span className="flex items-center gap-1.5"><MapIcon size={12} fill="currentColor" /> {isHe ? 'הסתר מפה' : 'Hide Map'}</span>
+                                    ) : (
+                                      <span className="flex items-center gap-1.5"><MapIcon size={12} /> {isHe ? 'הצג על מפה' : 'Show Map'}</span>
+                                    )}
+                                  </button>
+                                </div>
+
+                                {/* Integrated Map Container - Slides down when active */}
+                                <div className={`overflow-hidden transition-all duration-500 ease-in-out relative mb-4 ${isPeekMapMode ? 'h-[280px] opacity-100 rounded-[16px] shadow-sm border border-slate-100/50' : 'h-0 opacity-0'}`}>
+                                  {isPeekMapMode && (
+                                    <>
+                                      <div ref={cityMapContainerRef} className="w-full h-full bg-slate-100" />
+                                      <button
+                                        onClick={() => {
+                                          // Use the center of the current preview map as the target
+                                          if (cityMapInstance.current) {
+                                            const center = cityMapInstance.current.getCenter();
+                                            if (center) {
+                                              const lat = center.lat();
+                                              const lng = center.lng();
+                                              setLocation({ lat, lng });
+                                              setSearchQuery(viewingCity || '');
+                                              setViewingCity(null);
+                                              window.scrollTo(0, 0);
+                                              navigate('/');
+                                            }
+                                          } else if (viewingCityData?.lat && viewingCityData?.lng) {
+                                            setLocation({ lat: viewingCityData.lat, lng: viewingCityData.lng });
+                                            setSearchQuery(viewingCity || '');
+                                            setViewingCity(null);
+                                            window.scrollTo(0, 0);
+                                            navigate('/');
+                                          }
+                                        }}
+                                        className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-md shadow-sm border border-slate-100 rounded-full flex items-center justify-center text-slate-600 hover:bg-white hover:text-indigo-600 transition-all z-10"
+                                      >
+                                        <Maximize2 size={14} />
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                                 <div className="space-y-3">
-                                  {citySpecificRoutes.map((route, idx) => {
-                                    const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he) ? (route.preferences?.names?.he || (route as any).name_he) : route.name).replace(/✨/g, '').trim();
-                                    const originalName = isHe ? route.name.replace(/✨/g, '').trim() : (route.preferences?.names?.he || (route as any).name_he || '').replace(/✨/g, '').trim();
-                                    const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
-                                    const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
+                                  {citySpecificRoutes
+                                    .filter(route => {
+                                      if (!librarySearchQuery) return true;
+                                      const q = librarySearchQuery.toLowerCase();
+                                      return route.name.toLowerCase().includes(q) || (route.description && route.description.toLowerCase().includes(q));
+                                    })
+                                    .map((route, idx) => {
+                                      // Resolve Localized Names
+                                      const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
+                                        ? (route.preferences?.names?.he || (route as any).name_he)
+                                        : route.name).replace(/✨/g, '').trim();
 
-                                    return (
-                                      <button
-                                        key={idx}
-                                        onClick={() => handleLoadSavedRoute(route.city, route)}
-                                        className="w-full flex items-center gap-4 bg-white p-4 rounded-[12px] shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.98] transition-all text-right group"
-                                      >
-                                        <div className="w-20 h-20 rounded-[10px] overflow-hidden bg-slate-100 shrink-0 relative shadow-sm">
-                                          <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full group-hover:scale-105 transition-transform duration-300" />
-                                          {route.pois?.length > 0 && <div className="absolute bottom-1 right-1 bg-indigo-600/90 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]">{route.pois.length} stops</div>}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <h4 className="text-[15px] font-semibold text-slate-900 truncate leading-tight mb-1">{shortTitle}</h4>
-                                          <p className="text-[11px] text-slate-500 line-clamp-1">{route.description || (isHe ? 'מסלול הליכה' : 'Walking tour')}</p>
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
+                                      // Get the original name (opposite language)
+                                      const originalName = isHe
+                                        ? route.name.replace(/✨/g, '').trim()
+                                        : (route.preferences?.names?.he || (route as any).name_he || '').replace(/✨/g, '').trim();
+
+                                      const localizedDescription = isHe && (route.preferences?.descriptions?.he || (route as any).description_he)
+                                        ? (route.preferences?.descriptions?.he || (route as any).description_he)
+                                        : route.description;
+
+                                      // Parse titles
+                                      const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
+                                      const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
+
+                                      const originalParenMatch = originalName.match(/(.*?)\s*\((.*?)\)/);
+                                      const shortOriginalTitle = originalParenMatch ? originalParenMatch[2].trim() : originalName;
+
+                                      // Only show original if different
+                                      const showOriginal = originalName && shortOriginalTitle !== shortTitle;
+
+                                      return (
+                                        <button
+                                          key={idx}
+                                          onClick={() => handleLoadSavedRoute(route.city, route)}
+                                          className="w-full flex items-center gap-4 bg-white p-4 rounded-[12px] shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.98] transition-all text-right group"
+                                        >
+                                          <div className="w-20 h-20 rounded-[10px] overflow-hidden bg-slate-100 shrink-0 relative shadow-sm">
+                                            <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full group-hover:scale-105 transition-transform duration-300" />
+                                            {route.pois?.length > 0 && <div className="absolute bottom-1 right-1 bg-indigo-600/90 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]">{route.pois.length} stops</div>}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <h4 className="text-[15px] font-semibold text-slate-900 truncate leading-tight mb-1">
+                                              {shortTitle}
+                                            </h4>
+                                            {showOriginal && (
+                                              <p className="text-[11px] text-slate-400 truncate leading-tight mb-1" dir={!isHe ? 'rtl' : 'ltr'}>
+                                                {shortOriginalTitle}
+                                              </p>
+                                            )}
+                                            <p className="text-[11px] text-slate-500 line-clamp-1">
+                                              {localizedDescription || (isHe ? 'מסלול הליכה מרתק העובר בין הנקודות המרכזיות בעיר.' : 'A fascinating walking tour through the main points of the city.')}
+                                            </p>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
                                 </div>
                               </section>
                             )}
 
-                            {citySpecificRoutes.length === 0 && (
+                            {/* Suggested Routes */}
+                            {citySuggestions.length > 0 && (
+                              <section>
+                                <div className="flex items-center gap-3 mb-4">
+                                  <Layers size={14} className="text-indigo-500" />
+                                  <h4 className="text-[14px] font-bold text-slate-800">{isHe ? 'הצעות למסלולים' : 'Suggested Tours'}</h4>
+                                  <div className="h-px bg-slate-100 flex-1" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  {citySuggestions.map((suggestion) => (
+                                    <button
+                                      key={suggestion.id}
+                                      onClick={() => handleGenerateSuggestion(suggestion)}
+                                      disabled={generatingSuggestionId === suggestion.id}
+                                      className="flex flex-col gap-3 bg-gradient-to-br from-white to-slate-50 p-4 rounded-lg border border-slate-100 hover:border-indigo-200 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-center relative overflow-hidden group"
+                                    >
+                                      <div className="w-12 h-12 rounded-full bg-white mx-auto flex items-center justify-center text-2xl shadow-sm border border-slate-50 group-hover:scale-110 transition-transform">
+                                        {generatingSuggestionId === suggestion.id ? (
+                                          <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                        ) : (
+                                          suggestion.icon
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <h4 className="text-[13px] font-bold text-slate-900 truncate">
+                                          {isHe ? suggestion.nameHe : suggestion.nameEn}
+                                        </h4>
+                                        <p className="text-[10px] text-indigo-500 font-medium mt-1">
+                                          {generatingSuggestionId === suggestion.id
+                                            ? (isHe ? 'בונה מסלול...' : 'Building...')
+                                            : (isHe ? 'לחץ לבנייה' : 'Create')
+                                          }
+                                        </p>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </section>
+                            )}
+
+                            {citySpecificRoutes.length === 0 && citySuggestions.length === 0 && (
                               <div className="p-12 text-center text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
                                 <p className="text-[11px] uppercase tracking-widest">{isHe ? 'אין עדיין מסלולים בעיר זו' : 'No tours for this city yet'}</p>
                               </div>
@@ -2769,20 +2462,10 @@ const App: React.FC = () => {
                       </div>
                     )}
                   </div>
-                </div>
-              } />
-
-              <Route path="/route/:routeId" element={
-                <div className="absolute inset-0 z-[3000] pointer-events-none">
-                  {currentRoute && (
-                    <Suspense fallback={null}>
-                      <VoiceGuideManager route={currentRoute} language={preferences.language} />
-                    </Suspense>
-                  )}
-                  {isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id) ? (
-                    <div className="pointer-events-auto h-full">
-                      <RouteSkeleton isHe={isHe} onBrowseLibrary={() => navigate('/library')} />
-                    </div>
+                )}
+                <div className={`h-full ${isGeneratingActive || currentRoute ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                  {isGeneratingActive ? (
+                    <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div>
                   ) : currentRoute ? (
                     <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
                       <RouteOverview
@@ -2796,193 +2479,542 @@ const App: React.FC = () => {
                         onRequestRefine={() => { }}
                         user={user}
                         isSaved={isCurrentRouteSaved}
-                        onClose={() => navigate('/')}
+                        onClose={() => navigate('/library')}
                         isExpanded={isCardExpanded}
                         setIsExpanded={setIsCardExpanded}
                         onRegenerate={handleActionCreateRoute}
-                        isRegenerating={isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id)}
+                        openRoutes={openRoutes}
+                        activeRouteIndex={activeRouteIndex}
+                        onSwitchRoute={(idx) => { setActiveRouteIndex(idx); renderRouteMarkers(openRoutes[idx]); }}
+                        onCloseRoute={handleCloseRoute}
                         showToast={showToast}
-                        nearbyRoutes={recentGlobalRoutes.filter(r => (r.city === currentRoute.city || (currentRoute.city && r.city && r.city.includes(currentRoute.city))) && r.id !== currentRoute.id)}
-                        onRouteSelect={(r) => handleLoadSavedRoute(r.city, r)}
-                        recentRoutes={openRoutes.filter(r => r.id !== currentRoute.id)}
+                        onLibraryClick={() => {
+                          setActiveTab('library');
+                          // Ensure search is cleared/reset if needed, or keep state
+                        }}
                       />
                     </div>
                   ) : (
-                    <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400">
-                      <RouteIcon size={40} className="mb-4 opacity-20" />
-                      <p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p>
-                    </div>
+                    <div className="pointer-events-none h-full flex flex-col items-center justify-center p-12 text-center text-slate-400"></div>
                   )}
                 </div>
-              } />
+              </div>
+            } />
+            <Route path="/library" element={
+              <div className="absolute inset-0 z-[3000] pointer-events-none">
+                <div key={viewingCity || 'library-main'} className={`absolute inset-0 bg-slate-50 z-[3000] overflow-y-auto pb-48 animate-in slide-in-from-bottom duration-500 pointer-events-auto ${viewingCity ? 'p-0' : 'px-6'}`}>
+                  {!viewingCity && <div className="px-1">
+                    <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area">
+                      <h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2>
+                    </div>
+                    <div className="space-y-8">
+                      {/* Library Header Stack */}
+                      <div className="sticky top-0 -mx-6 px-6 bg-slate-50/95 backdrop-blur-md pt-4 pb-4 z-10 space-y-3 border-b border-slate-100/50">
+                        {/* Search */}
+                        <div className="relative shadow-sm rounded-[12px]">
+                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                          <input
+                            type="text"
+                            value={librarySearchQuery}
+                            onChange={(e) => setLibrarySearchQuery(e.target.value)}
+                            placeholder={isHe ? 'חיפוש ערים, מסלולים ומקומות...' : 'Search cities, routes & places...'}
+                            className="w-full bg-white border border-slate-200 rounded-[12px] py-3 pr-10 pl-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                          />
+                        </div>
 
-              <Route path="/profile" element={
-                <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500">
-                  <div className="top-safe-area space-y-6">
-                    <PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => {
-                      const routeToDelete = savedRoutes.find(r => r.id === id);
-                      const city = routeToDelete?.route_data?.city || routeToDelete?.city;
-                      return user?.id && deleteRouteFromSupabase(id, user.id, city).then(() => refreshSavedContent(user.id))
-                    }} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} />
-                    <div className="pt-8 border-t border-slate-50">
-                      <PremiumProfileSection isHe={isHe} />
+                        {/* Category Badges */}
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-2 px-2">
+                          <button
+                            onClick={() => setSelectedLibraryCategory(null)}
+                            className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1.5 ${!selectedLibraryCategory ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600'}`}
+                          >
+                            <Globe size={12} /> {isHe ? 'הכל' : 'All'}
+                          </button>
+                          {CATEGORY_FILTERS.map(cat => (
+                            <button
+                              key={cat.id}
+                              onClick={() => setSelectedLibraryCategory(selectedLibraryCategory === cat.id ? null : cat.id)}
+                              className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1.5 ${selectedLibraryCategory === cat.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600'}`}
+                            >
+                              <span>{cat.icon}</span>
+                              <span>{isHe ? cat.he : cat.en}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Search Results - Show matching routes when searching */}
+                      {librarySearchQuery.trim() && (() => {
+                        const q = librarySearchQuery.toLowerCase();
+                        const matchingRoutes = recentGlobalRoutes.filter(r =>
+                          r.name?.toLowerCase().includes(q) ||
+                          r.description?.toLowerCase().includes(q) ||
+                          r.city?.toLowerCase().includes(q) ||
+                          r.pois?.some((p: any) => p.name?.toLowerCase().includes(q))
+                        ).slice(0, 10);
+
+                        if (matchingRoutes.length === 0) return null;
+
+                        return (
+                          <section className="mb-4">
+                            <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                              <Search size={12} className="text-indigo-500" /> {isHe ? 'תוצאות חיפוש' : 'Search Results'}
+                            </h3>
+                            <div className="grid grid-cols-1 gap-2">
+                              {matchingRoutes.map((route, idx) => {
+                                const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
+                                  ? (route.preferences?.names?.he || (route as any).name_he)
+                                  : route.name).replace(/✨/g, '').trim();
+
+                                // Find matching POIs to show which ones matched
+                                const matchingPois = route.pois?.filter((p: any) => p.name?.toLowerCase().includes(q)) || [];
+
+                                return (
+                                  <button
+                                    key={route.id || idx}
+                                    onClick={() => handleLoadSavedRoute(route.city, route)}
+                                    className="w-full flex items-center gap-3 bg-white p-3 rounded-[12px] shadow-sm border border-indigo-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.99] transition-all text-right"
+                                  >
+                                    <div className="w-12 h-12 rounded-[8px] overflow-hidden bg-indigo-50 shrink-0 flex items-center justify-center">
+                                      <MapPin size={20} className="text-indigo-400" />
+                                    </div>
+                                    <div className="flex flex-col min-w-0 flex-1">
+                                      <span className="font-semibold text-slate-800 text-[13px] truncate">{localizedName}</span>
+                                      <span className="text-[10px] text-slate-400 truncate">{route.city}</span>
+                                      {matchingPois.length > 0 && (
+                                        <span className="text-[9px] text-indigo-500 truncate mt-0.5">
+                                          {isHe ? 'כולל:' : 'Includes:'} {matchingPois.map((p: any) => p.name).join(', ')}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 font-medium">
+                                      <span>{route.pois?.length || 0}</span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        );
+                      })()}
+
+                      <section>
+                        <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
+                        </h3>
+                        <div
+                          ref={citiesScrollRef}
+                          className="flex overflow-x-auto snap-x scroll-pl-6 pb-4 -mx-6 px-6 gap-3 no-scrollbar cursor-grab active:cursor-grabbing"
+                          onMouseDown={handleCarouselMouseDown}
+                          onMouseMove={handleCarouselMouseMove}
+                          onMouseUp={handleCarouselMouseUp}
+                          onMouseLeave={handleCarouselMouseLeave}
+                        >
+                          {(popularCities && popularCities.length > 0 ? popularCities : FALLBACK_CITIES)
+                            .filter(city => {
+                              const matchesSearch = !librarySearchQuery ||
+                                city.name.includes(librarySearchQuery) ||
+                                city.name_en?.toLowerCase().includes(librarySearchQuery.toLowerCase());
+
+                              const cityRoutes = recentGlobalRoutes.filter(r => r.city === city.name || r.city === city.name_en);
+                              const hasMatchingRoute = !librarySearchQuery || cityRoutes.some(r =>
+                                (r.name && r.name.toLowerCase().includes(librarySearchQuery.toLowerCase())) ||
+                                (r.description && r.description.toLowerCase().includes(librarySearchQuery.toLowerCase()))
+                              );
+
+                              const matchesCategory = !selectedLibraryCategory || getCityCategories(city).has(selectedLibraryCategory);
+                              return (matchesSearch || hasMatchingRoute) && matchesCategory && city.img_url; // Filter out cities without images
+                            })
+                            .map(city => (
+                              <button
+                                key={city.id}
+                                onClick={(e) => {
+                                  if (hasDragged.current) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    return;
+                                  }
+                                  handleCitySelect(city);
+                                  // Navigating to /route here forces the "Active Route" view if one exists.
+                                  // We want to stay in the Library context to see the City View.
+                                  // navigate('/route'); 
+                                }}
+                                className="group flex flex-col gap-2 shrink-0 w-[140px] snap-start text-right transition-transform active:scale-95"
+                              >
+                                <div className="relative aspect-[3/4] overflow-hidden shadow-lg rounded-[16px] bg-slate-200 w-full">
+                                  {city.img_url ? (
+                                    <img
+                                      src={city.img_url}
+                                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                      alt={city.name}
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                        // Force parent to show fallback if possible, or just hide
+                                      }}
+                                    />
+                                  ) : null}
+                                  {(!city.img_url) && (
+                                    <GoogleImage query={`${city.name} landmark`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                  )}
+                                  <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
+                                  <div className="absolute bottom-3 right-3 left-3">
+                                    <span className="text-white text-[15px] font-bold leading-tight block shadow-sm">{city.name}</span>
+                                    <span className="text-white/70 text-[10px] uppercase font-medium tracking-wider block mt-0.5">{city.name_en}</span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                        </div>
+                      </section>
+
+                      {recentGlobalRoutes.length > 0 && (
+                        <section>
+                          <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                            <History size={12} className="text-amber-500" /> {isHe ? 'מסלולים אחרונים בקהילה' : 'Recent Community Tours'}
+                          </h3>
+                          <div className="grid grid-cols-1 gap-3">
+                            {recentGlobalRoutes.slice(0, 30).map((route, idx) => {
+                              const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he)
+                                ? (route.preferences?.names?.he || (route as any).name_he)
+                                : route.name).replace(/✨/g, '').trim();
+
+                              const cityObj = popularCities.find(c =>
+                                c.name === route.city ||
+                                c.name_en === route.city ||
+                                (route.city && c.name_en && route.city.toLowerCase() === c.name_en.toLowerCase())
+                              );
+                              const localizedCity = isHe && cityObj ? cityObj.name : (cityObj?.name_en || route.city);
+
+                              const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
+                              const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
+
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => handleLoadSavedRoute(route.city, route)}
+                                  className="w-full flex items-center gap-4 bg-white p-3 rounded-[8px] shadow-sm border border-slate-100 active:scale-[0.98] transition-all"
+                                  dir={isHe ? 'rtl' : 'ltr'}
+                                >
+                                  <div className="w-16 h-16 rounded-[8px] overflow-hidden bg-slate-100 shrink-0">
+                                    <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex flex-col items-start gap-0.5 min-w-0" dir={isHe ? 'rtl' : 'ltr'}>
+                                      <span className="text-[10px] uppercase font-bold text-[#6366F1] tracking-wider">{localizedCity}</span>
+                                      <h4 className="text-[14px] font-medium text-slate-900 truncate leading-tight w-full">{shortTitle}</h4>
+                                    </div>
+                                  </div>
+                                  <ChevronLeft size={16} className="text-slate-300" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      )}
                     </div>
                   </div>
-                </div>
-              } />
-
-              {/* Admin Routes */}
-              <Route path="/admin/command-center" element={
-                <Suspense fallback={<SuspenseLoader />}>
-                  <CommandCenterPage />
-                </Suspense>
-              } />
-
-              <Route path="/research" element={
-                <Suspense fallback={<SuspenseLoader />}>
-                  <Research />
-                </Suspense>
-              } />
-
-              <Route path="*" element={<Navigate to="/" replace />} />
-
-            </Routes>
-          </Suspense>
-
-          {isWalkModeActive && (
-            <Suspense fallback={null}>
-              <RadarView onClose={toggleWalkMode} isHe={isHe} />
-            </Suspense>
-          )}
-
-          <AnimatePresence>
-            {isAiMenuOpen && (
-              <CreationMenu
-                isHe={isHe}
-                onClose={() => setIsAiMenuOpen(false)}
-                onOptionSelect={(opt) => {
-                  if (opt === 'area') startStreetConfirm('area');
-                  if (opt === 'street') startStreetConfirm('street');
-                  if (opt === 'nearby') handleFindNearbyRoutes();
-                  if (opt === 'nearby') setIsAiMenuOpen(false); // Close menu for nearby
-                }}
-              />
-            )}
-          </AnimatePresence>
-
-          {selectedPoi && currentRoute && (
-            <Suspense fallback={<div className="fixed inset-x-0 bottom-0 h-[400px] bg-white z-[5000] rounded-t-lg flex items-center justify-center border-t shadow-2xl"><Loader2 className="animate-spin text-indigo-500 w-8 h-8" /></div>}>
-              <UnifiedPoiCard
-                poi={selectedPoi}
-                route={currentRoute}
-                currentIndex={currentRoute.pois.findIndex(p => p.id === selectedPoi.id)}
-                totalCount={currentRoute.pois.length}
-                preferences={preferences}
-                onUpdatePreferences={setPreferences}
-                onClose={() => setSelectedPoi(null)}
-                onNext={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]); }}
-                onPrev={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]); }}
-                isExpanded={isCardExpanded}
-                setIsExpanded={setIsCardExpanded}
-                showToast={showToast}
-                isSaved={savedPois.some(p => p.id === selectedPoi.id)}
-                onSave={() => handleTogglePoiSave(selectedPoi)}
-                userLocation={location}
-              />
-            </Suspense>
-          )}
-
-
-        </main>
-
-        {!selectedPoi && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[8000] pointer-events-auto">
-            <div className={`backdrop-blur-3xl border shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-full p-1.5 flex items-center gap-1.5 ${activeTab === 'profile' ? 'bg-slate-100/90 border-slate-200' : 'bg-white/70 border-white/40'}`}>
-              {/* Map Button */}
-              <button
-                onClick={() => toggleTab('navigation')}
-                className={`group relative h-12 transition-all duration-500 ease-out flex items-center justify-center gap-2 overflow-hidden ${activeTab === 'navigation'
-                  ? 'w-12 bg-indigo-600 text-white rounded-full shadow-indigo-200 shadow-lg'
-                  : 'w-12 px-0 text-slate-500 hover:text-slate-700 rounded-full'
-                  }`}
-              >
-                <div className="relative z-10 transition-transform duration-300 group-active:scale-90">
-                  <AnimatedCompass size={20} />
-                </div>
-
-              </button>
-
-              {/* Plus/X Button - Centerpiece */}
-              <button
-                onClick={handleToggleAiMenu}
-                className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all duration-300 z-[9000] ${isAiMenuOpen
-                  ? 'bg-slate-900 text-white rotate-0'
-                  : 'bg-white border border-slate-200 text-slate-900 hover:border-indigo-200'
-                  }`}
-              >
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={isAiMenuOpen ? 'close' : 'plus'}
-                    initial={{ rotate: -90, opacity: 0 }}
-                    animate={{ rotate: 0, opacity: 1 }}
-                    exit={{ rotate: 90, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {isAiMenuOpen ? <X size={24} /> : <Plus size={24} />}
-                  </motion.div>
-                </AnimatePresence>
-              </button>
-
-              {/* Route Button */}
-              <button
-                onClick={() => {
-                  if (activeTab === 'route') {
-                    toggleTab('library');
-                    navigate('/library');
-                  } else if (activeTab === 'library') {
-                    if (openRoutes.length > 0) {
-                      toggleTab('route');
-                      navigate('/route');
-                    } else {
-                      toggleTab('navigation');
-                      navigate('/');
-                    }
-                  } else {
-                    if (openRoutes.length > 0) {
-                      toggleTab('route');
-                      navigate('/route');
-                    } else {
-                      toggleTab('library');
-                      navigate('/library');
-                    }
                   }
-                }}
-                className={`group relative h-12 transition-all duration-500 ease-out flex items-center justify-center gap-2 overflow-hidden ${(activeTab === 'route' || activeTab === 'library')
-                  ? 'w-12 bg-indigo-600 text-white rounded-full shadow-indigo-200 shadow-lg'
-                  : 'w-12 px-0 text-slate-500 hover:text-slate-700 rounded-full'
-                  }`}
-              >
-                <div className="relative z-10 transition-transform duration-300 group-active:scale-90">
-                  {generatingRouteIds.size > 0 ? (
-                    <RouteTravelIcon className={`w-6 h-6 ${(activeTab === 'route' || activeTab === 'library') ? 'brightness-0 invert' : ''}`} animated={true} />
-                  ) : (
-                    <RouteIcon size={20} />
+
+                  {viewingCity && (
+                    <div className="animate-in slide-in-from-bottom duration-500 pb-20">
+                      <div className="relative w-full h-[320px] mb-6 shadow-2xl">
+                        <div className="absolute inset-0 animate-in fade-in duration-500">
+                          {viewingCityData?.img_url ? (
+                            <img src={viewingCityData.img_url} className="w-full h-full object-cover" alt={viewingCity} />
+                          ) : (
+                            <GoogleImage query={`${viewingCity} landmark`} className="w-full h-full object-cover" />
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/20" />
+                        </div>
+
+                        <div className="absolute top-0 left-0 right-0 p-6 pt-16 flex justify-between items-start z-10">
+                          <button onClick={() => setViewingCity(null)} className="w-10 h-10 bg-black/20 backdrop-blur-md border border-white/30 rounded-[12px] flex items-center justify-center text-white hover:bg-white/30 transition-all shadow-lg">
+                            <ArrowRight size={18} />
+                          </button>
+                        </div>
+
+                        <div className="absolute bottom-8 right-6 left-6 text-right z-10">
+                          <span className="text-indigo-300 font-bold uppercase tracking-[0.2em] text-[11px] mb-2 block animate-in slide-in-from-right duration-700 delay-100 drop-shadow-md">{isHe ? 'מדריך טיולים' : 'Travel Guide'}</span>
+                          <h1 className="text-5xl font-bold text-white mb-1 drop-shadow-xl animate-in slide-in-from-bottom duration-700 delay-200">{viewingCity}</h1>
+                          <p className="text-slate-200 text-sm font-medium animate-in fade-in duration-700 delay-300 drop-shadow-md">{viewingCityData?.name_en}</p>
+                        </div>
+                      </div>
+
+                      {isLoadingCityRoutes ? (
+                        <div className="flex flex-col items-center py-20 gap-4">
+                          <Loader2 className="animate-spin text-indigo-500" />
+                          <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים...' : 'Searching Tours...'}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-12 px-6">
+                          {/* <LocalGuidesSection city={viewingCity || ''} className="mb-8" onPostClick={handleGuidePostClick} /> */}
+
+                          {citySpecificRoutes.length > 0 && (
+                            <section>
+                              <div className="flex items-center gap-3 mb-4">
+                                <h4 className="text-[14px] font-bold text-slate-800">{isHe ? `מסלולים נבחרים` : `Curated Tours`}</h4>
+                                <div className="h-px bg-slate-100 flex-1" />
+                              </div>
+                              <div className="space-y-3">
+                                {citySpecificRoutes.map((route, idx) => {
+                                  const localizedName = (isHe && (route.preferences?.names?.he || (route as any).name_he) ? (route.preferences?.names?.he || (route as any).name_he) : route.name).replace(/✨/g, '').trim();
+                                  const originalName = isHe ? route.name.replace(/✨/g, '').trim() : (route.preferences?.names?.he || (route as any).name_he || '').replace(/✨/g, '').trim();
+                                  const parenMatch = localizedName.match(/(.*?)\s*\((.*?)\)/);
+                                  const shortTitle = parenMatch ? parenMatch[2].trim() : localizedName;
+
+                                  return (
+                                    <button
+                                      key={idx}
+                                      onClick={() => handleLoadSavedRoute(route.city, route)}
+                                      className="w-full flex items-center gap-4 bg-white p-4 rounded-[12px] shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-200 active:scale-[0.98] transition-all text-right group"
+                                    >
+                                      <div className="w-20 h-20 rounded-[10px] overflow-hidden bg-slate-100 shrink-0 relative shadow-sm">
+                                        <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full group-hover:scale-105 transition-transform duration-300" />
+                                        {route.pois?.length > 0 && <div className="absolute bottom-1 right-1 bg-indigo-600/90 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]">{route.pois.length} stops</div>}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <h4 className="text-[15px] font-semibold text-slate-900 truncate leading-tight mb-1">{shortTitle}</h4>
+                                        <p className="text-[11px] text-slate-500 line-clamp-1">{route.description || (isHe ? 'מסלול הליכה' : 'Walking tour')}</p>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          )}
+
+                          {citySpecificRoutes.length === 0 && (
+                            <div className="p-12 text-center text-slate-400 bg-white rounded-lg border border-dashed border-slate-200">
+                              <p className="text-[11px] uppercase tracking-widest">{isHe ? 'אין עדיין מסלולים בעיר זו' : 'No tours for this city yet'}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
+              </div>
+            } />
 
-              </button>
-            </div>
-          </div>
+            <Route path="/route/:routeId" element={
+              <div className="absolute inset-0 z-[3000] pointer-events-none">
+                {currentRoute && (
+                  <Suspense fallback={null}>
+                    <VoiceGuideManager route={currentRoute} language={preferences.language} />
+                  </Suspense>
+                )}
+                {isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id) ? (
+                  <div className="pointer-events-auto h-full">
+                    <RouteSkeleton isHe={isHe} onBrowseLibrary={() => navigate('/library')} />
+                  </div>
+                ) : currentRoute ? (
+                  <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
+                    <RouteOverview
+                      route={currentRoute}
+                      onPoiClick={setSelectedPoi}
+                      onRemovePoi={() => { }}
+                      onAddPoi={handleAddPoi}
+                      onSave={handleSaveRoute}
+                      preferences={preferences}
+                      onUpdatePreferences={setPreferences}
+                      onRequestRefine={() => { }}
+                      user={user}
+                      isSaved={isCurrentRouteSaved}
+                      onClose={() => navigate('/')}
+                      isExpanded={isCardExpanded}
+                      setIsExpanded={setIsCardExpanded}
+                      onRegenerate={handleActionCreateRoute}
+                      isRegenerating={isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id)}
+                      showToast={showToast}
+                      nearbyRoutes={recentGlobalRoutes.filter(r => (r.city === currentRoute.city || (currentRoute.city && r.city && r.city.includes(currentRoute.city))) && r.id !== currentRoute.id)}
+                      onRouteSelect={(r) => handleLoadSavedRoute(r.city, r)}
+                      recentRoutes={openRoutes.filter(r => r.id !== currentRoute.id)}
+                      onLibraryClick={() => {
+                        navigate('/library');
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="pointer-events-auto h-full bg-white/60 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center text-slate-400">
+                    <RouteIcon size={40} className="mb-4 opacity-20" />
+                    <p className="font-medium">{isHe ? 'נטען...' : 'Loading...'}</p>
+                  </div>
+                )}
+              </div>
+            } />
+
+            <Route path="/profile" element={
+              <div className="absolute inset-0 bg-white z-[3000] p-6 overflow-y-auto pb-32 animate-in slide-in-from-bottom duration-500">
+                <div className="top-safe-area space-y-6">
+                  <PreferencesPanel preferences={preferences} setPreferences={setPreferences} savedRoutes={savedRoutes} savedPois={savedPois} user={user} onLogin={signInWithGoogle} onLogout={signOut} onLoadRoute={(city, r) => handleLoadSavedRoute(city, r)} onDeleteRoute={(id) => {
+                    const routeToDelete = savedRoutes.find(r => r.id === id);
+                    const city = routeToDelete?.route_data?.city || routeToDelete?.city;
+                    return user?.id && deleteRouteFromSupabase(user.id, id).then(() => refreshSavedContent(user.id))
+                  }} onDeletePoi={(poiId) => user?.id && deletePoiFromSupabase(poiId, user.id).then(() => refreshSavedContent(user.id))} onOpenFeedback={() => { }} onOpenGuide={() => setShowOnboarding(true)} uniqueUserCount={0} remainingGens={0} offlineRouteIds={[]} onLoadOfflineRoute={() => { }} />
+                  <div className="pt-8 border-t border-slate-50">
+                    <PremiumProfileSection isHe={isHe} />
+                  </div>
+                </div>
+              </div>
+            } />
+
+            {/* Admin Routes */}
+            <Route path="/admin/command-center" element={
+              <Suspense fallback={<SuspenseLoader />}>
+                <CommandCenterPage />
+              </Suspense>
+            } />
+
+            <Route path="/research" element={
+              <Suspense fallback={<SuspenseLoader />}>
+                <Research />
+              </Suspense>
+            } />
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+
+          </Routes>
+        </Suspense>
+
+        {isWalkModeActive && (
+          <Suspense fallback={null}>
+            <RadarView onClose={toggleWalkMode} isHe={isHe} />
+          </Suspense>
         )}
 
-        {/* Global Mini Audio Player */}
-        <GlobalAudioPlayer
-          isHe={isHe}
-          currentRoute={currentRoute}
-          isVisible={!isAiMenuOpen}
-        />
-      </div >
-    </AudioProvider >
+        <AnimatePresence>
+          {isAiMenuOpen && (
+            <CreationMenu
+              isHe={isHe}
+              onClose={() => setIsAiMenuOpen(false)}
+              onOptionSelect={(opt) => {
+                if (opt === 'area') startStreetConfirm('area');
+                if (opt === 'street') startStreetConfirm('street');
+                if (opt === 'nearby') handleFindNearbyRoutes();
+                if (opt === 'nearby') setIsAiMenuOpen(false); // Close menu for nearby
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {selectedPoi && currentRoute && (
+          <Suspense fallback={<div className="fixed inset-x-0 bottom-0 h-[400px] bg-white z-[5000] rounded-t-lg flex items-center justify-center border-t shadow-2xl"><Loader2 className="animate-spin text-indigo-500 w-8 h-8" /></div>}>
+            <UnifiedPoiCard
+              poi={selectedPoi}
+              route={currentRoute}
+              currentIndex={currentRoute.pois.findIndex(p => p.id === selectedPoi.id)}
+              totalCount={currentRoute.pois.length}
+              preferences={preferences}
+              onUpdatePreferences={setPreferences}
+              onClose={() => setSelectedPoi(null)}
+              onNext={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx < currentRoute.pois.length - 1) setSelectedPoi(currentRoute.pois[idx + 1]); }}
+              onPrev={() => { const idx = currentRoute.pois.findIndex(p => p.id === selectedPoi.id); if (idx > 0) setSelectedPoi(currentRoute.pois[idx - 1]); }}
+              isExpanded={isCardExpanded}
+              setIsExpanded={setIsCardExpanded}
+              showToast={showToast}
+              isSaved={savedPois.some(p => p.id === selectedPoi.id)}
+              onSave={() => handleTogglePoiSave(selectedPoi)}
+              userLocation={location}
+            />
+          </Suspense>
+        )}
+
+
+      </main>
+
+      {!selectedPoi && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[8000] pointer-events-auto">
+          <div className={`backdrop-blur-3xl border shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-full p-1.5 flex items-center gap-1.5 ${activeTab === 'profile' ? 'bg-slate-100/90 border-slate-200' : 'bg-white/70 border-white/40'}`}>
+            {/* Map Button */}
+            <button
+              onClick={() => toggleTab('navigation')}
+              onDoubleClick={() => {
+                toggleTab('navigation');
+                setTimeout(() => {
+                  searchInputRef.current?.focus();
+                }, 150);
+              }}
+              className={`group relative h-12 transition-all duration-500 ease-out flex items-center justify-center gap-2 overflow-hidden ${activeTab === 'navigation'
+                ? 'w-12 bg-indigo-600 text-white rounded-full shadow-indigo-200 shadow-lg'
+                : 'w-12 px-0 text-slate-500 hover:text-slate-700 rounded-full'
+                }`}
+            >
+              <div className="relative z-10 transition-transform duration-300 group-active:scale-90">
+                <AnimatedCompass size={20} />
+              </div>
+
+            </button>
+
+            {/* Plus/X Button - Centerpiece */}
+            <button
+              onClick={handleToggleAiMenu}
+              className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all duration-300 z-[9000] ${isAiMenuOpen
+                ? 'bg-slate-900 text-white rotate-0'
+                : 'bg-white border border-slate-200 text-slate-900 hover:border-indigo-200'
+                }`}
+            >
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={isAiMenuOpen ? 'close' : 'plus'}
+                  initial={{ rotate: -90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  exit={{ rotate: 90, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isAiMenuOpen ? <X size={24} /> : <Plus size={24} />}
+                </motion.div>
+              </AnimatePresence>
+            </button>
+
+            {/* Route Button */}
+            <button
+              onClick={() => {
+                if (activeTab === 'route') {
+                  toggleTab('library');
+                  navigate('/library');
+                } else if (activeTab === 'library') {
+                  if (openRoutes.length > 0) {
+                    toggleTab('route');
+                    navigate('/route');
+                  } else {
+                    toggleTab('navigation');
+                    navigate('/');
+                  }
+                } else {
+                  if (openRoutes.length > 0) {
+                    toggleTab('route');
+                    navigate('/route');
+                  } else {
+                    toggleTab('library');
+                    navigate('/library');
+                  }
+                }
+              }}
+              className={`group relative h-12 transition-all duration-500 ease-out flex items-center justify-center gap-2 overflow-hidden ${(activeTab === 'route' || activeTab === 'library')
+                ? 'w-12 bg-indigo-600 text-white rounded-full shadow-indigo-200 shadow-lg'
+                : 'w-12 px-0 text-slate-500 hover:text-slate-700 rounded-full'
+                }`}
+            >
+              <div className="relative z-10 transition-transform duration-300 group-active:scale-90">
+                {generatingRouteIds.size > 0 ? (
+                  <RouteTravelIcon className={`w-6 h-6 ${(activeTab === 'route' || activeTab === 'library') ? 'brightness-0 invert' : ''}`} animated={true} />
+                ) : (
+                  <RouteIcon size={20} />
+                )}
+              </div>
+
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Global Mini Audio Player */}
+      <GlobalAudioPlayer
+        isHe={isHe}
+        currentRoute={currentRoute}
+        isVisible={!isAiMenuOpen}
+      />
+    </div >
   );
 };
 
