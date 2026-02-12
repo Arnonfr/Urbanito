@@ -1388,7 +1388,8 @@ const App: React.FC = () => {
           const validatedRoute = {
             ...routeWithDistances,
             parent_route_id: parentRoute.id,
-            originalPoiCount: routeWithDistances.pois.length
+            originalPoiCount: routeWithDistances.pois.length,
+            created_at: new Date().toISOString()
           };
 
           if (user) {
@@ -1492,7 +1493,8 @@ const App: React.FC = () => {
           id: tempId,
           city: finalCity,
           name: mode === 'street' ? finalStreet : routeWithDistances.name,
-          originalPoiCount: routeWithDistances.pois.length
+          originalPoiCount: routeWithDistances.pois.length,
+          created_at: new Date().toISOString()
         };
         setOpenRoutes(prev => prev.map(r => r.id === tempId ? validatedRoute : r));
         setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(tempId); return next; });

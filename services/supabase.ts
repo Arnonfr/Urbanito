@@ -135,10 +135,9 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
       p_name: route.name,
       p_city: route.city,
       p_description: route.description,
-      p_duration_minutes: route.durationMinutes,
+      p_duration: route.durationMinutes,
       p_preferences: preferences,
       p_is_public: route.is_public || false,
-      p_is_favorite: is_favorite,
       p_parent_route_id: parent_route_id || route.parent_route_id,
       p_pois: route.pois.map((p, idx) => ({
         id: p.id || generateStableId(p.name, p.lat, p.lng),
@@ -160,6 +159,10 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
     });
 
     if (error) throw error;
+
+    // Invalidate cache so the new route appears in library
+    globalCache.invalidatePattern('all-recent-routes');
+
     return routeId;
   } catch (err) {
     console.error("Save error:", err);
