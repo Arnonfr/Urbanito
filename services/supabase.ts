@@ -141,6 +141,7 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
       p_is_favorite: is_favorite,
       p_parent_route_id: parent_route_id || route.parent_route_id,
       p_pois: route.pois.map((p, idx) => ({
+        id: p.id || generateStableId(p.name, p.lat, p.lng),
         name: p.name,
         lat: p.lat,
         lng: p.lng,
