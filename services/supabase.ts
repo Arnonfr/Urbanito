@@ -11,7 +11,12 @@ const SUPABASE_ANON_KEY = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || 'ey
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Helper to normalize strings for comparison (lowercase, trimmed)
-export const normalize = (str: string = '') => str.toLowerCase().trim();
+// Helper to normalize strings for comparison (lowercase, trimmed, strip parentheses)
+export const normalize = (str: string = '') => {
+  return str.toLowerCase()
+    .replace(/\s*\(.*?\)\s*/g, ' ') // Remove content in parentheses
+    .trim();
+};
 
 /**
  * Cache Management
@@ -135,9 +140,10 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
       p_name: route.name,
       p_city: route.city,
       p_description: route.description,
-      p_duration: route.durationMinutes,
+      p_duration_minutes: route.durationMinutes,
       p_preferences: preferences,
       p_is_public: route.is_public || false,
+      p_is_favorite: is_favorite,
       p_parent_route_id: parent_route_id || route.parent_route_id,
       p_pois: route.pois.map((p, idx) => ({
         id: p.id || generateStableId(p.name, p.lat, p.lng),
