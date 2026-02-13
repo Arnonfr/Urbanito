@@ -134,9 +134,11 @@ export const saveUserPreferences = async (userId: string, preferences: UserPrefe
  */
 export const saveRouteToSupabase = async (userId: string, route: Route, preferences: UserPreferences, is_favorite: boolean = false, parent_route_id?: string) => {
   try {
+    const effectiveUserId = userId === 'anon' ? null : userId;
+
     // 1. Call RPC to handle complex insert (route + pois + junction)
     const { data: routeId, error } = await supabase.rpc('save_generated_route', {
-      p_user_id: userId,
+      p_user_id: effectiveUserId,
       p_name: route.name,
       p_city: route.city,
       p_description: route.description,
@@ -178,6 +180,10 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
 
 export const getSavedRoutesFromSupabase = async (userId: string): Promise<any[]> => {
   try {
+    const effectiveUserId = userId === 'anon' ? null : userId;
+    if (!effectiveUserId) return [];
+
+    console.log('[getSavedRoutesFromSupabase] Fetching for user:', effectiveUserId);
     const { data, error } = await supabase
       .from('user_saved_routes')
       .select(`
@@ -245,7 +251,9 @@ export const updateSavedRouteData = async (routeId: string, updates: any) => {
 
 export const deleteRouteFromSupabase = async (userId: string, routeId: string) => {
   try {
-    const { error } = await supabase.from('user_saved_routes').delete().eq('user_id', userId).eq('route_id', routeId);
+    const effectiveUserId = userId === 'anon' ? null : userId;
+    if (!effectiveUserId) return false;
+    const { error } = await supabase.from('user_saved_routes').delete().eq('user_id', effectiveUserId).eq('route_id', routeId);
     return !error;
   } catch (e) { return false; }
 };
@@ -402,13 +410,17 @@ export const getRoutesByCityHub = async (cityName: string, cityEn?: string, lang
  */
 export const getSavedPoisFromSupabase = async (userId: string): Promise<any[]> => {
   try {
-    const { data, error } = await supabase.from('user_saved_pois').select('*, pois(*)').eq('user_id', userId);
+    const effectiveUserId = userId === 'anon' ? null : userId;
+    if (!effectiveUserId) return [];
+    const { data, error } = await supabase.from('user_saved_pois').select('*, pois(*)').eq('user_id', effectiveUserId);
     return data || [];
   } catch (e) { return []; }
 };
 
 export const savePoiToSupabase = async (userId: string, poi: POI) => {
   try {
+    const effectiveUserId = userId === 'anon' ? null : userId;
+    if (!effectiveUserId) return false;
     // 1. Ensure POI exists
     const { data: poiRecord, error: pError } = await supabase.from('pois').upsert({
       name: poi.name,
@@ -420,14 +432,16 @@ export const savePoiToSupabase = async (userId: string, poi: POI) => {
     if (pError) throw pError;
 
     // 2. Link to user
-    await supabase.from('user_saved_pois').upsert({ user_id: userId, poi_id: poiRecord.id });
+    await supabase.from('user_saved_pois').upsert({ user_id: effectiveUserId, poi_id: poiRecord.id });
     return true;
   } catch (e) { return false; }
 };
 
 export const deletePoiFromSupabase = async (userId: string, poiId: string) => {
   try {
-    await supabase.from('user_saved_pois').delete().eq('user_id', userId).eq('poi_id', poiId);
+    const effectiveUserId = userId === 'anon' ? null : userId;
+    if (!effectiveUserId) return false;
+    await supabase.from('user_saved_pois').delete().eq('user_id', effectiveUserId).eq('poi_id', poiId);
     return true;
   } catch (e) { return false; }
 };
@@ -505,8 +519,9 @@ export const updateSharedPoiData = async (poi: POI) => {
 
 export const logUsage = async (userId: string | null, action: string, details?: any) => {
   try {
+    const effectiveUserId = userId === 'anon' ? null : userId;
     await supabase.from('usage_logs').insert({
-      user_id: userId,
+      user_id: effectiveUserId,
       action,
       details,
       created_at: new Date().toISOString()
@@ -516,8 +531,9 @@ export const logUsage = async (userId: string | null, action: string, details?: 
 
 export const submitFeedback = async (userId: string | null, feedback: any, language?: string) => {
   try {
+    const effectiveUserId = userId === 'anon' ? null : userId;
     await supabase.from('feedback').insert({
-      user_id: userId,
+      user_id: effectiveUserId,
       data: feedback,
       language: language || 'he',
       created_at: new Date().toISOString()
@@ -528,8 +544,9 @@ export const submitFeedback = async (userId: string | null, feedback: any, langu
 
 export const logPremiumInterest = async (userId: string | null, feature: string = 'general') => {
   try {
+    const effectiveUserId = userId === 'anon' ? null : userId;
     await supabase.from('premium_interest').insert({
-      user_id: userId,
+      user_id: effectiveUserId,
       feature,
       created_at: new Date().toISOString()
     });
@@ -551,8 +568,11 @@ export const saveToCuratedRoutes = async (route: Route) => {
       explanationStyle: 'standard'
     };
 
+    const userId = (route as any).user_id || (route as any).user?.id || null;
+    const effectiveUserId = userId === 'anon' ? null : userId;
+
     const routeId = await saveRouteToSupabase(
-      (route as any).user_id || null,
+      effectiveUserId,
       { ...route, is_public: true },
       preferences,
       false // not favorite by default

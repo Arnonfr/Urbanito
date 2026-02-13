@@ -121,6 +121,7 @@ export interface Route {
   preferences?: any; // For localized names/descriptions and other metadata
   is_public?: boolean;
   isPremiumRoute?: boolean;
+  user_id?: string | null; // ID of the user who created this route
   created_at?: string;
 }
 

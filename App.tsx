@@ -1494,7 +1494,8 @@ const App: React.FC = () => {
           city: finalCity,
           name: mode === 'street' ? finalStreet : routeWithDistances.name,
           originalPoiCount: routeWithDistances.pois.length,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          user_id: user?.id || null
         };
         setOpenRoutes(prev => prev.map(r => r.id === tempId ? validatedRoute : r));
         setGeneratingRouteIds(prev => { const next = new Set(prev); next.delete(tempId); return next; });

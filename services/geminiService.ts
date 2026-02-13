@@ -357,6 +357,7 @@ CRITICAL SPEED INSTRUCTION: Do NOT generate long descriptions or history yet. Ke
       description: data.description || "",
       shareTeaser: data.shareTeaser || "",
       isPremiumRoute: isPremium,
+      user_id: userId,
 
       durationMinutes: estimatedDuration,
       creator: "Urbanito AI",
