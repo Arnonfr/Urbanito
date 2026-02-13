@@ -2468,7 +2468,7 @@ const App: React.FC = () => {
                 )}
                 <div className={`h-full ${isGeneratingActive || currentRoute ? 'pointer-events-auto' : 'pointer-events-none'}`}>
                   {isGeneratingActive ? (
-                    <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} /></div>
+                    <div className="pointer-events-auto h-full"><RouteSkeleton isHe={isHe} routeName={viewingCity || streetConfirmData?.street} /></div>
                   ) : currentRoute ? (
                     <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>
                       <RouteOverview
@@ -2808,7 +2808,11 @@ const App: React.FC = () => {
                 )}
                 {isGeneratingActive && currentRoute && generatingRouteIds.has(currentRoute.id) ? (
                   <div className="pointer-events-auto h-full">
-                    <RouteSkeleton isHe={isHe} onBrowseLibrary={() => navigate('/library')} />
+                    <RouteSkeleton
+                      isHe={isHe}
+                      routeName={viewingCity || streetConfirmData?.street}
+                      onBrowseLibrary={() => navigate('/library')}
+                    />
                   </div>
                 ) : currentRoute ? (
                   <div className={`pointer-events-none h-full transition-all duration-300 ${selectedPoi ? 'opacity-0 translate-y-20' : 'opacity-100'}`}>

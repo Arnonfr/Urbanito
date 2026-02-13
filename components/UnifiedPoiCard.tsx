@@ -261,19 +261,19 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               {!poi.isFullyLoaded && !poi.description && !poi.historicalAnalysis && !poi.summary ? (
                 <div className="space-y-6">
                   <p className="opacity-90 leading-relaxed text-lg">
-                    {poi.summary || poi.description || (isHe ? 'מאתר מידע על המקום...' : 'Fetching location details...')}
+                    {poi.summary || poi.description || (isHe ? 'מכין מידע מעמיק על המקום...' : 'Preparing deep location details...')}
                   </p>
                   <div className="flex items-center gap-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
                     <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
                     <span className="text-sm text-indigo-600 font-medium animate-pulse">
-                      {isHe ? 'ה-AI חוקר את ההיסטוריה המעמיקה...' : 'AI is researching deep history...'}
+                      {isHe ? 'חוקרים את ההיסטוריה של המקום... כבר חוזרים' : 'Researching history... will be ready shortly'}
                     </span>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
                   {(() => {
-                    const mainContent = extendedData?.historicalAnalysis || poi.description || (isHe ? "אין מידע נוסף זמין עבור מקום זה." : "No additional details available for this location.");
+                    const mainContent = extendedData?.historicalAnalysis || poi.description || (isHe ? "מכינים מידע נוסף עבור מקום זה... מיד יהיה זמין." : "Preparing additional details for this location... will be available shortly.");
                     const paragraphs = mainContent ? mainContent.split('\n').filter((p: string) => p.trim()) : [];
 
                     return paragraphs.map((paragraph: string, idx: number) => {

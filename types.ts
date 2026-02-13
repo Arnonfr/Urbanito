@@ -122,6 +122,8 @@ export interface Route {
   is_public?: boolean;
   isPremiumRoute?: boolean;
   user_id?: string | null; // ID of the user who created this route
+  reconstruction_image_url?: string;
+  historical_reconstruction_prompt?: string;
   created_at?: string;
 }
 

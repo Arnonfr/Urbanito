@@ -12,10 +12,11 @@ const RouteTravelIcon = ({ className = "", animated = true }: { className?: stri
 
 interface SkeletonProps {
    isHe: boolean;
+   routeName?: string;
    onBrowseLibrary?: () => void;
 }
 
-export const RouteSkeleton: React.FC<SkeletonProps> = ({ isHe, onBrowseLibrary }) => {
+export const RouteSkeleton: React.FC<SkeletonProps> = ({ isHe, routeName, onBrowseLibrary }) => {
    return (
       <>
          <style>{`
@@ -72,10 +73,12 @@ export const RouteSkeleton: React.FC<SkeletonProps> = ({ isHe, onBrowseLibrary }
 
                   {/* Loading Message */}
                   <h2 className="text-2xl md:text-3xl font-light text-slate-800 mb-3 animate-pulse">
-                     {isHe ? 'המסלול בהכנה...' : 'Route in Progress...'}
+                     {isHe
+                        ? (routeName ? `מכינים את המסלול ל${routeName}...` : 'המסלול בהכנה...')
+                        : (routeName ? `Preparing route for ${routeName}...` : 'Route in Progress...')}
                   </h2>
                   <p className="text-slate-400 max-w-md leading-relaxed text-sm mb-6 px-4">
-                     {isHe ? 'ה-AI בונה עבורך את המסלול המושלם' : 'AI is crafting your perfect route'}
+                     {isHe ? 'בונים עבורך את המסלול המושלם... תיכף יהיה מוכן' : 'Crafting your perfect route... nearly ready'}
                   </p>
 
                   {/* Browse Library Button */}

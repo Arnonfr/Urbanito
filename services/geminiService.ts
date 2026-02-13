@@ -332,7 +332,8 @@ JSON SCHEMA:
        "summary": "Why it's worth a quick detour (1 sentence)",
        "category": "hidden_gem"
     }
-  ]
+  ],
+  "historical_reconstruction_prompt": "A detailed DALL-E/Midjourney style visual prompt in English to generate a historical reconstruction image of the most iconic location in this tour. Focus on accuracy, historical atmosphere, and high resolution."
 }
 
 NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby.
@@ -358,6 +359,7 @@ CRITICAL SPEED INSTRUCTION: Do NOT generate long descriptions or history yet. Ke
       shareTeaser: data.shareTeaser || "",
       isPremiumRoute: isPremium,
       user_id: userId,
+      historical_reconstruction_prompt: data.historical_reconstruction_prompt,
 
       durationMinutes: estimatedDuration,
       creator: "Urbanito AI",
@@ -458,7 +460,8 @@ JSON SCHEMA:
        "summary": "Why it's worth a quick detour (1 sentence)",
        "category": "hidden_gem"
     }
-  ]
+  ],
+  "historical_reconstruction_prompt": "A detailed visual prompt in English for a historical reconstruction of this street in its most famous era, focusing on architectural accuracy and atmosphere."
 }
 
 NOTE: Keep 'summary' to 1-2 sentences. We will generate deep content later.`,
@@ -476,14 +479,23 @@ NOTE: Keep 'summary' to 1-2 sentences. We will generate deep content later.`,
     const estimatedDuration = poiCount * 10;
 
     return {
-      id: `st - ${Date.now()} `,
+      id: `st-${Date.now()}`,
       city: streetName,
       name: data.name || streetName,
       description: data.description || "",
       shareTeaser: data.shareTeaser || "",
+      isPremiumRoute: isPremium,
+      user_id: userId,
+      historical_reconstruction_prompt: data.historical_reconstruction_prompt,
+
       durationMinutes: estimatedDuration,
       creator: "Street Guide",
-      pois
+      pois,
+      suggested_detours: (data.suggested_detours || []).map((p: any) => ({
+        ...p,
+        id: generateStableId(p.name, p.lat, p.lng),
+        isFullyLoaded: isHe
+      }))
     };
   } catch (err) { throw err; }
 };

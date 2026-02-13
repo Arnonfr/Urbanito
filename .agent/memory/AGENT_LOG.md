@@ -6,7 +6,13 @@
 
 ## 📅 **Timeline**
 
-### 2026-02-06 (Today)
+### 2026-02-13 (Today)
+- **08:55** - 🚀 **Critical Route Saving Fixes & Deployment**
+  - ✅ **RPC Polymorphism:** Fixed parameter naming mismatch (`p_duration` vs `p_duration_minutes`) by updating the DB function to handle both.
+  - ✅ **Robust User ID Handling:** Fixed "invalid UUID" errors for guest users by sanitizing `'anon'` strings to `null` across all Supabase services.
+  - ✅ **ID Propagation:** Ensured `user_id` is correctly passed from AI generation to the DB.
+  - ✅ **Automated Deployment:** Verified that pushing to `main` triggers Firebase Hosting deployment via GitHub Actions.
+  - ✅ **Data Integrity:** Cleaned `poi_details` to ensure better content deduplication and cache hits.
 - **09:00** - 📱 **Native Android Progress**
   - Working on `LibraryViewModel.kt` to handle route sync and display in the native app.
   - refining `LibraryScreen.kt` and `MapScreen.kt` for a premium feel.
