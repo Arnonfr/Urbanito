@@ -14,6 +14,9 @@ import { GoogleAd } from './GoogleAd';
 import { NearbyPOISuggestions } from './NearbyPOISuggestions';
 import { useAudio } from '../contexts/AudioContext';
 import { nativeBridge } from '../utils/nativeBridge';
+import { InterstitialCard } from './InterstitialCard';
+import { generateReconstructionImage } from '../services/geminiService';
+import { updateRouteImage } from '../services/supabase';
 
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
@@ -97,6 +100,8 @@ export const RouteOverview: React.FC<Props> = ({
   const { isPremium } = usePremium();
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [localReconstructionUrl, setLocalReconstructionUrl] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   // Check offline status on mount
   React.useEffect(() => {
@@ -463,7 +468,7 @@ export const RouteOverview: React.FC<Props> = ({
               </h3>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-4">
               {route.pois.map((poi, index) => {
                 const isLoaded = poi.isFullyLoaded;
 
@@ -475,137 +480,174 @@ export const RouteOverview: React.FC<Props> = ({
                   if (poi.content?.name_he) translatedName = poi.content.name_he;
                   else if ((poi as any).data?.name_he) translatedName = (poi as any).data.name_he;
 
-                  // Try to find English/Original name for secondary display
                   if (poi.content?.name_en) originalName = poi.content.name_en;
                   else if ((poi as any).data?.name_en) originalName = (poi as any).data.name_en;
-                  // If the primary name IS english (heuristic check?), maybe use it as original? 
-                  // For now, we trust the explict fields.
                   else if (poi.name !== translatedName) originalName = poi.name;
                 } else {
-                  // English Logic
                   if (poi.content?.name_en) translatedName = poi.content.name_en;
                   else if ((poi as any).data?.name_en) translatedName = (poi as any).data.name_en;
-
-                  // Secondary could be local name if available? Not requested yet.
                 }
 
                 const showOriginalName = originalName && originalName !== translatedName;
 
-                return (
-                  <React.Fragment key={poi.id}>
-                    <div
-                      onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)}
-                      className={`group relative bg-white/70 backdrop-blur-sm p-3 rounded-[16px] flex items-center gap-3 transition-all border border-white/80 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-lg hover:border-indigo-100 hover:scale-[1.01]'}`}
-                    >
-                      {/* Left Accent line based on category */}
-                      <div className={`absolute left-0 inset-y-0 w-1 ${poi.category === 'history' ? 'bg-amber-400' :
-                        poi.category === 'food' ? 'bg-orange-400' :
-                          poi.category === 'architecture' ? 'bg-indigo-400' :
-                            poi.category === 'nature' ? 'bg-emerald-400' :
-                              poi.category === 'shopping' ? 'bg-pink-400' :
-                                poi.category === 'culture' ? 'bg-purple-400' :
-                                  poi.category === 'religion' ? 'bg-blue-400' :
-                                    poi.category === 'art' ? 'bg-rose-400' :
-                                      'bg-slate-300'
+                const poiCard = (
+                  <div
+                    key={poi.id}
+                    onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)}
+                    className={`group relative bg-white/70 backdrop-blur-sm p-3 rounded-[16px] flex items-center gap-3 transition-all border border-white/80 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-lg hover:border-indigo-100 hover:scale-[1.01]'}`}
+                  >
+                    {/* Left Accent line based on category */}
+                    <div className={`absolute left-0 inset-y-0 w-1 ${poi.category === 'history' ? 'bg-amber-400' :
+                      poi.category === 'food' ? 'bg-orange-400' :
+                        poi.category === 'architecture' ? 'bg-indigo-400' :
+                          poi.category === 'nature' ? 'bg-emerald-400' :
+                            poi.category === 'shopping' ? 'bg-pink-400' :
+                              poi.category === 'culture' ? 'bg-purple-400' :
+                                poi.category === 'religion' ? 'bg-blue-400' :
+                                  poi.category === 'art' ? 'bg-rose-400' :
+                                    'bg-slate-300'
+                      }`} />
+
+                    {isEditMode && (
+                      <div className="shrink-0 cursor-grab active:cursor-grabbing mr-1">
+                        <GripVertical size={18} className="text-slate-300" />
+                      </div>
+                    )}
+
+                    {/* POI Thumbnail Image */}
+                    <div className="w-14 h-14 rounded-[12px] bg-slate-100 overflow-hidden shrink-0 border border-slate-200/50 shadow-inner relative group-hover:border-indigo-200/50 transition-colors">
+                      <GoogleImage
+                        query={`${poi.name} ${route.city}`}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      />
+                      <div className={`absolute bottom-0 inset-x-0 h-1 bg-current opacity-30 ${poi.category === 'history' ? 'text-amber-500' :
+                        poi.category === 'food' ? 'text-orange-500' :
+                          poi.category === 'architecture' ? 'text-indigo-500' :
+                            poi.category === 'nature' ? 'text-emerald-500' :
+                              'text-slate-400'
                         }`} />
-
-                      {isEditMode && (
-                        <div className="shrink-0 cursor-grab active:cursor-grabbing mr-1">
-                          <GripVertical size={18} className="text-slate-300" />
-                        </div>
-                      )}
-
-                      {/* POI Thumbnail Image */}
-                      <div className="w-14 h-14 rounded-[12px] bg-slate-100 overflow-hidden shrink-0 border border-slate-200/50 shadow-inner relative group-hover:border-indigo-200/50 transition-colors">
-                        <GoogleImage
-                          query={`${poi.name} ${route.city}`}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        />
-                        <div className={`absolute bottom-0 inset-x-0 h-1 bg-current opacity-30 ${poi.category === 'history' ? 'text-amber-500' :
-                          poi.category === 'food' ? 'text-orange-500' :
-                            poi.category === 'architecture' ? 'text-indigo-500' :
-                              poi.category === 'nature' ? 'text-emerald-500' :
-                                'text-slate-400'
-                          }`} />
-                      </div>
-
-                      <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
-                            {translatedName}
-                          </h4>
-                          {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
-                            <div className="flex items-center gap-1 shrink-0 bg-emerald-50/80 px-1.5 py-0.5 rounded-full border border-emerald-100/50 shadow-xs">
-                              <Check size={8} className="text-emerald-500 stroke-[4]" />
-                              <span className="text-[8px] font-black text-emerald-600 tracking-tighter">READY</span>
-                            </div>
-                          )}
-                        </div>
-                        {showOriginalName && (
-                          <div className="text-[11px] font-normal text-slate-400 leading-tight truncate mt-0.5">
-                            {originalName}
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-2 mt-1 min-w-0">
-                          <div className={`w-3.5 h-3.5 rounded flex items-center justify-center ${poi.category === 'history' ? 'bg-amber-50 text-amber-500' :
-                            poi.category === 'food' ? 'bg-orange-50 text-orange-500' :
-                              poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-500' :
-                                poi.category === 'nature' ? 'bg-emerald-50 text-emerald-500' :
-                                  'bg-slate-50 text-slate-500'
-                            }`}>
-                            {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
-                              ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement<any>, { size: 10 })
-                              : <MapPin size={10} />}
-                          </div>
-                          <span className="text-[10px] font-semibold text-slate-400/80 uppercase tracking-wide">
-                            {CATEGORY_LABELS_HE[poi.category as POICategoryType]}
-                          </span>
-
-                          {index > 0 && poi.travelFromPrevious && (
-                            <>
-                              <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
-                              <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
-                                <span>{poi.travelFromPrevious.duration}</span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {isEditMode ? (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
-                          className="shrink-0 w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      ) : (
-                        <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
-                            className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-colors"
-                          >
-                            <Play size={16} />
-                          </button>
-                          <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
-                            <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
-                          </div>
-                        </div>
-                      )}
-                      {(poi.isLoading || isLoaded) && (
-                        <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
-                          {isLoaded ? (
-                            <div className="h-full bg-emerald-500 w-full transition-all duration-500" />
-                          ) : poi.isLoading ? (
-                            <div className="h-full bg-emerald-400 w-1/3 animate-pulse" />
-                          ) : null}
-                        </div>
-                      )}
                     </div>
 
-                  </React.Fragment>
+                    <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
+                          {translatedName}
+                        </h4>
+                        {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
+                          <div className="flex items-center gap-1 shrink-0 bg-emerald-50/80 px-1.5 py-0.5 rounded-full border border-emerald-100/50 shadow-xs">
+                            <Check size={8} className="text-emerald-500 stroke-[4]" />
+                            <span className="text-[8px] font-black text-emerald-600 tracking-tighter">READY</span>
+                          </div>
+                        )}
+                      </div>
+                      {showOriginalName && (
+                        <div className="text-[11px] font-normal text-slate-400 leading-tight truncate mt-0.5">
+                          {originalName}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 mt-1 min-w-0">
+                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center ${poi.category === 'history' ? 'bg-amber-50 text-amber-500' :
+                          poi.category === 'food' ? 'bg-orange-50 text-orange-500' :
+                            poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-500' :
+                              poi.category === 'nature' ? 'bg-emerald-50 text-emerald-500' :
+                                'bg-slate-50 text-slate-500'
+                          }`}>
+                          {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
+                            ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement<any>, { size: 10 })
+                            : <MapPin size={10} />}
+                        </div>
+                        <span className="text-[10px] font-semibold text-slate-400/80 uppercase tracking-wide">
+                          {CATEGORY_LABELS_HE[poi.category as POICategoryType]}
+                        </span>
+
+                        {index > 0 && poi.travelFromPrevious && (
+                          <>
+                            <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
+                            <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                              <span>{poi.travelFromPrevious.duration}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {isEditMode ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
+                        className="shrink-0 w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    ) : (
+                      <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
+                          className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-colors"
+                        >
+                          <Play size={16} />
+                        </button>
+                        <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
+                          <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
+                        </div>
+                      </div>
+                    )}
+                    {(poi.isLoading || isLoaded) && (
+                      <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
+                        {isLoaded ? (
+                          <div className="h-full bg-emerald-500 w-full transition-all duration-500" />
+                        ) : poi.isLoading ? (
+                          <div className="h-full bg-emerald-400 w-1/3 animate-pulse" />
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
                 );
+
+                const items = [poiCard];
+
+                // Inject Highlights (every 3 POIs, starting at index 2)
+                if (index > 1 && (index + 1) % 3 === 0 && !isEditMode) { // e.g., after 2nd (index 1? no index 2 is 3rd), so at index 2 (3rd item) -> insert
+                  const highlightText = route.shareTeaser || (poi.description ? poi.description.substring(0, 80) + "..." : null);
+                  if (highlightText) {
+                    items.push(
+                      <InterstitialCard
+                        key={`highlight-${index}`}
+                        type="highlight"
+                        isHe={isHe}
+                        content={highlightText}
+                      />
+                    );
+                  }
+                }
+
+                return items;
               })}
+
+              {/* Reconstruction Card at the END */}
+              {(!isEditMode && route.historical_reconstruction_prompt && route.historical_reconstruction_prompt.length > 10) && (
+                <InterstitialCard
+                  key="reconstruction-end-card"
+                  type="reconstruction"
+                  isHe={isHe}
+                  prompt={route.historical_reconstruction_prompt}
+                  imageUrl={localReconstructionUrl || route.reconstruction_image_url}
+                  isLoading={isGeneratingImage}
+                  onGenerateImage={async () => {
+                    if (route.historical_reconstruction_prompt && !isGeneratingImage) {
+                      setIsGeneratingImage(true);
+                      const url = await generateReconstructionImage(
+                        route.historical_reconstruction_prompt,
+                        route.name // Pass specific location name for better accuracy
+                      );
+                      setIsGeneratingImage(false);
+                      if (url) {
+                        setLocalReconstructionUrl(url);
+                        await updateRouteImage(route.id, url);
+                      }
+                    }
+                  }}
+                />
+              )}
             </div>
 
             {!isEditMode && !isRegenerating && (

@@ -149,6 +149,7 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
       p_parent_route_id: parent_route_id || route.parent_route_id,
       p_reconstruction_image_url: route.reconstruction_image_url || null,
       p_historical_reconstruction_prompt: route.historical_reconstruction_prompt || null,
+      p_share_teaser: route.shareTeaser || null,
       p_pois: route.pois.map((p, idx) => ({
         id: p.id || generateStableId(p.name, p.lat, p.lng),
         name: p.name,
@@ -180,6 +181,23 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
   }
 };
 
+export const updateRouteImage = async (routeId: string, imageUrl: string) => {
+  try {
+    const { error } = await supabase
+      .from('routes')
+      .update({ reconstruction_image_url: imageUrl })
+      .eq('id', routeId);
+
+    if (error) throw error;
+    globalCache.invalidatePattern('all-recent-routes');
+    console.log("✅ Route reconstruction image updated in DB");
+    return true;
+  } catch (err) {
+    console.error("Failed to update route image:", err);
+    return false;
+  }
+};
+
 export const getSavedRoutesFromSupabase = async (userId: string): Promise<any[]> => {
   try {
     const effectiveUserId = userId === 'anon' ? null : userId;
@@ -200,7 +218,12 @@ export const getSavedRoutesFromSupabase = async (userId: string): Promise<any[]>
           preferences,
           user_id,
           is_public,
+          user_id,
+          is_public,
           parent_route_id,
+          share_teaser,
+          reconstruction_image_url,
+          historical_reconstruction_prompt,
           route_pois (
             order_index,
             pois (
@@ -234,6 +257,7 @@ export const getSavedRoutesFromSupabase = async (userId: string): Promise<any[]>
         route_data: {
           ...r,
           durationMinutes: r.duration_minutes,
+          shareTeaser: r.share_teaser,
           pois: sortedPois,
           isFullyLoaded: sortedPois.some((p: any) => p.isFullyLoaded)
         }

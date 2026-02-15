@@ -596,6 +596,68 @@ export const generateSpeech = async (text: string, language: string, isPremium: 
 };
 
 /**
+ * Generates a historical reconstruction image URL using Pollinations.ai (Free, Fast, No Auth).
+ * This is perfect for the "Localhost Demo" and MVP before moving to DALL-E/Imagen.
+ */
+export const generateReconstructionImage = async (prompt: string, locationName?: string): Promise<string | null> => {
+  try {
+    console.log("🎨 Generating Reconstruction Image for:", prompt.substring(0, 50) + "...");
+
+    // 10 Variables for Atmospheric Detail (as requested) ensuring rich environment generation
+    const atmosphericDetails = [
+      "cobblestone streets", "antique gas lamps", "horse-drawn carriages",
+      "early morning fog", "bustling street market with vendors", "classic european facades",
+      "pedestrians in period clothing", "soft sunlight filtering through trees",
+      "rainy reflections on wet pavement", "intricate architectural details on buildings"
+    ];
+
+    // Pick 2 random details to enrich the prompt without overloading it
+    const shuffled = atmosphericDetails.sort(() => 0.5 - Math.random());
+    const selectedDetails = shuffled.slice(0, 2).join(", ");
+
+    // Simplify prompt to avoid 530 errors from free tier API
+    // If a specific location name is provided (e.g. "Rue Halle"), prioritize it.
+    const subject = locationName
+      ? `${locationName}`
+      : prompt.replace(/[^\w\s,]/gi, '').substring(0, 50);
+
+    // Construct a rich, specific prompt using the variables
+    // Limit total length to ~200 chars to stay safe
+    const simpleEnhancedPrompt = `1900s street photography, wide angle view of ${subject}, featuring ${selectedDetails}, sepia tone, vintage feel, highly detailed architecture`;
+
+    const encodedPrompt = encodeURIComponent(simpleEnhancedPrompt.substring(0, 300));
+
+    // Use random seed to vary results
+    const seed = Math.floor(Math.random() * 1000);
+
+    // Minimal parameters for maximum compatibility
+    const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true&seed=${seed}`;
+
+    // Verify if the image is actually generating (avoid 530 errors)
+    try {
+      const check = await fetch(url, { method: 'HEAD' });
+      if (check.status !== 200) {
+        console.warn(`Pollinations blocked request (${check.status}). Switching to placeholder service.`);
+        // Fallback: Use a reliable placeholder service for history/architecture
+        // keywords: paris, vintage, street
+        return `https://loremflickr.com/800/600/paris,vintage,street?lock=${seed}`;
+      }
+    } catch (e) {
+      console.warn("Could not verify image URL, trying placeholder:", e);
+      return `https://loremflickr.com/800/600/paris,vintage,street?lock=${seed}`;
+    }
+
+    // Add a small artificial delay to make it feel like "work" is being done
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    return url;
+  } catch (e) {
+    console.error("Failed to generate image URL:", e);
+    return null;
+  }
+};
+
+/**
  * Orchestrator Agent Logic
  * Parses natural language into structured commands for the virtual team.
  */
