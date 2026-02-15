@@ -101,6 +101,7 @@ export const RouteOverview: React.FC<Props> = ({
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [localReconstructionUrl, setLocalReconstructionUrl] = useState<string | null>(null);
+  const [localPrompt, setLocalPrompt] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   // Check offline status on mount
@@ -112,6 +113,32 @@ export const RouteOverview: React.FC<Props> = ({
       });
     }
   }, [route?.id]);
+
+  // SELF HEALING: If viewing a saved route that is missing historical data (legacy data),
+  // Auto-generate a prompt and try to fetch an image so the UI isn't broken.
+  React.useEffect(() => {
+    if (!isEditMode && route && !route.historical_reconstruction_prompt && !isGeneratingImage) {
+      console.log("Auto-healing legacy route: missing historical prompt");
+      const defaultPrompt = `Vintage photo of ${route.name}, ${route.city}`;
+
+      // Update local state temporarily to show loading state if needed
+      // Actually we trigger generation directly
+      const healRoute = async () => {
+        setIsGeneratingImage(true);
+        // Generate image with the new default prompt
+        const url = await generateReconstructionImage(defaultPrompt, route.name);
+        if (url) {
+          setLocalReconstructionUrl(url);
+          setLocalPrompt(defaultPrompt);
+          // Save to DB so next time it's there
+          // We need to update BOTH the image URL AND the prompt
+          await updateRouteImage(route.id, url, defaultPrompt);
+        }
+        setIsGeneratingImage(false);
+      };
+      healRoute();
+    }
+  }, [route?.id, isEditMode]);
 
   const handleDownloadToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -624,12 +651,12 @@ export const RouteOverview: React.FC<Props> = ({
               })}
 
               {/* Reconstruction Card at the END */}
-              {(!isEditMode && route.historical_reconstruction_prompt && route.historical_reconstruction_prompt.length > 10) && (
+              {(!isEditMode && ((route.historical_reconstruction_prompt && route.historical_reconstruction_prompt.length > 10) || localPrompt)) && (
                 <InterstitialCard
                   key="reconstruction-end-card"
                   type="reconstruction"
                   isHe={isHe}
-                  prompt={route.historical_reconstruction_prompt}
+                  prompt={localPrompt || route.historical_reconstruction_prompt}
                   imageUrl={localReconstructionUrl || route.reconstruction_image_url}
                   isLoading={isGeneratingImage}
                   onGenerateImage={async () => {

@@ -181,11 +181,16 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
   }
 };
 
-export const updateRouteImage = async (routeId: string, imageUrl: string) => {
+export const updateRouteImage = async (routeId: string, imageUrl: string, prompt?: string) => {
   try {
+    const updates: any = { reconstruction_image_url: imageUrl };
+    if (prompt) {
+      updates.historical_reconstruction_prompt = prompt;
+    }
+
     const { error } = await supabase
       .from('routes')
-      .update({ reconstruction_image_url: imageUrl })
+      .update(updates)
       .eq('id', routeId);
 
     if (error) throw error;
