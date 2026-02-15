@@ -726,13 +726,26 @@ const App: React.FC = () => {
     geocoder.geocode({ location: center }, (results: any, status: string) => {
       let city = isHe ? "מיקום נוכחי" : "Current Location";
       let street = isHe ? "רחוב נוכחי" : "Current Street";
+
       if (status === 'OK' && results.length > 0) {
         city = extractStandardCity(results) || city;
+
+        // Strategy: Look for the most precise street address or route
+        // 1. First Pass: Look for a result with type 'street_address' or 'route'
+        //    and try to construct "Street Name + Number"
         for (const res of results) {
-          const foundStreet = res.address_components.find((c: any) => c.types.includes('route'));
-          if (foundStreet) {
-            street = foundStreet.long_name;
-            break;
+          const isRouteOrAddress = res.types.includes('route') || res.types.includes('street_address') || res.types.includes('premise');
+          if (isRouteOrAddress) {
+            const routeComp = res.address_components.find((c: any) => c.types.includes('route'));
+            const numberComp = res.address_components.find((c: any) => c.types.includes('street_number'));
+
+            if (routeComp) {
+              street = routeComp.long_name;
+              if (numberComp) {
+                street = `${street} ${numberComp.long_name}`;
+              }
+              break; // Stop at the first (most specific) match
+            }
           }
         }
       }
