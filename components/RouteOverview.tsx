@@ -494,11 +494,11 @@ export const RouteOverview: React.FC<Props> = ({
                   <div
                     key={poi.id}
                     onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)}
-                    className={`group relative bg-white border border-slate-100 p-4 rounded-[20px] flex items-center gap-4 transition-all ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 active:scale-[0.98]'}`}
+                    className={`group relative bg-white border border-slate-100 p-3 rounded-[20px] flex items-center gap-4 transition-all ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 active:scale-[0.98]'}`}
                     dir={isHe ? 'rtl' : 'ltr'}
                   >
-                    {/* Index Number Badge - Moved to a better relative position */}
-                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-slate-900 border-2 border-white text-white text-[10px] font-black flex items-center justify-center z-10 shadow-md">
+                    {/* Index Number Badge */}
+                    <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-900 border-2 border-white text-white text-[9px] font-black flex items-center justify-center z-10 shadow-md">
                       {index + 1}
                     </div>
 
@@ -508,15 +508,15 @@ export const RouteOverview: React.FC<Props> = ({
                       </div>
                     )}
 
-                    {/* POI Thumbnail Image - Larger & Premium */}
-                    <div className="w-20 h-20 rounded-[16px] bg-slate-100 overflow-hidden shrink-0 border border-slate-50 shadow-sm relative transition-all group-hover:shadow-md">
+                    {/* POI Thumbnail Image */}
+                    <div className="w-16 h-16 rounded-[14px] bg-slate-100 overflow-hidden shrink-0 border border-slate-50 shadow-sm relative transition-all group-hover:shadow-md">
                       <GoogleImage
                         query={`${poi.name} ${route.city}`}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                       />
 
                       {/* Category Identity Dot */}
-                      <div className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full border border-white shadow-sm ${poi.category === 'history' ? 'bg-amber-400' :
+                      <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full border border-white shadow-sm ${poi.category === 'history' ? 'bg-amber-400' :
                           poi.category === 'food' ? 'bg-orange-400' :
                             poi.category === 'architecture' ? 'bg-indigo-400' :
                               poi.category === 'nature' ? 'bg-emerald-400' :
@@ -524,48 +524,43 @@ export const RouteOverview: React.FC<Props> = ({
                         }`} />
                     </div>
 
-                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5 overflow-hidden">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0 w-full" style={{ textAlign: 'start' }}>
-                          <h4 className="text-[17px] font-bold text-slate-900 leading-tight tracking-tight break-words" dir="auto">
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5 overflow-hidden">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0 w-full" style={{ textAlign: 'start' }}>
+                          <h4 className="text-[15px] font-extrabold text-slate-800 leading-[1.2] tracking-tight break-words flex-1" dir="auto">
                             {translatedName}
                           </h4>
                           {isLoaded && (
-                            <div className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 border border-emerald-100 shrink-0">
-                              <Check size={10} className="text-emerald-500 stroke-[4]" />
+                            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-50 border border-emerald-100 shrink-0 mt-0.5">
+                              <Check size={8} className="text-emerald-500 stroke-[4]" />
                             </div>
                           )}
                         </div>
                       </div>
 
                       {showOriginalName && (
-                        <div className="text-[11px] font-medium text-slate-400 leading-tight truncate italic opacity-80" style={{ textAlign: 'start' }} dir="auto">
+                        <div className="text-[9px] font-medium text-slate-400/60 leading-tight truncate mb-1" style={{ textAlign: 'start' }} dir="auto">
                           {originalName}
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2.5 mt-0.5" style={{ textAlign: 'start' }}>
-                        <div className="flex items-center gap-1.5">
-                          <div className={`p-1 rounded-md ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
-                              poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
-                                poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-600' :
-                                  poi.category === 'nature' ? 'bg-emerald-50 text-emerald-600' :
-                                    'bg-slate-50 text-slate-600'
-                            }`}>
+                      <div className="flex items-center gap-2" style={{ textAlign: 'start' }}>
+                        <div className="flex items-center gap-1 opacity-60">
+                          <div className="text-slate-400">
                             {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
                               ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement<any>, { size: 10 })
                               : <MapPin size={10} />}
                           </div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
                             {CATEGORY_LABELS_HE[poi.category as POICategoryType]}
                           </span>
                         </div>
 
                         {index > 0 && poi.travelFromPrevious && (
-                          <div className="flex items-center gap-1.5 text-slate-300">
-                            <span className="w-1 h-1 rounded-full bg-slate-200" />
-                            <div className="flex items-center gap-1 text-[10px] font-medium text-slate-400 whitespace-nowrap">
-                              <Timer size={10} className="opacity-70" />
+                          <div className="flex items-center gap-1.5 text-slate-200">
+                            <span className="w-0.5 h-0.5 rounded-full bg-slate-200" />
+                            <div className="flex items-center gap-1 text-[9px] font-medium text-slate-400/70 whitespace-nowrap">
+                              <Timer size={9} />
                               <span>{poi.travelFromPrevious.duration}</span>
                             </div>
                           </div>
@@ -577,9 +572,9 @@ export const RouteOverview: React.FC<Props> = ({
                       <div className={`shrink-0 flex items-center justify-center ${isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all duration-300`}>
                         <button
                           onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
-                          className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white flex items-center justify-center transition-all border border-indigo-100 shadow-sm"
+                          className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white flex items-center justify-center transition-all border border-indigo-100 shadow-sm"
                         >
-                          <Play size={18} fill="currentColor" />
+                          <Play size={16} fill="currentColor" />
                         </button>
                       </div>
                     )}
@@ -587,8 +582,8 @@ export const RouteOverview: React.FC<Props> = ({
                 );
 
                 const timelineConnector = index < route.pois.length - 1 && (
-                  <div key={`conn-${poi.id}`} className="flex justify-center my-1">
-                    <div className="w-0.5 h-8 bg-gradient-to-b from-slate-200 to-transparent rounded-full opacity-50" />
+                  <div key={`conn-${poi.id}`} className="flex justify-center my-0.5">
+                    <div className="w-0.5 h-4 bg-slate-100 rounded-full" />
                   </div>
                 );
 
