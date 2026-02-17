@@ -64,11 +64,27 @@ export const RouteOverview: React.FC<Props> = ({
     ? (route.preferences?.names?.he || (route as any).name_he)
     : route.name;
 
+  // Robust parsing: "Original Name (Translated Name)" or "Translated Name (Original Name)"
+  // Priority for shortTitle should be the language of the user
   const parenMatch = localizedTitle.match(/(.*?)\s*\((.*?)\)/);
-  const longDescription = parenMatch ? parenMatch[1].trim() : "";
-  const shortTitle = parenMatch ? parenMatch[2].trim() : localizedTitle;
-  const mainTitle = shortTitle;
-  const subTitle = longDescription;
+  let mainTitle = localizedTitle;
+  let subTitle = route.description || "";
+
+  if (parenMatch) {
+    const p1 = parenMatch[1].trim();
+    const p2 = parenMatch[2].trim();
+    // If user is Hebrew and p2 contains Hebrew, p2 is our main title
+    const containsHebrew = (text: string) => /[\u0590-\u05FF]/.test(text);
+    if (isHe) {
+      if (containsHebrew(p2)) { mainTitle = p2; subTitle = p1; }
+      else if (containsHebrew(p1)) { mainTitle = p1; subTitle = p2; }
+      else { mainTitle = p2; subTitle = p1; } // Fallback to paren part as "short name"
+    } else {
+      if (!containsHebrew(p1)) { mainTitle = p1; subTitle = p2; }
+      else if (!containsHebrew(p2)) { mainTitle = p2; subTitle = p1; }
+      else { mainTitle = p1; subTitle = p2; }
+    }
+  }
   const [isPrefsOpen, setIsPrefsOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   // Internal loading state for button feedback only (non-blocking)
@@ -476,16 +492,32 @@ export const RouteOverview: React.FC<Props> = ({
                 let translatedName = poi.name;
                 let originalName = "";
 
-                if (isHe) {
-                  if (poi.content?.name_he) translatedName = poi.content.name_he;
-                  else if ((poi as any).data?.name_he) translatedName = (poi as any).data.name_he;
+                // Parsing logic for POIs with "Name (נאום)" or similar
+                const poiParenMatch = poi.name.match(/(.*?)\s*\((.*?)\)/);
+                if (poiParenMatch) {
+                  const p1 = poiParenMatch[1].trim();
+                  const p2 = poiParenMatch[2].trim();
+                  const containsHebrew = (text: string) => /[\u0590-\u05FF]/.test(text);
 
-                  if (poi.content?.name_en) originalName = poi.content.name_en;
-                  else if ((poi as any).data?.name_en) originalName = (poi as any).data.name_en;
-                  else if (poi.name !== translatedName) originalName = poi.name;
+                  if (isHe) {
+                    if (containsHebrew(p2)) { translatedName = p2; originalName = p1; }
+                    else { translatedName = p1; originalName = p2; }
+                  } else {
+                    if (!containsHebrew(p1)) { translatedName = p1; originalName = p2; }
+                    else { translatedName = p2; originalName = p1; }
+                  }
                 } else {
-                  if (poi.content?.name_en) translatedName = poi.content.name_en;
-                  else if ((poi as any).data?.name_en) translatedName = (poi as any).data.name_en;
+                  if (isHe) {
+                    if (poi.content?.name_he) translatedName = poi.content.name_he;
+                    else if ((poi as any).data?.name_he) translatedName = (poi as any).data.name_he;
+
+                    if (poi.content?.name_en) originalName = poi.content.name_en;
+                    else if ((poi as any).data?.name_en) originalName = (poi as any).data.name_en;
+                    else if (poi.name !== translatedName) originalName = poi.name;
+                  } else {
+                    if (poi.content?.name_en) translatedName = poi.content.name_en;
+                    else if ((poi as any).data?.name_en) translatedName = (poi as any).data.name_en;
+                  }
                 }
 
                 const showOriginalName = originalName && originalName !== translatedName;
@@ -582,8 +614,8 @@ export const RouteOverview: React.FC<Props> = ({
                 );
 
                 const timelineConnector = index < route.pois.length - 1 && (
-                  <div key={`conn-${poi.id}`} className="flex justify-center -my-1">
-                    <div className="w-0.5 h-3 bg-slate-100 rounded-full" />
+                  <div key={`conn-${poi.id}`} className="flex justify-center -my-1.5 opacity-40">
+                    <div className="w-0.5 h-3 bg-slate-200 rounded-full" />
                   </div>
                 );
 
