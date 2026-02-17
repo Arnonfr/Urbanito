@@ -468,7 +468,7 @@ export const RouteOverview: React.FC<Props> = ({
               </h3>
             </div>
 
-            <div className="space-y-4">
+            <div className="flex flex-col gap-2">
               {route.pois.map((poi, index) => {
                 const isLoaded = poi.isFullyLoaded;
 
@@ -517,17 +517,17 @@ export const RouteOverview: React.FC<Props> = ({
 
                       {/* Category Identity Dot */}
                       <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full border border-white shadow-sm ${poi.category === 'history' ? 'bg-amber-400' :
-                          poi.category === 'food' ? 'bg-orange-400' :
-                            poi.category === 'architecture' ? 'bg-indigo-400' :
-                              poi.category === 'nature' ? 'bg-emerald-400' :
-                                'bg-slate-300'
+                        poi.category === 'food' ? 'bg-orange-400' :
+                          poi.category === 'architecture' ? 'bg-indigo-400' :
+                            poi.category === 'nature' ? 'bg-emerald-400' :
+                              'bg-slate-300'
                         }`} />
                     </div>
 
-                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5 overflow-hidden">
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-0 overflow-hidden">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-start gap-2 min-w-0 w-full" style={{ textAlign: 'start' }}>
-                          <h4 className="text-[15px] font-extrabold text-slate-800 leading-[1.2] tracking-tight break-words flex-1" dir="auto">
+                          <h4 className="text-[16px] font-medium text-slate-800 leading-[1.3] tracking-tight break-words flex-1" dir="auto">
                             {translatedName}
                           </h4>
                           {isLoaded && (
@@ -539,7 +539,7 @@ export const RouteOverview: React.FC<Props> = ({
                       </div>
 
                       {showOriginalName && (
-                        <div className="text-[9px] font-medium text-slate-400/60 leading-tight truncate mb-1" style={{ textAlign: 'start' }} dir="auto">
+                        <div className="text-[10px] text-slate-400 font-light leading-tight truncate mt-0.5 mb-1" style={{ textAlign: 'start', opacity: 0.6 }} dir="auto">
                           {originalName}
                         </div>
                       )}
@@ -582,8 +582,8 @@ export const RouteOverview: React.FC<Props> = ({
                 );
 
                 const timelineConnector = index < route.pois.length - 1 && (
-                  <div key={`conn-${poi.id}`} className="flex justify-center my-0.5">
-                    <div className="w-0.5 h-4 bg-slate-100 rounded-full" />
+                  <div key={`conn-${poi.id}`} className="flex justify-center -my-1">
+                    <div className="w-0.5 h-3 bg-slate-100 rounded-full" />
                   </div>
                 );
 
