@@ -98,6 +98,7 @@ export const RouteOverview: React.FC<Props> = ({
   const [localReconstructionUrl, setLocalReconstructionUrl] = useState<string | null>(null);
   const [localPrompt, setLocalPrompt] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
   // Check offline status on mount
   React.useEffect(() => {
@@ -450,9 +451,24 @@ export const RouteOverview: React.FC<Props> = ({
             </h2>
             {/* Long descriptive subtitle */}
             {subTitle && (
-              <p className="text-[13px] font-normal text-white/80 mt-2 leading-snug drop-shadow-md line-clamp-2">
-                {subTitle}
-              </p>
+              <div className="mt-2 pointer-events-auto">
+                <p
+                  className={`text-[13px] font-normal text-white/80 leading-snug drop-shadow-md transition-all duration-300 ${isDescriptionExpanded ? '' : 'line-clamp-2'}`}
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                >
+                  {subTitle}
+                </p>
+                {subTitle.length > 80 && (
+                  <button
+                    onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                    className="text-[11px] font-bold text-indigo-300 mt-1 uppercase tracking-wider hover:text-white transition-colors"
+                  >
+                    {isDescriptionExpanded
+                      ? (isHe ? 'סגור' : 'Show less')
+                      : (isHe ? 'קרא עוד...' : 'Read more...')}
+                  </button>
+                )}
+              </div>
             )}
             {route.parent_route_id && (
               <span className="text-[10px] font-medium text-white/40 mt-2 flex items-center gap-1 justify-end">
