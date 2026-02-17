@@ -3,15 +3,15 @@ import { POI, UserPreferences, Route } from '../types';
 import {
   Loader2, ScrollText, MapPin, Headphones, ChevronLeft, ArrowRight, ArrowLeft,
   Heart, BookOpen, Type as TypeIcon, ExternalLink, ChevronRight, Maximize2, X, Info, Building, Footprints,
-  Play, Pause, Zap, User
+  Play, Pause, Zap, User, Sparkles, MapPinCheck
 } from 'lucide-react';
 import { CATEGORY_LABELS_HE } from './RouteOverview';
 import { GoogleImage } from './GoogleImage';
 import { useAudio } from '../contexts/AudioContext';
 import { usePremium } from '../contexts/PremiumContext';
 import { PremiumLockOverlay } from './PremiumLockOverlay';
-import { Sparkles, MapPinCheck } from 'lucide-react';
 import { getDistanceFromLatLonInMeters } from '../utils/geocoding';
+import { motion, useDragControls, PanInfo } from 'framer-motion';
 
 interface Props {
   poi: POI;
@@ -42,62 +42,10 @@ export const UnifiedPoiCard: React.FC<Props> = ({
 
   const [fontLevel, setFontLevel] = useState<0 | 1 | 2>(0);
   const [isImageFullscreen, setIsImageFullscreen] = useState(false);
-  const touchStart = useRef<number | null>(null);
-  const touchStartX = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
-  const dragStartY = useRef(0);
-  const dragStartScrollTop = useRef(0);
 
   // Data comes fully from props now (managed by App.tsx pre-fetching)
   const extendedData = poi; // Use poi as extendedData since fields are merged
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStart.current === null || touchStartX.current === null) return;
-
-    const touchY = e.changedTouches[0].clientY;
-    const touchX = e.changedTouches[0].clientX;
-    const distY = touchStart.current - touchY;
-    const distX = touchStartX.current - touchX;
-
-    // Ignore if horizontal scroll was dominant
-    if (Math.abs(distX) > Math.abs(distY) || Math.abs(distX) > 30) {
-      touchStart.current = null;
-      touchStartX.current = null;
-      return;
-    }
-
-    if (distY > 80) setIsExpanded(true);
-    else if (distY < -80) setIsExpanded(false);
-
-    touchStart.current = null;
-    touchStartX.current = null;
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    isDragging.current = true;
-    dragStartY.current = e.clientY;
-    dragStartScrollTop.current = scrollRef.current?.scrollTop || 0;
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging.current || !scrollRef.current) return;
-    e.preventDefault();
-    const dy = e.clientY - dragStartY.current;
-    scrollRef.current.scrollTop = dragStartScrollTop.current - dy;
-  };
-
-  const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-
-    const totalDy = e.clientY - dragStartY.current;
-    if (Math.abs(totalDy) > 60) {
-      if (totalDy < -60 && !isExpanded) setIsExpanded(true);
-      if (totalDy > 60 && isExpanded && (!scrollRef.current || scrollRef.current.scrollTop <= 10)) setIsExpanded(false);
-    }
-  };
 
   const openInGoogleMaps = () => {
     if (poi.googlePlaceId) {
@@ -145,39 +93,58 @@ export const UnifiedPoiCard: React.FC<Props> = ({
     2: 'text-3xl font-normal leading-loose'
   };
 
+  // DRAG CONTROLS
+  const dragControls = useDragControls();
+
+  // Helper to determine snap after drag
+  const onDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const offset = info.offset.y;
+    const velocity = info.velocity.y;
+
+    if (isExpanded) {
+      // Trying to close?
+      // Only close if scrolled to top or high enough offset
+      if ((offset > 150 || velocity > 300) && (!scrollRef.current || scrollRef.current.scrollTop <= 10)) {
+        setIsExpanded(false);
+      }
+    } else {
+      // Trying to open?
+      if (offset < -150 || velocity < -300) {
+        setIsExpanded(true);
+      }
+    }
+  };
+
   return (
-    <div
-      className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[96dvh]' : 'h-[420px]'} bg-white/50 backdrop-blur-xl border-t border-white/40 overflow-hidden`}
-      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
-      onTouchStart={(e) => {
-        const touchY = e.targetTouches[0].clientY;
-        const rect = e.currentTarget.getBoundingClientRect();
-        // Allow swipe only from the top 100px (header/image area)
-        const target = e.target as HTMLElement;
-
-        // Ignore if clicking a button
-        if (target.closest('button') || target.closest('input')) {
-          touchStart.current = null;
-          touchStartX.current = null;
-          return;
-        }
-
-        if (touchY - rect.top < 150) {
-          touchStart.current = touchY;
-          touchStartX.current = e.targetTouches[0].clientX;
-        } else {
-          touchStart.current = null;
-          touchStartX.current = null;
-        }
-      }} onTouchEnd={handleTouchEnd}
-      onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+    <motion.div
+      drag="y"
+      dragListener={false} // Only drag via controls
+      dragControls={dragControls}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={0.2}
+      onDragEnd={onDragEnd}
+      initial={false}
+      animate={{
+        y: isExpanded ? 0 : "calc(96dvh - 420px)",
+        borderRadius: isExpanded ? 0 : 24
+      }}
+      transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      className={`fixed inset-x-0 bottom-0 z-[5000] flex flex-col pointer-events-auto shadow-2xl h-[96dvh] bg-white/50 backdrop-blur-xl border-t border-white/40 overflow-hidden`}
+      dir={isHe ? 'rtl' : 'ltr'}
     >
       <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar relative pb-32">
-        <div className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-72' : 'h-48'} bg-slate-900 group`}>
+        <div
+          className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-72' : 'h-48'} bg-slate-900 group touch-none`}
+          onPointerDown={(e) => dragControls.start(e)}
+        >
           <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
-          <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
+          {/* Drag Handle Indicator */}
+          <div
+            className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20"
+            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+          >
             <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
           </div>
 
@@ -257,7 +224,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
                 {isHe ? "סיפור המקום המלא" : "The Full Story"}
               </h3>
             </div>
-            <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontClasses[fontLevel]}`}>
+            <div className={`text-slate-800 leading-relaxed transition-all duration-300 ${fontClasses[fontLevel as 0 | 1 | 2]}`}>
               {!poi.isFullyLoaded && !poi.description && !poi.historicalAnalysis && !poi.summary ? (
                 <div className="space-y-6">
                   <p className="opacity-90 leading-relaxed text-lg">
@@ -432,6 +399,6 @@ export const UnifiedPoiCard: React.FC<Props> = ({
           </button>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };

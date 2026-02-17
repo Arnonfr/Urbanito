@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { History, Image as ImageIcon, Loader2, Info } from 'lucide-react';
+import { History, Image as ImageIcon, Loader2, Info, Timer } from 'lucide-react';
 
 interface InterstitialCardProps {
     type: 'reconstruction' | 'highlight';
@@ -75,26 +75,33 @@ export const InterstitialCard: React.FC<InterstitialCardProps> = ({
         );
     }
 
-    // Highlight Card
+    // Highlight Card - Premium Narrative Style
     return (
-        <div className="my-4 mx-2">
-            <div className="relative bg-white/90 backdrop-blur-md p-4 rounded-[16px] border border-slate-100 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] overflow-hidden">
+        <div className="my-6 mx-2">
+            <div className="relative bg-gradient-to-br from-white to-slate-50 p-6 rounded-[24px] border border-slate-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] overflow-hidden group">
+                {/* Decorative Elements */}
+                <div className="absolute -top-4 -right-4 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-all duration-700" />
+                <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-all duration-700" />
 
-                <div className="relative flex gap-3">
-                    <div className="shrink-0 mt-1">
-                        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100">
-                            <Info size={14} />
+                <div className="relative flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-[10px] bg-indigo-50 flex items-center justify-center text-indigo-500 border border-indigo-100/50">
+                                <Info size={14} />
+                            </div>
+                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-500/60">
+                                {isHe ? 'הידעת?' : 'Did You Know?'}
+                            </h4>
                         </div>
                     </div>
 
                     <div className="flex-1">
-                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                            {isHe ? 'הידעת?' : 'Did You Know?'}
-                        </h4>
-                        <p className="text-sm text-slate-700 leading-relaxed font-medium">
-                            {content || (isHe ? 'פרט מעניין...' : 'Interesting fact...')}
+                        <p className="text-[15px] text-slate-700 leading-relaxed font-semibold italic">
+                            &ldquo;{content || (isHe ? 'פרט מעניין...' : 'Interesting fact...')}&rdquo;
                         </p>
                     </div>
+
+                    <div className="h-0.5 w-8 bg-indigo-500/20 rounded-full" />
                 </div>
             </div>
         </div>

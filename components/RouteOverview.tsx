@@ -1,10 +1,9 @@
-
 import React, { useRef, useState } from 'react';
 import { Route, POI, UserPreferences, POICategoryType } from '../types';
 import {
   Landmark, Building2, Utensils, Ship, Trees, ShoppingBag, Palette,
   Church, Heart, X, ChevronLeft, Trash2, Settings2, MapPin, Library,
-  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical, Building, ArrowRight, CloudDownload, Cloud, CloudOff
+  Loader2, ListTodo, CheckCircle2, Share2, AudioLines, Volume2, Pause, Play, Check, Sliders, Edit3, GripVertical, Building, ArrowRight, CloudDownload, Cloud, CloudOff, Timer
 } from 'lucide-react';
 import { usePremium } from '../contexts/PremiumContext';
 import { downloadRouteForOffline, isRouteOffline, removeOfflineRoute } from '../services/offlineService';
@@ -17,6 +16,7 @@ import { nativeBridge } from '../utils/nativeBridge';
 import { InterstitialCard } from './InterstitialCard';
 import { generateReconstructionImage } from '../services/geminiService';
 import { updateRouteImage } from '../services/supabase';
+import { motion, useDragControls, PanInfo } from 'framer-motion';
 
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
@@ -59,43 +59,22 @@ export const RouteOverview: React.FC<Props> = ({
 }) => {
   const isHe = preferences.language === 'he';
 
-  // Localization Logic for Title
-  let displayTitle = route.name;
-  let displayDescription = route.description;
+  // Optimize localized names at the route level
+  const localizedTitle = (isHe && (route.preferences?.names?.he || (route as any).name_he))
+    ? (route.preferences?.names?.he || (route as any).name_he)
+    : route.name;
 
-  // Check new localization structure in preferences (from seed logic) or dedicated fields
-  // Logic: preferences?.names?.he > route.name_he > route.name (if hebrew)
-  if (isHe) {
-    const prefsNames = (route as any).preferences?.names;
-    if (prefsNames?.he) displayTitle = prefsNames.he;
-    else if ((route as any).name_he) displayTitle = (route as any).name_he;
-
-    const prefsDesc = (route as any).preferences?.descriptions;
-    if (prefsDesc?.he) displayDescription = prefsDesc.he;
-  } else {
-    // Fallback for English if saved in "he" originally but user is "en"
-    const prefsNames = (route as any).preferences?.names;
-    if (prefsNames?.en) displayTitle = prefsNames.en;
-
-    const prefsDesc = (route as any).preferences?.descriptions;
-    if (prefsDesc?.en) displayDescription = prefsDesc.en;
-  }
-
-  // Parse title: Extract main title and subtitle
-  // Format: "Long Descriptive Title (Short Name)" -> Show "City | Short Name" + subtitle "Long Descriptive Title"
-  const parenMatch = displayTitle.match(/(.*?)\s*\((.*?)\)/);
+  const parenMatch = localizedTitle.match(/(.*?)\s*\((.*?)\)/);
   const longDescription = parenMatch ? parenMatch[1].trim() : "";
-  const shortTitle = parenMatch ? parenMatch[2].trim() : displayTitle;
-  const mainTitle = shortTitle; // Use short title as main
-  const subTitle = longDescription; // Use long description as subtitle
+  const shortTitle = parenMatch ? parenMatch[2].trim() : localizedTitle;
+  const mainTitle = shortTitle;
+  const subTitle = longDescription;
   const [isPrefsOpen, setIsPrefsOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   // Internal loading state for button feedback only (non-blocking)
   const [isUpdating, setIsUpdating] = useState(false);
   const [initialPrefs, setInitialPrefs] = useState<UserPreferences | null>(null);
 
-  const touchStart = useRef<number | null>(null);
-  const touchStartX = useRef<number | null>(null);
   const { playText, queueText, stop, isPlaying } = useAudio();
   const { isPremium } = usePremium();
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
@@ -267,29 +246,6 @@ export const RouteOverview: React.FC<Props> = ({
     }
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStart.current === null || touchStartX.current === null) return;
-
-    const touchY = e.changedTouches[0].clientY;
-    const touchX = e.changedTouches[0].clientX;
-    const distY = touchStart.current - touchY;
-    const distX = touchStartX.current - touchX;
-
-    // Ignore if horizontal scroll was dominant (e.g. swiping carousel)
-    if (Math.abs(distX) > Math.abs(distY) || Math.abs(distX) > 30) {
-      touchStart.current = null;
-      touchStartX.current = null;
-      return;
-    }
-
-    // Checking dominant vertical swipe
-    if (distY > 80) setIsExpanded(true);
-    else if (distY < -80) setIsExpanded(false);
-
-    touchStart.current = null;
-    touchStartX.current = null;
-  };
-
   const handleShare = async () => {
     let teaser = route.shareTeaser || "";
     if (!teaser && route.pois && route.pois.length > 0) {
@@ -317,40 +273,50 @@ export const RouteOverview: React.FC<Props> = ({
 
   const copyToClipboard = (content: string) => {
     navigator.clipboard.writeText(content);
-    // Assuming showToast is defined elsewhere or will be added.
-    // If not, you might need to define a simple alert or a custom toast function.
-    // For now, I'll use a placeholder for showToast.
-    // If showToast is not available, you might want to revert to alert or define it.
-    // For the purpose of this edit, I'm assuming showToast exists or will be handled.
-    // If showToast is not available, find a fallback.
     showToast?.(isHe ? 'הקישור הועתק!' : 'Link copied to clipboard!');
   };
 
+  // DRAG CONTROLS from Framer Motion
+  const dragControls = useDragControls();
+
+  // Helper to determine snap after drag
+  const onDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const offset = info.offset.y;
+    const velocity = info.velocity.y;
+
+    // Rules for snapping:
+    // 1. If high velocity (>500) -> flick logic
+    // 2. If dragged past threshold (>100) -> positional logic
+
+    if (isExpanded) {
+      // Trying to close?
+      if (offset > 150 || velocity > 300) {
+        setIsExpanded(false);
+      }
+    } else {
+      // Trying to open?
+      if (offset < -150 || velocity < -300) {
+        setIsExpanded(true);
+      }
+    }
+  };
+
   return (
-    <div
-      className={`fixed inset-x-0 bottom-0 ${isExpanded ? 'z-[7000]' : 'z-[3500]'} flex flex-col pointer-events-auto shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)] ${isExpanded ? 'h-[92dvh]' : 'h-[380px]'} bg-white/50 backdrop-blur-lg border-t border-white/40 overflow-hidden`}
-      dir={isHe ? 'rtl' : 'ltr'} style={{ borderRadius: isExpanded ? '0' : '24px 24px 0 0' }}
-      onTouchStart={(e) => {
-        // Only allow swipe from the top handle area (approx 100px)
-        const touchY = e.targetTouches[0].clientY;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const target = e.target as HTMLElement;
-
-        // Ignore if clicking a button or interacting with carousel
-        if (target.closest('button') || target.closest('.overflow-x-auto')) {
-          touchStart.current = null;
-          touchStartX.current = null;
-          return;
-        }
-
-        if (touchY - rect.top < 150) { // Slight increase to easy grabbing area, but filtered by target
-          touchStart.current = touchY;
-          touchStartX.current = e.targetTouches[0].clientX;
-        } else {
-          touchStart.current = null;
-          touchStartX.current = null;
-        }
-      }} onTouchEnd={handleTouchEnd}
+    <motion.div
+      drag="y"
+      dragListener={false} // Only drag via controls
+      dragControls={dragControls}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={0.2}
+      onDragEnd={onDragEnd}
+      initial={false}
+      animate={{
+        y: isExpanded ? 0 : "calc(92dvh - 380px)",
+        borderRadius: isExpanded ? 0 : 24
+      }}
+      transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      className={`fixed inset-x-0 bottom-0 ${isExpanded ? 'z-[7000]' : 'z-[3500]'} flex flex-col pointer-events-auto shadow-2xl h-[92dvh] bg-white/50 backdrop-blur-lg border-t border-white/40 overflow-hidden`}
+      dir={isHe ? 'rtl' : 'ltr'}
     >
       {/* Enrichment/Hydration Indicator */}
       {(isRegenerating || isUpdating) && (
@@ -360,11 +326,18 @@ export const RouteOverview: React.FC<Props> = ({
       )}
 
       <div className="flex-1 overflow-y-auto no-scrollbar relative pb-32">
-        <div className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group`}>
+        {/* DRAG HANDLER attached here to the header/image area */}
+        <div
+          className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group touch-none`}
+          onPointerDown={(e) => dragControls.start(e)}
+        >
           <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
-          <div className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20" onClick={() => setIsExpanded(!isExpanded)}>
+          <div
+            className="absolute top-2 inset-x-0 h-10 flex items-start justify-center cursor-pointer z-20"
+            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+          >
             <div className="w-12 h-1 bg-white/40 rounded-full mt-3" />
           </div>
 
@@ -521,116 +494,105 @@ export const RouteOverview: React.FC<Props> = ({
                   <div
                     key={poi.id}
                     onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)}
-                    className={`group relative bg-white/70 backdrop-blur-sm p-3 rounded-[16px] flex items-center gap-3 transition-all border border-white/80 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] overflow-hidden ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-lg hover:border-indigo-100 hover:scale-[1.01]'}`}
+                    className={`group relative bg-white border border-slate-100 p-4 rounded-[20px] flex items-center gap-4 transition-all ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 active:scale-[0.98]'}`}
+                    dir={isHe ? 'rtl' : 'ltr'}
                   >
-                    {/* Left Accent line based on category */}
-                    <div className={`absolute left-0 inset-y-0 w-1 ${poi.category === 'history' ? 'bg-amber-400' :
-                      poi.category === 'food' ? 'bg-orange-400' :
-                        poi.category === 'architecture' ? 'bg-indigo-400' :
-                          poi.category === 'nature' ? 'bg-emerald-400' :
-                            poi.category === 'shopping' ? 'bg-pink-400' :
-                              poi.category === 'culture' ? 'bg-purple-400' :
-                                poi.category === 'religion' ? 'bg-blue-400' :
-                                  poi.category === 'art' ? 'bg-rose-400' :
-                                    'bg-slate-300'
-                      }`} />
+                    {/* Index Number Badge - Moved to a better relative position */}
+                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-slate-900 border-2 border-white text-white text-[10px] font-black flex items-center justify-center z-10 shadow-md">
+                      {index + 1}
+                    </div>
 
                     {isEditMode && (
-                      <div className="shrink-0 cursor-grab active:cursor-grabbing mr-1">
+                      <div className="shrink-0 cursor-grab active:cursor-grabbing">
                         <GripVertical size={18} className="text-slate-300" />
                       </div>
                     )}
 
-                    {/* POI Thumbnail Image */}
-                    <div className="w-14 h-14 rounded-[12px] bg-slate-100 overflow-hidden shrink-0 border border-slate-200/50 shadow-inner relative group-hover:border-indigo-200/50 transition-colors">
+                    {/* POI Thumbnail Image - Larger & Premium */}
+                    <div className="w-20 h-20 rounded-[16px] bg-slate-100 overflow-hidden shrink-0 border border-slate-50 shadow-sm relative transition-all group-hover:shadow-md">
                       <GoogleImage
                         query={`${poi.name} ${route.city}`}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                       />
-                      <div className={`absolute bottom-0 inset-x-0 h-1 bg-current opacity-30 ${poi.category === 'history' ? 'text-amber-500' :
-                        poi.category === 'food' ? 'text-orange-500' :
-                          poi.category === 'architecture' ? 'text-indigo-500' :
-                            poi.category === 'nature' ? 'text-emerald-500' :
-                              'text-slate-400'
+
+                      {/* Category Identity Dot */}
+                      <div className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full border border-white shadow-sm ${poi.category === 'history' ? 'bg-amber-400' :
+                          poi.category === 'food' ? 'bg-orange-400' :
+                            poi.category === 'architecture' ? 'bg-indigo-400' :
+                              poi.category === 'nature' ? 'bg-emerald-400' :
+                                'bg-slate-300'
                         }`} />
                     </div>
 
-                    <div className="flex-1 text-right min-w-0 flex flex-col justify-center">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
-                          {translatedName}
-                        </h4>
-                        {(isLoaded || poi.isFullyLoaded || (poi.description && poi.description.length > 10)) && (
-                          <div className="flex items-center gap-1 shrink-0 bg-emerald-50/80 px-1.5 py-0.5 rounded-full border border-emerald-100/50 shadow-xs">
-                            <Check size={8} className="text-emerald-500 stroke-[4]" />
-                            <span className="text-[8px] font-black text-emerald-600 tracking-tighter">READY</span>
-                          </div>
-                        )}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5 overflow-hidden">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 w-full" style={{ textAlign: 'start' }}>
+                          <h4 className="text-[17px] font-bold text-slate-900 leading-tight tracking-tight break-words" dir="auto">
+                            {translatedName}
+                          </h4>
+                          {isLoaded && (
+                            <div className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 border border-emerald-100 shrink-0">
+                              <Check size={10} className="text-emerald-500 stroke-[4]" />
+                            </div>
+                          )}
+                        </div>
                       </div>
+
                       {showOriginalName && (
-                        <div className="text-[11px] font-normal text-slate-400 leading-tight truncate mt-0.5">
+                        <div className="text-[11px] font-medium text-slate-400 leading-tight truncate italic opacity-80" style={{ textAlign: 'start' }} dir="auto">
                           {originalName}
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 mt-1 min-w-0">
-                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center ${poi.category === 'history' ? 'bg-amber-50 text-amber-500' :
-                          poi.category === 'food' ? 'bg-orange-50 text-orange-500' :
-                            poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-500' :
-                              poi.category === 'nature' ? 'bg-emerald-50 text-emerald-500' :
-                                'bg-slate-50 text-slate-500'
-                          }`}>
-                          {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
-                            ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement<any>, { size: 10 })
-                            : <MapPin size={10} />}
+                      <div className="flex items-center gap-2.5 mt-0.5" style={{ textAlign: 'start' }}>
+                        <div className="flex items-center gap-1.5">
+                          <div className={`p-1 rounded-md ${poi.category === 'history' ? 'bg-amber-50 text-amber-600' :
+                              poi.category === 'food' ? 'bg-orange-50 text-orange-600' :
+                                poi.category === 'architecture' ? 'bg-indigo-50 text-indigo-600' :
+                                  poi.category === 'nature' ? 'bg-emerald-50 text-emerald-600' :
+                                    'bg-slate-50 text-slate-600'
+                            }`}>
+                            {(poi.category && CATEGORY_ICONS[poi.category as POICategoryType])
+                              ? React.cloneElement(CATEGORY_ICONS[poi.category as POICategoryType] as React.ReactElement<any>, { size: 10 })
+                              : <MapPin size={10} />}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                            {CATEGORY_LABELS_HE[poi.category as POICategoryType]}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-semibold text-slate-400/80 uppercase tracking-wide">
-                          {CATEGORY_LABELS_HE[poi.category as POICategoryType]}
-                        </span>
 
                         {index > 0 && poi.travelFromPrevious && (
-                          <>
-                            <div className="w-0.5 h-0.5 rounded-full bg-slate-300" />
-                            <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <span className="w-1 h-1 rounded-full bg-slate-200" />
+                            <div className="flex items-center gap-1 text-[10px] font-medium text-slate-400 whitespace-nowrap">
+                              <Timer size={10} className="opacity-70" />
                               <span>{poi.travelFromPrevious.duration}</span>
                             </div>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>
-                    {isEditMode ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onRemovePoi(poi.id); }}
-                        className="shrink-0 w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    ) : (
-                      <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity -ml-1">
+
+                    {!isEditMode && (
+                      <div className={`shrink-0 flex items-center justify-center ${isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all duration-300`}>
                         <button
                           onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
-                          className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-colors"
+                          className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white flex items-center justify-center transition-all border border-indigo-100 shadow-sm"
                         >
-                          <Play size={16} />
+                          <Play size={18} fill="currentColor" />
                         </button>
-                        <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
-                          <ChevronLeft size={14} className="text-slate-400 -rotate-90" />
-                        </div>
-                      </div>
-                    )}
-                    {(poi.isLoading || isLoaded) && (
-                      <div className="absolute bottom-0 inset-x-0 h-[2px] bg-slate-100">
-                        {isLoaded ? (
-                          <div className="h-full bg-emerald-500 w-full transition-all duration-500" />
-                        ) : poi.isLoading ? (
-                          <div className="h-full bg-emerald-400 w-1/3 animate-pulse" />
-                        ) : null}
                       </div>
                     )}
                   </div>
                 );
 
-                const items = [poiCard];
+                const timelineConnector = index < route.pois.length - 1 && (
+                  <div key={`conn-${poi.id}`} className="flex justify-center my-1">
+                    <div className="w-0.5 h-8 bg-gradient-to-b from-slate-200 to-transparent rounded-full opacity-50" />
+                  </div>
+                );
+
+                const items = [poiCard, timelineConnector];
 
                 // Inject Highlights (every 3 POIs, starting at index 2)
                 if (index > 1 && (index + 1) % 3 === 0 && !isEditMode) { // e.g., after 2nd (index 1? no index 2 is 3rd), so at index 2 (3rd item) -> insert
@@ -712,6 +674,6 @@ export const RouteOverview: React.FC<Props> = ({
           </div>
         </div>
       </div>
-    </div >
+    </motion.div >
   );
 };
