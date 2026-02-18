@@ -16,6 +16,8 @@ import { UserPreferences, Route as RouteType, POI } from './types';
 import { generateWalkingRoute, generateStreetWalkRoute, fetchExtendedPoiDetails, enrichRoute } from './services/geminiService';
 import { SuspenseLoader } from '~components/SuspenseLoader/SuspenseLoader';
 import { LocalGuidesSection } from '~components/LocalGuidesSection';
+import { initGA } from './services/analytics';
+import { useAnalytics } from './services/analytics';
 
 import { lazyRetry } from './utils/lazyRetry';
 
@@ -126,6 +128,13 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const locationPath = useLocation();
   const isResearchMode = locationPath.pathname === '/research';
+
+  // Initialize Analytics
+  useEffect(() => {
+    initGA();
+  }, []);
+
+  useAnalytics();
 
   const [user, setUser] = useState<any>(undefined);
   const [preferences, setPreferences] = useState<UserPreferences>({
