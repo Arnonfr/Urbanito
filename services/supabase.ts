@@ -510,41 +510,22 @@ export const updateSharedPoiData = async (poi: POI) => {
     // We only update if we have actual content to save
     if (!poi.description && !poi.historicalAnalysis) return;
 
-    // Remove UI-only flags and ID before saving (we don't want to overwrite ID with a client string if inconsistent)
+    // Remove UI-only flags and ID before saving
     const { isFullyLoaded, id, ...dataToSave } = poi as any;
 
-    console.log(`[updateSharedPoiData] Persisting enriched data for: ${poi.name}`);
+    console.log(`[updateSharedPoiData] Persisting enriched data via RPC for: ${poi.name}`);
 
-    // Strategically find the record first to avoid ID type errors
-    // strict match on location to avoid overwriting wrong POIs
-    const { data: existing } = await supabase
-      .from('pois')
-      .select('id')
-      .eq('name', poi.name)
-      .eq('lat', poi.lat)
-      .eq('lng', poi.lng)
-      .maybeSingle();
+    // Call RPC to handle safe insertion/update (Security Definer)
+    const { error } = await supabase.rpc('safe_update_poi', {
+      p_name: poi.name,
+      p_lat: poi.lat || 0,
+      p_lng: poi.lng || 0,
+      p_data: dataToSave
+    });
 
-    if (existing) {
-      // Update existing record
-      await supabase
-        .from('pois')
-        .update({ data: dataToSave })
-        .eq('id', existing.id);
-    } else {
-      // Insert new record (letting DB generate UUID)
-      // Note: This might fail if user doesn't have INSERT permissions, but worth a try for persistence.
-      // If table has a unique constraint on name/lat/lng, this might also conflict, so we use upsert if possible,
-      // but without ID.
-      await supabase.from('pois').insert({
-        name: poi.name,
-        lat: poi.lat,
-        lng: poi.lng,
-        data: dataToSave
-      });
-    }
+    if (error) throw error;
   } catch (e) {
-    console.error("[updateSharedPoiData] Failed to update shared POI:", e);
+    console.warn("[updateSharedPoiData] Failed to update shared POI:", e);
   }
 };
 

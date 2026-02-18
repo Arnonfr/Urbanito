@@ -97,7 +97,7 @@ export const saveRouteToNewSchema = async (
             p_city: normalize(route.city),
             p_name: route.name,
             p_description: route.description || '',
-            p_duration: route.durationMinutes || 0,
+            p_duration_minutes: route.durationMinutes || 0,
             p_preferences: preferences || {},
             // p_directions_data removed as it is not in the RPC signature
             p_pois: poisForRpc,
