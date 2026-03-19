@@ -1038,11 +1038,7 @@ const App: React.FC = () => {
           setPopularCities(FALLBACK_CITIES);
         }
 
-        if (u) {
-          refreshSavedContent(u.id);
-          const prefs = await getUserPreferences(u.id);
-          if (prefs) setPreferences(prev => ({ ...prev, ...prefs }));
-        }
+        // refreshSavedContent + getUserPreferences are handled by onAuthStateChange below.
 
         handleLocateUser(true);
       } catch (err) {
