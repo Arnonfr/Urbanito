@@ -60,6 +60,7 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
     const fetchImage = async () => {
       try {
         if (memoryCache.has(cacheKey)) {
+          console.log(`[GoogleImage] Memory hit for: ${searchQuery}`);
           setImageUrl(memoryCache.get(cacheKey)!);
           setIsLoading(false);
           return;
@@ -79,6 +80,17 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
         console.warn("Cache read error:", e);
       }
 
+      // STRICT BUDGET PROTECTION: If not priority and no existing URL/Cache, use placeholder immediately.
+      // This prevents hundreds of calls from list views or background components.
+      if (!priority) {
+        // Use search keywords to get a relevant placeholder (Free/Safe)
+        const keywords = `${cityName || 'city'},architecture,travel`;
+        const placeholder = `https://loremflickr.com/${SIZES[size].maxWidthPx}/${Math.round(SIZES[size].maxWidthPx * 0.75)}/${keywords}?lock=${searchQuery.length}`;
+        setImageUrl(placeholder);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
 
       try {
@@ -90,11 +102,12 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
 
         const request = {
           textQuery: searchQuery,
-          fields: ['photos', 'displayName', 'id'],
+          fields: ['photos', 'id'], // Keep it basic
           maxResultCount: 1,
           locationBias: lat && lng ? { center: { lat, lng }, radius: 1000 } : undefined
         };
 
+        console.log(`🚀 [GoogleImage] Calling Places API (Priority Search): ${searchQuery}`);
         const { places } = await Place.searchByText(request);
 
         if (!isMounted.current) return;
@@ -108,7 +121,7 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
           memoryCache.set(cacheKey, photoUrl);
 
           if (poiName && cityName) {
-            updatePoiImageInDb(poiName, cityName, photoUrl, places[0].id);
+            updatePoiImageInDb(poiName, cityName, photoUrl);
           }
 
           try {
@@ -120,12 +133,18 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
 
           setIsLoading(false);
         } else {
+          console.warn(`[GoogleImage] No photos found for: ${searchQuery}`);
           setImageUrl(fallbackUrl || `https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80&auto=format`);
           setIsLoading(false);
           setHasError(true);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("New Places API Error:", err);
+        // Detect quota issues specifically
+        if (err.message?.includes('quota') || err.status === 429) {
+          console.error("🛑 GOOGLE API QUOTA EXCEEDED (Budget hit). Skipping searches.");
+        }
+
         if (!isMounted.current) return;
         setImageUrl(fallbackUrl || `https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80&auto=format`);
         setIsLoading(false);
@@ -134,7 +153,7 @@ export const GoogleImage: React.FC<SmartImageProps> = ({
     };
 
     fetchImage();
-  }, [query, size, lat, lng, existingUrl]);
+  }, [query, size, lat, lng, existingUrl, priority]); // Added priority to dependency array
 
   return (
     <div className={`relative overflow-hidden bg-slate-100 ${className}`}>

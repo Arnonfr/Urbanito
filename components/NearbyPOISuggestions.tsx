@@ -75,6 +75,7 @@ export const NearbyPOISuggestions: React.FC<Props> = ({ route, onAddPoi, isHe })
                                 <GoogleImage
                                     query={poi.name}
                                     className="w-full h-full object-cover"
+                                    existingUrl={poi.imageUrl}
                                 />
                             )}
                         </div>

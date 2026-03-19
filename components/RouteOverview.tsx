@@ -14,8 +14,6 @@ import { NearbyPOISuggestions } from './NearbyPOISuggestions';
 import { useAudio } from '../contexts/AudioContext';
 import { nativeBridge } from '../utils/nativeBridge';
 import { InterstitialCard } from './InterstitialCard';
-import { generateReconstructionImage } from '../services/geminiService';
-import { updateRouteImage } from '../services/supabase';
 import { motion, useDragControls, PanInfo } from 'framer-motion';
 
 // Copied from App.tsx to avoid circular dependency
@@ -95,9 +93,6 @@ export const RouteOverview: React.FC<Props> = ({
   const { isPremium } = usePremium();
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [localReconstructionUrl, setLocalReconstructionUrl] = useState<string | null>(null);
-  const [localPrompt, setLocalPrompt] = useState<string | null>(null);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
   // Check offline status on mount
@@ -110,31 +105,6 @@ export const RouteOverview: React.FC<Props> = ({
     }
   }, [route?.id]);
 
-  // SELF HEALING: If viewing a saved route that is missing historical data (legacy data),
-  // Auto-generate a prompt and try to fetch an image so the UI isn't broken.
-  React.useEffect(() => {
-    if (!isEditMode && route && !route.historical_reconstruction_prompt && !isGeneratingImage) {
-      console.log("Auto-healing legacy route: missing historical prompt");
-      const defaultPrompt = `Vintage photo of ${route.name}, ${route.city}`;
-
-      // Update local state temporarily to show loading state if needed
-      // Actually we trigger generation directly
-      const healRoute = async () => {
-        setIsGeneratingImage(true);
-        // Generate image with the new default prompt
-        const url = await generateReconstructionImage(defaultPrompt, route.name);
-        if (url) {
-          setLocalReconstructionUrl(url);
-          setLocalPrompt(defaultPrompt);
-          // Save to DB so next time it's there
-          // We need to update BOTH the image URL AND the prompt
-          await updateRouteImage(route.id, url, defaultPrompt);
-        }
-        setIsGeneratingImage(false);
-      };
-      healRoute();
-    }
-  }, [route?.id, isEditMode]);
 
   const handleDownloadToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -348,7 +318,7 @@ export const RouteOverview: React.FC<Props> = ({
           className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group touch-none`}
           onPointerDown={(e) => dragControls.start(e)}
         >
-          <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />
+          <GoogleImage query={route.pois && route.pois.length > 0 ? `${route.pois[0].name} ${route.city}` : `${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" existingUrl={route.pois?.[0]?.imageUrl} />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
           <div
@@ -381,7 +351,7 @@ export const RouteOverview: React.FC<Props> = ({
                       onClick={(e) => { e.stopPropagation(); onRouteSelect?.(r); }}
                       className="shrink-0 w-10 h-10 rounded-[10px] overflow-hidden border border-white/30 shadow-md relative group transition-transform active:scale-90"
                     >
-                      <GoogleImage query={`${r.city} ${r.name}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
+                      <GoogleImage query={r.pois && r.pois.length > 0 ? `${r.pois[0].name} ${r.city}` : `${r.city} ${r.name}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" existingUrl={r.pois?.[0]?.imageUrl} />
                     </button>
                   ))}
                 </div>
@@ -542,11 +512,11 @@ export const RouteOverview: React.FC<Props> = ({
                   <div
                     key={poi.id}
                     onClick={() => !isRegenerating && !isEditMode && onPoiClick(poi)}
-                    className={`group relative bg-white border border-slate-100 p-3 rounded-[20px] flex items-center gap-4 transition-all ${isEditMode ? 'hover:border-amber-200' : 'cursor-pointer hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 active:scale-[0.98]'}`}
+                    className={`group relative bg-white py-3 px-1 border-b border-slate-100 flex items-center gap-4 transition-colors ${isEditMode ? '' : 'cursor-pointer hover:bg-slate-50 active:bg-slate-100'}`}
                     dir={isHe ? 'rtl' : 'ltr'}
                   >
                     {/* Index Number Badge */}
-                    <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-900 border-2 border-white text-white text-[9px] font-black flex items-center justify-center z-10 shadow-md">
+                    <div className="absolute top-2 left-2 w-4 h-4 rounded-full bg-slate-100 border border-slate-200 text-slate-500 text-[9px] font-bold flex items-center justify-center z-10 transition-colors group-hover:bg-slate-200">
                       {index + 1}
                     </div>
 
@@ -556,20 +526,14 @@ export const RouteOverview: React.FC<Props> = ({
                       </div>
                     )}
 
-                    {/* POI Thumbnail Image */}
-                    <div className="w-16 h-16 rounded-[14px] bg-slate-100 overflow-hidden shrink-0 border border-slate-50 shadow-sm relative transition-all group-hover:shadow-md">
+                    {/* POI Thumbnail Image - Small & Circle */}
+                    <div className="w-12 h-12 rounded-full bg-slate-100 overflow-hidden shrink-0 border border-slate-200 relative transition-transform group-hover:scale-105">
                       <GoogleImage
                         query={`${poi.name} ${route.city}`}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        className="w-full h-full object-cover transition-transform duration-500"
+                        existingUrl={poi.imageUrl}
+                        priority={true}
                       />
-
-                      {/* Category Identity Dot */}
-                      <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full border border-white shadow-sm ${poi.category === 'history' ? 'bg-amber-400' :
-                        poi.category === 'food' ? 'bg-orange-400' :
-                          poi.category === 'architecture' ? 'bg-indigo-400' :
-                            poi.category === 'nature' ? 'bg-emerald-400' :
-                              'bg-slate-300'
-                        }`} />
                     </div>
 
                     <div className="flex-1 min-w-0 flex flex-col justify-center gap-0 overflow-hidden">
@@ -620,9 +584,9 @@ export const RouteOverview: React.FC<Props> = ({
                       <div className={`shrink-0 flex items-center justify-center ${isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all duration-300`}>
                         <button
                           onClick={(e) => { e.stopPropagation(); handlePlayPoi(poi, index); }}
-                          className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white flex items-center justify-center transition-all border border-indigo-100 shadow-sm"
+                          className="w-9 h-9 rounded-full bg-brand-main text-white hover:scale-105 flex items-center justify-center transition-all shadow-md"
                         >
-                          <Play size={16} fill="currentColor" />
+                          <Play size={16} fill="currentColor" className="ml-0.5" />
                         </button>
                       </div>
                     )}
@@ -637,9 +601,12 @@ export const RouteOverview: React.FC<Props> = ({
 
                 const items = [poiCard, timelineConnector];
 
-                // Inject Highlights (every 3 POIs, starting at index 2)
-                if (index > 1 && (index + 1) % 3 === 0 && !isEditMode) { // e.g., after 2nd (index 1? no index 2 is 3rd), so at index 2 (3rd item) -> insert
-                  const highlightText = route.shareTeaser || (poi.description ? poi.description.substring(0, 80) + "..." : null);
+                // Inject Highlights (every 3 POIs)
+                if (index > 1 && (index + 1) % 3 === 0 && !isEditMode) {
+                  const highlightIndex = Math.floor((index + 1) / 3) - 1;
+                  const highlightText = (route.highlights && route.highlights[highlightIndex])
+                    || route.shareTeaser
+                    || (poi.description ? poi.description.substring(0, 80) + "..." : null);
                   if (highlightText) {
                     items.push(
                       <InterstitialCard
@@ -655,31 +622,6 @@ export const RouteOverview: React.FC<Props> = ({
                 return items;
               })}
 
-              {/* Reconstruction Card at the END */}
-              {(!isEditMode && ((route.historical_reconstruction_prompt && route.historical_reconstruction_prompt.length > 10) || localPrompt)) && (
-                <InterstitialCard
-                  key="reconstruction-end-card"
-                  type="reconstruction"
-                  isHe={isHe}
-                  prompt={localPrompt || route.historical_reconstruction_prompt}
-                  imageUrl={localReconstructionUrl || route.reconstruction_image_url}
-                  isLoading={isGeneratingImage}
-                  onGenerateImage={async () => {
-                    if (route.historical_reconstruction_prompt && !isGeneratingImage) {
-                      setIsGeneratingImage(true);
-                      const url = await generateReconstructionImage(
-                        route.historical_reconstruction_prompt,
-                        route.name // Pass specific location name for better accuracy
-                      );
-                      setIsGeneratingImage(false);
-                      if (url) {
-                        setLocalReconstructionUrl(url);
-                        await updateRouteImage(route.id, url);
-                      }
-                    }
-                  }}
-                />
-              )}
             </div>
 
             {!isEditMode && !isRegenerating && (
@@ -703,7 +645,7 @@ export const RouteOverview: React.FC<Props> = ({
                       className="shrink-0 w-[140px] snap-start flex flex-col gap-2 group text-right"
                     >
                       <div className="aspect-[4/3] w-full bg-slate-100 rounded-[12px] overflow-hidden relative shadow-sm border border-slate-100/50">
-                        <GoogleImage query={`${r.city} ${r.name}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <GoogleImage query={r.pois && r.pois.length > 0 ? `${r.pois[0].name} ${r.city}` : `${r.city} ${r.name}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" existingUrl={r.pois?.[0]?.imageUrl} />
                         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent" />
                         <div className="absolute bottom-2 right-2 left-2 flex justify-between items-end">
                           <span className="text-[10px] font-bold text-white leading-tight line-clamp-2">{r.name}</span>

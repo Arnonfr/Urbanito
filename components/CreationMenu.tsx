@@ -22,46 +22,26 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                 onClick={onClose}
             />
 
-            {/* The Liquid Container - Deep Glassmorphism */}
+            {/* Bottom Sheet Container */}
             <motion.div
-                layoutId="create-menu-container"
-                initial={{ borderRadius: 28, width: 56, height: 56, y: -28, opacity: 0 }}
-                animate={{
-                    borderRadius: 32,
-                    width: 'min(92vw, 400px)',
-                    height: 'auto',
-                    y: -110,
-                    opacity: 1
-                }}
-                exit={{
-                    borderRadius: 28,
-                    width: 56,
-                    height: 10,
-                    y: 0,
-                    opacity: 0
-                }}
-                transition={{
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 30,
-                    mass: 0.8
-                }}
-                className="relative bg-white/90 backdrop-blur-3xl border border-white/40 shadow-2xl shadow-indigo-500/10 overflow-hidden pointer-events-auto mx-auto flex flex-col"
-                style={{ transformOrigin: "bottom center" }}
+                initial={{ y: "100%", opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="relative w-full max-w-md bg-white rounded-t-[32px] shadow-2xl pb-[env(safe-area-inset-bottom)] pointer-events-auto flex flex-col mt-auto"
             >
+                {/* Drag Indicator */}
+                <div className="w-full flex justify-center pt-3 pb-1">
+                    <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
+                </div>
 
                 {/* Header Content */}
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                    className="p-5 pb-2 flex items-center justify-between border-b border-white/20"
-                >
+                <div className="p-4 flex items-center justify-between border-b border-slate-100">
                     <h3 className="text-sm font-bold text-slate-800">{isHe ? 'יצירת מסלול חדש' : 'Create New Route'}</h3>
                     <button onClick={onClose} className="p-1 rounded-full hover:bg-black/5 transition-colors">
                         <X size={18} className="text-slate-500" />
                     </button>
-                </motion.div>
+                </div>
 
                 {/* Options List */}
                 {/* Options List */}
@@ -110,20 +90,17 @@ const MenuItem = ({ icon, color, title, desc, onClick, delay, isHe }: any) => {
     };
 
     return (
-        <motion.button
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay }}
+        <button
             onClick={onClick}
-            className={`group w-full flex items-center gap-4 p-3 rounded-xl hover:bg-white/60 transition-all text-left ${isHe ? 'flex-row-reverse text-right' : ''}`}
+            className={`group w-full flex items-center gap-4 p-4 hover:bg-slate-50 active:bg-slate-100 transition-colors text-left border-b border-slate-50 last:border-0 ${isHe ? 'flex-row-reverse text-right' : ''}`}
         >
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-300 backdrop-blur-sm ${colors[color]}`}>
-                {icon}
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-slate-500 bg-slate-50`}>
+                {React.cloneElement(icon, { className: '', strokeWidth: 2, size: 20 })}
             </div>
             <div className="flex-1 min-w-0">
                 <h4 className="text-[15px] font-black text-slate-800 leading-tight mb-0.5">{title}</h4>
                 <p className="text-[12px] text-slate-500 font-medium truncate opacity-100 group-hover:text-slate-600">{desc}</p>
             </div>
-        </motion.button>
+        </button>
     );
 };

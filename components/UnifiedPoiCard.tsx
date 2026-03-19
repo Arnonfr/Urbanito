@@ -137,7 +137,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
           className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-72' : 'h-48'} bg-slate-900 group touch-none`}
           onPointerDown={(e) => dragControls.start(e)}
         >
-          <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" />
+          <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" existingUrl={poi.imageUrl} poiName={poi.name} cityName={route.city} priority={true} />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
           {/* Drag Handle Indicator */}
@@ -240,7 +240,8 @@ export const UnifiedPoiCard: React.FC<Props> = ({
               ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
                   {(() => {
-                    const mainContent = extendedData?.historicalAnalysis || poi.description || (isHe ? "מכינים מידע נוסף עבור מקום זה... מיד יהיה זמין." : "Preparing additional details for this location... will be available shortly.");
+                    const fallbackText = isHe ? "מכינים מידע נוסף עבור מקום זה... מיד יהיה זמין." : "Preparing additional details for this location... will be available shortly.";
+                    const mainContent = extendedData?.historicalAnalysis || poi.description || poi.summary || fallbackText;
                     const paragraphs = mainContent ? mainContent.split('\n').filter((p: string) => p.trim()) : [];
 
                     return paragraphs.map((paragraph: string, idx: number) => {
@@ -393,7 +394,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
 
       {isImageFullscreen && (
         <div className="fixed inset-0 z-[10000] bg-black flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setIsImageFullscreen(false)}>
-          <GoogleImage query={poi.name} className="max-w-full max-h-[85vh] object-contain rounded-[8px]" size="large" />
+          <GoogleImage query={poi.name} className="max-w-full max-h-[85vh] object-contain rounded-[8px]" size="large" existingUrl={poi.imageUrl} />
           <button className="absolute top-8 right-8 w-12 h-12 bg-white/10 text-white rounded-full flex items-center justify-center">
             <X size={24} />
           </button>

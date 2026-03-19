@@ -2,7 +2,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "clean": "rm -rf dist node_modules/.vite",
+    "lint": "tsc --noEmit",
+    "tidy": "mkdir -p archived scripts && mv *.html archived/ 2>/dev/null || true"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",
