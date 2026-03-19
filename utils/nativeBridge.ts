@@ -110,44 +110,6 @@ export const nativeBridge = {
     },
 
     /**
-     * Handle OAuth deep link callback (Android/iOS).
-     * When the user completes Google Sign-In in the external browser,
-     * the redirect URL opens the app via deep link. This listener
-     * extracts the auth tokens from the URL and sets them in the page hash
-     * so Supabase client can pick them up.
-     */
-    handleAuthCallback: (onComplete?: () => void) => {
-        if (!isNative) return () => { };
-
-        let handler: any = null;
-        const init = async () => {
-            handler = await App.addListener('appUrlOpen', (event) => {
-                const url = event.url;
-                console.log('[nativeBridge] App opened with URL:', url);
-
-                if (url.includes('auth/callback') || url.includes('access_token')) {
-                    // Extract the hash/query part containing tokens
-                    const hashPart = url.split('#')[1];
-                    const queryPart = url.split('?')[1];
-                    const tokenPart = hashPart || queryPart;
-
-                    if (tokenPart) {
-                        // Set the hash so Supabase client can detect the tokens
-                        window.location.hash = tokenPart;
-                        console.log('[nativeBridge] Auth tokens extracted, setting hash');
-                        onComplete?.();
-                    }
-                }
-            });
-        };
-        init();
-
-        return () => {
-            if (handler) handler.remove();
-        };
-    },
-
-    /**
      * Handle Android Back Button
      */
     onBackButton: (callback: () => void) => {

@@ -151,19 +151,16 @@ async function aiCall(params: any, retries = 3): Promise<any> {
   });
 
   try {
-    const response = await Promise.race([
-      ai.models.generateContent({
-        ...params,
-        model,
-        safetySettings: [
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-        ]
-      }),
-      new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Gemini API Timeout (15s)")), 15000))
-    ]);
+    const response = await ai.models.generateContent({
+      ...params,
+      model,
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      ]
+    });
     console.log('✅ Gemini API success:', {
       hasText: !!response.text,
       textLength: response.text?.length || 0
@@ -232,13 +229,12 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     });
 
     const data = JSON.parse(cleanJson(response.text || '{}'));
-    const isActuallyLoaded = !!(data.historicalAnalysis || data.description);
-
     if (data.historicalAnalysis) {
       await cachePoiDetails(poiName, city, { ...data, lat, lng });
+      // CRITICAL: Also update the shared POIs table to prevent "sparse" detection on next load
       updateSharedPoiData({ ...data, name: poiName, lat: lat || 0, lng: lng || 0 });
     }
-    return { ...data, isFullyLoaded: isActuallyLoaded, isPremiumContent: isPremium };
+    return { ...data, isFullyLoaded: true, isPremiumContent: isPremium };
   } catch (e) { return null; }
 }
 
@@ -290,11 +286,6 @@ export const generateWalkingRoute = async (city: string, location: any, preferen
 ${premiumFlavor}
       
 TASK: Create a verified walking tour for ${city} starting at coordinates ${location.lat}, ${location.lng}.
-CRITICAL LANGUAGE RULE: 
-- The tour title ("name") MUST be in ${langName}.
-- If ${langName} is Hebrew, the title MUST be a catchy, localized Hebrew title (e.g., "סודות העיר העתיקה", "קסם הסמטאות של ${city}"). 
-- DO NOT return the title in English or just the street/city name.
-- ALL descriptions and summaries MUST be in ${langName} only.
 
 ROUTE PARAMETERS:
 - Number of stops: EXACTLY ${poiCount} POIs
@@ -342,10 +333,9 @@ JSON SCHEMA:
        "category": "hidden_gem"
     }
   ],
-  "highlights": ["Trivia point 1", "Trivia point 2", "Trivia point 3", "Trivia point 4"]
+  "historical_reconstruction_prompt": "A detailed DALL-E/Midjourney style visual prompt in English to generate a historical reconstruction image of the most iconic location in this tour. Focus on accuracy, historical atmosphere, and high resolution."
 }
 
-NOTE: The 'highlights' array MUST contain 4-5 interesting/surprising facts or trivial points about the area or locations in the tour. Each should be 1 sentence in ${langName}.
 NOTE: The 'suggested_detours' array MUST contain exactly 3 interesting spots nearby.
 CRITICAL SPEED INSTRUCTION: Do NOT generate long descriptions or history yet. Keep 'summary' to 1-2 sentences maximum. We will generate deep content later. Focus on finding the BEST locations.`,
       config: { responseMimeType: "application/json" }
@@ -369,7 +359,7 @@ CRITICAL SPEED INSTRUCTION: Do NOT generate long descriptions or history yet. Ke
       shareTeaser: data.shareTeaser || "",
       isPremiumRoute: isPremium,
       user_id: userId,
-      highlights: data.highlights || [],
+      historical_reconstruction_prompt: data.historical_reconstruction_prompt,
 
       durationMinutes: estimatedDuration,
       creator: "Urbanito AI",
@@ -425,11 +415,6 @@ export const generateStreetWalkRoute = async (streetName: string, location: any,
 ${premiumFlavor}
 
 TASK: Create a focused street walking tour along "${streetName}".
-CRITICAL LANGUAGE RULE:
-- The tour title ("name") MUST be in ${langName}.
-- If ${langName} is Hebrew, use a creative Hebrew title (e.g., "הסיפורים שמאחורי ${streetName}", "אדריכלות והיסטוריה ב${streetName}").
-- DO NOT return the title in English.
-- ALL descriptions and summaries MUST be in ${langName} only.
 
 ROUTE PARAMETERS:
 - Number of stops: EXACTLY ${poiCount} POIs
@@ -476,10 +461,9 @@ JSON SCHEMA:
        "category": "hidden_gem"
     }
   ],
-  "highlights": ["Street trivia 1", "Street trivia 2", "Street trivia 3"]
+  "historical_reconstruction_prompt": "A detailed visual prompt in English for a historical reconstruction of this street in its most famous era, focusing on architectural accuracy and atmosphere."
 }
 
-NOTE: The 'highlights' array MUST contain 3-5 interesting facts or architectural trivia about the buildings on this street.
 NOTE: Keep 'summary' to 1-2 sentences. We will generate deep content later.`,
       config: { responseMimeType: "application/json" }
     });
@@ -502,7 +486,7 @@ NOTE: Keep 'summary' to 1-2 sentences. We will generate deep content later.`,
       shareTeaser: data.shareTeaser || "",
       isPremiumRoute: isPremium,
       user_id: userId,
-      highlights: data.highlights || [],
+      historical_reconstruction_prompt: data.historical_reconstruction_prompt,
 
       durationMinutes: estimatedDuration,
       creator: "Street Guide",
@@ -615,7 +599,7 @@ export const generateSpeech = async (text: string, language: string, isPremium: 
  * Generates a historical reconstruction image URL using Pollinations.ai (Free, Fast, No Auth).
  * This is perfect for the "Localhost Demo" and MVP before moving to DALL-E/Imagen.
  */
-export const generateReconstructionImage = async (prompt: string, cityName?: string, locationName?: string): Promise<string | null> => {
+export const generateReconstructionImage = async (prompt: string, locationName?: string): Promise<string | null> => {
   try {
     console.log("🎨 Generating Reconstruction Image for:", prompt.substring(0, 50) + "...");
 
@@ -638,9 +622,8 @@ export const generateReconstructionImage = async (prompt: string, cityName?: str
       : prompt.replace(/[^\w\s,]/gi, '').substring(0, 50);
 
     // Construct a rich, specific prompt using the variables
-    // Including the city name makes the search much more accurate
-    const cityContext = cityName ? ` in ${cityName}` : "";
-    const simpleEnhancedPrompt = `1900s street photography, wide angle view of ${subject}${cityContext}, featuring ${selectedDetails}, sepia tone, vintage feel, highly detailed architecture`;
+    // Limit total length to ~200 chars to stay safe
+    const simpleEnhancedPrompt = `1900s street photography, wide angle view of ${subject}, featuring ${selectedDetails}, sepia tone, vintage feel, highly detailed architecture`;
 
     const encodedPrompt = encodeURIComponent(simpleEnhancedPrompt.substring(0, 300));
 

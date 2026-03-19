@@ -3,20 +3,10 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { Capacitor } from '@capacitor/core';
 import { Route, UserPreferences, POI } from '../types';
 
 const SUPABASE_URL = 'https://xrawvyvcyewjmlzypnqc.supabase.co';
-const getSupabaseKey = () => {
-  try {
-    // @ts-ignore
-    return import.meta.env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
-  } catch {
-    return (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : null) || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
-  }
-};
-
-const SUPABASE_ANON_KEY = getSupabaseKey();
+const SUPABASE_ANON_KEY = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXd2eXZjeWV3am1senlwbnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxMjA3NjYsImV4cCI6MjA4MzY5Njc2Nn0.KhIPGCR76vDgCvOH8vanrc_V4lQoP1-Ulsi9uR5RX-A';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -157,29 +147,26 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
       p_is_public: route.is_public || false,
       p_is_favorite: is_favorite,
       p_parent_route_id: parent_route_id || route.parent_route_id,
+      p_reconstruction_image_url: route.reconstruction_image_url || null,
+      p_historical_reconstruction_prompt: route.historical_reconstruction_prompt || null,
       p_share_teaser: route.shareTeaser || null,
-      p_highlights: route.highlights || [],
-      p_pois: route.pois.map((p, idx) => {
-        const generatedId = generateStableId(p.name, p.lat, p.lng);
-        return {
-          id: p.id || generatedId,
-          content_hash: p.id || generatedId, // Explicitly pass content_hash
-          name: p.name,
-          lat: p.lat,
-          lng: p.lng,
-          order_index: idx,
-          travel_data: null, // Could be enhanced later
-          poi_data: {
-            description: p.description,
-            historicalContext: p.historicalContext,
-            historicalAnalysis: p.historicalAnalysis,
-            architecturalAnalysis: p.architecturalAnalysis,
-            narrative: p.narrative,
-            imageUrl: p.imageUrl,
-            isPremiumContent: p.isPremiumContent
-          }
-        };
-      })
+      p_pois: route.pois.map((p, idx) => ({
+        id: p.id || generateStableId(p.name, p.lat, p.lng),
+        name: p.name,
+        lat: p.lat,
+        lng: p.lng,
+        order_index: idx,
+        travel_data: null, // Could be enhanced later
+        poi_data: {
+          description: p.description,
+          historicalContext: p.historicalContext,
+          historicalAnalysis: p.historicalAnalysis,
+          architecturalAnalysis: p.architecturalAnalysis,
+          narrative: p.narrative,
+          imageUrl: p.imageUrl,
+          isPremiumContent: p.isPremiumContent
+        }
+      }))
     });
 
     if (error) throw error;
@@ -494,35 +481,16 @@ export const deletePoiFromSupabase = async (userId: string, poiId: string) => {
  * Auth
  */
 export const signInWithGoogle = async () => {
-  // For native Capacitor apps, redirect to the web URL which will deep-link back.
-  // For web, redirect to the current origin.
-  const isNative = Capacitor.isNativePlatform();
-  const redirectUrl = isNative
-    ? 'https://urbanito.live/auth/callback'
-    : window.location.origin;
-
   return await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: redirectUrl,
+      redirectTo: window.location.origin,
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
       }
     }
   });
-};
-
-/**
- * Clean OAuth hash fragment from URL after Supabase processes it.
- * Call this after auth state changes to prevent React Router confusion.
- */
-export const cleanOAuthHash = () => {
-  if (window.location.hash && window.location.hash.includes('access_token')) {
-    // Replace the URL without the hash, keeping the path
-    const cleanUrl = window.location.pathname + window.location.search;
-    window.history.replaceState(null, '', cleanUrl || '/');
-  }
 };
 
 export const signOut = async () => {
@@ -601,16 +569,15 @@ export const logPremiumInterest = async (userId: string | null, feature: string 
 /**
  * Automatically save a generated route to the curated list (Public)
  */
-export const saveToCuratedRoutes = async (route: Route, language?: string) => {
+export const saveToCuratedRoutes = async (route: Route) => {
   try {
-    const finalLanguage = language || route.preferences?.language || (route.name.match(/[\u0590-\u05FF]/) ? 'he' : 'en');
-    console.log(`[saveToCuratedRoutes] Saving route ${route.name} as public (${finalLanguage})...`);
+    console.log(`[saveToCuratedRoutes] Saving route ${route.name} as public...`);
 
     // Use the RPC to ensure it's saved correctly with all POIs
-    const preferences = {
-      ...(route.preferences || {}),
-      language: finalLanguage,
-      explanationStyle: route.preferences?.explanationStyle || 'standard'
+    // Note: We use the existing preferences in the route object or defaults
+    const preferences = route.preferences || {
+      language: (route.name.match(/[\u0590-\u05FF]/) ? 'he' : 'en'),
+      explanationStyle: 'standard'
     };
 
     const userId = (route as any).user_id || (route as any).user?.id || null;

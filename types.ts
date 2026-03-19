@@ -124,7 +124,6 @@ export interface Route {
   user_id?: string | null; // ID of the user who created this route
   reconstruction_image_url?: string;
   historical_reconstruction_prompt?: string;
-  highlights?: string[]; // Engaging facts or trivia highlights
   created_at?: string;
 }
 

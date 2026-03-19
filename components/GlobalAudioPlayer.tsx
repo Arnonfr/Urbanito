@@ -104,7 +104,6 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
                   <GoogleImage
                     query={imageQuery}
                     className="w-full h-full object-cover"
-                    existingUrl={foundPoi?.imageUrl}
                   />
                   {/* Gradient overlay for expanded view text visibility if we put text over it? No, text is below. */}
                   {/* Play overlay for expanded view? */}

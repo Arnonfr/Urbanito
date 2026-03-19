@@ -6,7 +6,7 @@ interface Props {
   onClose: () => void;
 }
 
-const LOGO_SVG = "/logo.png";
+const LOGO_SVG = "data:image/svg+xml,%3Csvg width='274' height='274' viewBox='0 0 274 274' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg clip-path='url(%23clip0_1_2)'%3E%3Crect width='274' height='274' rx='77' fill='%23801ED6'/%3E%3Cpath d='M67.9708 171.182L87.0037 89.5812L94.6606 107.083L70.8148 85.2058L71.9086 81.0492H136.664L135.789 85.6434L107.787 106.864L120.038 89.5812L101.661 168.776C98.1609 184.235 98.3068 196.122 102.099 204.435C106.037 212.602 113.402 216.686 124.194 216.686C131.633 216.686 137.977 215.082 143.227 211.873C148.478 208.519 152.926 203.341 156.572 196.341C160.364 189.34 163.573 180.152 166.198 168.776L184.575 89.5812L189.825 102.926L166.636 84.5495L167.511 81.0492H221.109L220.234 84.7683L194.857 102.707L203.608 89.5812L185.231 168.776C175.022 213.259 152.853 235.5 118.725 235.5C98.0151 235.5 83.2117 229.885 74.3151 218.655C65.4185 207.279 63.3037 191.455 67.9708 171.182Z' fill='white'/%3E%3Ccircle cx='100' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3Ccircle cx='190' cy='78' r='35.5' fill='white' stroke='%23801ED6' stroke-width='5'/%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_1_2'%3E%3Crect width='274' height='274' rx='77' fill='white'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E";
 
 export const UserGuide: React.FC<Props> = ({ isHe, onClose }) => {
   const [step, setStep] = useState(0);

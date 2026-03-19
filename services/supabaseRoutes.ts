@@ -103,8 +103,7 @@ export const saveRouteToNewSchema = async (
             p_pois: poisForRpc,
             p_user_id: userId,
             p_is_public: isPublic,
-            p_parent_route_id: parentRouteId || null,
-            p_highlights: route.highlights || []
+            p_parent_route_id: parentRouteId || null
         });
 
         if (error) {
@@ -184,12 +183,10 @@ export const getRouteFromNewSchema = async (routeId: string): Promise<Route | nu
             city: routeData.city,
             description: routeData.description || '',
             durationMinutes: routeData.duration_minutes || 0,
-            shareTeaser: routeData.share_teaser,
-            highlights: routeData.highlights || [],
             creator: routeData.user_id,
             directionsData: routeData.directions_data,
             pois,
-            preferences: routeData.preferences || {}
+            preferences: routeData.preferences || {} // Include preferences
         };
 
         return route;
