@@ -103,7 +103,7 @@ jobs:
         with:
           appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers
+          testers: arnon7700@gmail.com
           file: ${{ steps.sign_apk.outputs.signedReleaseFile }}
           releaseNotes: |
             ${{ github.event.inputs.release_notes || format('Build #{0}', github.run_number) }}
