@@ -4,20 +4,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Urbanito - Your Urban Guide</title>
+  <title>Urbanito - מדריך העיר החכם שלך | מסלולי הליכה מותאמים אישית</title>
+
+  <meta name="description" content="Urbanito היא אפליקציה חכמה שמייצרת עבורך מסלולי הליכה אישיים בערים ברחבי העולם. גלו את תל אביב, ירושלים, לונדון, פריז, רומא, טוקיו, ניו יורק ועוד מאות ערים - עם נקודות עניין היסטוריות, מסעדות, אתרי אמנות וסיפורים ייחודיים, בזמן ההליכה." />
+  <meta name="keywords" content="מסלולי הליכה, מדריך טיולים, תיירות עירונית, Urbanito, סיורים עצמאיים, טיולים בעיר, תל אביב, ירושלים, לונדון, פריז, רומא, walking tours, urban guide, city tours, self-guided tours" />
+  <meta name="author" content="Urbanito" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://urbanito.live/" />
 
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Urbanito" />
 
-  <!-- SEO Meta Tags -->
-  <meta name="description"
-    content="Discover cities like never before with AI-powered walking tours. Urbanito creates personalized routes tailored to your interests in Tel Aviv, Paris, and more. גלה ערים בצורה חדשה עם מסלולי הליכה מותאמים אישית." />
-  <meta name="keywords"
-    content="urban guide, walking tours, AI travel, Tel Aviv tours, Paris tours, personalized routes, city exploration, מדריך עירוני, סיורים בתל אביב, טיולים בפריז" />
-  <meta name="author" content="Urbanito" />
-
-  <!-- Open Graph / Facebook -->
+  <!-- Open Graph / Social -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://urbanito.live/" />
   <meta property="og:title" content="Urbanito - Your AI Urban Guide | מדריך העיר החכם שלך" />
@@ -27,6 +26,7 @@
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Urbanito - AI-powered urban walking tours" />
+  <meta property="og:image:type" content="image/png" />
   <meta property="og:site_name" content="Urbanito" />
   <meta property="og:locale" content="he_IL" />
   <meta property="og:locale:alternate" content="en_US" />
@@ -40,8 +40,24 @@
   <meta name="twitter:image" content="https://urbanito.live/og-preview.png" />
   <meta name="twitter:image:alt" content="Urbanito - AI-powered urban walking tours" />
 
-  <!-- WhatsApp / Telegram specific -->
-  <meta property="og:image:type" content="image/png" />
+  <!-- Structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Urbanito",
+    "url": "https://urbanito.live/",
+    "description": "אפליקציה חכמה למסלולי הליכה אישיים בערים ברחבי העולם, עם סיפורים ונקודות עניין.",
+    "applicationCategory": "TravelApplication",
+    "operatingSystem": "All",
+    "inLanguage": "he",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "ILS"
+    }
+  }
+  </script>
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml"
@@ -64,7 +80,7 @@
     }
   </script>
   <script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=weekly"></script>
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=3"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&display=swap"
@@ -170,7 +186,67 @@
 </head>
 
 <body class="overflow-hidden">
-  <div id="root"></div>
+  <div id="root">
+    <!-- Static SEO content. React replaces this on mount. Visible to crawlers and in case JS fails. -->
+    <div style="max-width:960px;margin:0 auto;padding:24px;line-height:1.7;color:#0f172a;">
+      <header style="text-align:center;margin-bottom:32px;">
+        <h1 style="font-size:32px;margin:0 0 8px;">Urbanito - מדריך העיר החכם שלך</h1>
+        <p style="font-size:18px;color:#475569;margin:0;">מסלולי הליכה אישיים בערים ברחבי העולם, עם סיפורים, נקודות עניין ומדריך קולי חכם.</p>
+      </header>
+
+      <section style="margin-bottom:28px;">
+        <h2 style="font-size:22px;margin:0 0 10px;">מה זה Urbanito?</h2>
+        <p>Urbanito היא אפליקציית וובתאית שמתכננת עבורכם מסלולי הליכה בעיר שבה אתם נמצאים, לפי ההעדפות שלכם. בחרו עיר, סמנו תחומי עניין (היסטוריה, אוכל, אמנות, אדריכלות, טבע, חיי לילה ועוד), והמערכת תייצר עבורכם מסלול הליכה אישי עם נקודות עניין, זמני הליכה, וסיפורים על כל אתר. בנוסף, Urbanito מציעה מדריך קולי בזמן ההליכה, שיתוף מסלולים עם חברים, שמירת מסלולים למועדפים, ועדכונים בזמן אמת על הסביבה.</p>
+      </section>
+
+      <section style="margin-bottom:28px;">
+        <h2 style="font-size:22px;margin:0 0 10px;">ערים פופולריות</h2>
+        <p>תל אביב, ירושלים, חיפה, באר שבע, אילת, לונדון, פריז, רומא, ברצלונה, אמסטרדם, ברלין, פראג, וינה, בודפשט, אתונה, ניו יורק, שיקגו, לוס אנג'לס, סן פרנסיסקו, טוקיו, סיאול, בנגקוק, סינגפור, איסטנבול, דובאי ועוד מאות ערים ברחבי העולם.</p>
+      </section>
+
+      <section style="margin-bottom:28px;">
+        <h2 style="font-size:22px;margin:0 0 10px;">סוגי מסלולים</h2>
+        <ul>
+          <li><strong>מסלול היסטורי</strong> - אתרים עתיקים, מבנים היסטוריים וסיפורים מהעבר.</li>
+          <li><strong>מסלול קולינרי</strong> - מסעדות, שווקים ומקומות אוכל מקומיים.</li>
+          <li><strong>מסלול אמנות</strong> - גלריות, מוזיאונים ואומנות רחוב.</li>
+          <li><strong>מסלול ארכיטקטורה</strong> - מבנים מעוצבים, כנסיות ומגדלים.</li>
+          <li><strong>מסלול טבע</strong> - פארקים, גנים וגינות עירוניות.</li>
+          <li><strong>מסלול חיי לילה</strong> - ברים, פאבים ומועדונים.</li>
+          <li><strong>מסלול קניות</strong> - שווקים, קניונים וחנויות מקומיות.</li>
+          <li><strong>מסלול רומנטי</strong> - מקומות שקטים, תצפיות ומסעדות אינטימיות.</li>
+        </ul>
+      </section>
+
+      <section style="margin-bottom:28px;">
+        <h2 style="font-size:22px;margin:0 0 10px;">איך Urbanito עובדת?</h2>
+        <ol>
+          <li>בחרו את העיר שבה אתם נמצאים או שאתם מתכננים לבקר בה.</li>
+          <li>הגדירו העדפות: משך זמן ההליכה, תחומי עניין, וקצב.</li>
+          <li>המערכת מייצרת עבורכם מסלול הליכה עם 5-10 נקודות עניין.</li>
+          <li>קבלו הוראות הליכה בזמן אמת, סיפורים קוליים על כל אתר, ותמונות.</li>
+          <li>שמרו את המסלול למועדפים, שתפו עם חברים, או שנו אותו תוך כדי הליכה.</li>
+        </ol>
+      </section>
+
+      <section style="margin-bottom:28px;">
+        <h2 style="font-size:22px;margin:0 0 10px;">למי מיועדת האפליקציה?</h2>
+        <p>Urbanito מתאימה לתיירים שמחפשים לגלות ערים חדשות בצורה עצמאית, למקומיים שרוצים להכיר את העיר שלהם מחדש, לזוגות בחופשה, למטיילי סולו, למשפחות עם ילדים, ולכל מי שאוהב לחקור ערים ברגל. האפליקציה מותאמת למובייל ועובדת בדפדפן, ללא צורך בהורדת אפליקציה נייטיב.</p>
+      </section>
+
+      <footer style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:32px;color:#64748b;font-size:14px;">
+        <p>© Urbanito 2026 | <a href="/privacy.html" style="color:#4f46e5;">מדיניות פרטיות</a> | <a href="/terms.html" style="color:#4f46e5;">תנאי שימוש</a> | <a href="/about.html" style="color:#4f46e5;">אודות</a> | <a href="mailto:contact@urbanito.live" style="color:#4f46e5;">צור קשר</a></p>
+        <p style="margin-top:8px;">אם האפליקציה לא נטענת, אנא ודאו ש-JavaScript מופעל בדפדפן שלכם.</p>
+      </footer>
+    </div>
+  </div>
+  <noscript>
+    <div style="padding:24px;max-width:720px;margin:0 auto;font-family:sans-serif;line-height:1.6;">
+      <h1>Urbanito דורש JavaScript</h1>
+      <p>האפליקציה Urbanito היא אפליקציית וובתאית אינטראקטיבית שדורשת JavaScript כדי לפעול. אנא הפעילו JavaScript בדפדפן שלכם וטענו את הדף מחדש.</p>
+      <p>Urbanito is an interactive web application that requires JavaScript to run. Please enable JavaScript and reload the page.</p>
+    </div>
+  </noscript>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function (registrations) {

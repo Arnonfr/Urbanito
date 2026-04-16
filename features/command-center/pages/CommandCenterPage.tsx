@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Terminal, Users, Activity, Command, LayoutDashboard } from 'lucide-react';
+import { Terminal, Users, Activity, Command, LayoutDashboard, Map } from 'lucide-react';
 import { AgentStatus } from '../components/AgentStatus';
+import { ApiControlTab } from '../components/ApiControlTab';
 import { ChatConsole } from '../components/ChatConsole';
 import { CommandCenterProvider } from '../context/CommandCenterContext';
 
@@ -13,7 +14,7 @@ export const CommandCenterPage = () => {
 }
 
 const CommandCenterLayout = () => {
-    const [activeTab, setActiveTab] = useState<'console' | 'agents' | 'tasks'>('console');
+    const [activeTab, setActiveTab] = useState<'console' | 'agents' | 'api' | 'tasks'>('console');
 
     return (
         <div className="fixed inset-0 z-[9999] bg-gray-50 text-gray-800 font-sans flex flex-col overflow-hidden">
@@ -63,6 +64,12 @@ const CommandCenterLayout = () => {
                         label="Agents"
                     />
                     <NavButton
+                        active={activeTab === 'api'}
+                        onClick={() => setActiveTab('api')}
+                        icon={<Map size={22} />}
+                        label="API & Costs"
+                    />
+                    <NavButton
                         active={activeTab === 'tasks'}
                         onClick={() => setActiveTab('tasks')}
                         icon={<Activity size={22} />}
@@ -74,6 +81,7 @@ const CommandCenterLayout = () => {
                 <div className="flex-1 flex flex-col relative bg-white">
                     {activeTab === 'console' && <ChatConsole />}
                     {activeTab === 'agents' && <AgentStatus />}
+                    {activeTab === 'api' && <ApiControlTab />}
                     {activeTab === 'tasks' && (
                         <div className="flex-1 flex items-center justify-center text-gray-400 font-medium bg-gray-50">
                             Task Board Module Offline
