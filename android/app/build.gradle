@@ -7,8 +7,8 @@ android {
         applicationId "com.urbanito.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode System.getenv("VERSION_CODE") ? System.getenv("VERSION_CODE").toInteger() : 1
+        versionName System.getenv("VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        localRelease {
+            // For local builds only — CI uses r0adkll/sign-android-release action
+            storeFile file("urbanito-release.keystore")
+            storePassword "urbanito2024release"
+            keyAlias "urbanito"
+            keyPassword "urbanito2024release"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // No signingConfig here — CI action signs the APK after build
+        }
+        debug {
+            signingConfig signingConfigs.localRelease
         }
     }
 }

@@ -23,3 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Android signing
+android/app/*.keystore
+android/app/*.jks
+
+# Android build outputs
+android/app/build/
+android/local.properties
