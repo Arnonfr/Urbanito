@@ -66,9 +66,21 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    // Palette lives in theme/palette.ts. `indigo` → deep violet primary, `slate` → warm "paper"
+    // neutrals, so existing classes pick up the new look without per-component edits.
     tailwind.config = {
       theme: {
         extend: {
+          colors: {
+            indigo: { 50: '#F4F0FA', 100: '#E9E1F5', 200: '#D3C3EA', 300: '#B49DDB', 400: '#8E6EC6', 500: '#6A47AE', 600: '#4F2D96', 700: '#42247F', 800: '#361D68', 900: '#2A1652', 950: '#1B0D36' },
+            slate: { 50: '#FAF8F4', 100: '#F2EEE6', 200: '#E6DFD3', 300: '#D3CABB', 400: '#A79D8E', 500: '#7D7466', 600: '#5E564B', 700: '#463F36', 800: '#2E2838', 900: '#261E36', 950: '#15111C' },
+            signal: { 50: '#FDF0EA', 100: '#FBDCCC', 400: '#EC8156', 500: '#E2602F', 600: '#C94E20' },
+            paper: '#FAF8F4',
+            cream: '#F4EFE6',
+          },
+          fontFamily: {
+            display: ['"Suez One"', 'serif'],
+          },
           spacing: {
             'safe-top': 'env(safe-area-inset-top)',
             'safe-bottom': 'env(safe-area-inset-bottom)',
@@ -79,11 +91,9 @@
       }
     }
   </script>
-  <script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBmZCtrYEv5s6OPAHhQQcsgoKdscjW_OXs&libraries=geometry,places&v=3"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&display=swap"
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@100;300;400;500;700;900&family=Suez+One&display=swap"
     rel="stylesheet">
   <style>
     * {
@@ -104,9 +114,52 @@
       border-radius: 9999px !important;
     }
 
+    /* Display headings (Suez One, a Hebrew slab serif). Beats the global font rule by specificity. */
+    .font-display,
+    .font-display * {
+      font-family: 'Suez One', 'Noto Sans Hebrew', serif !important;
+      font-weight: 400 !important;
+      letter-spacing: 0 !important;
+    }
+
+    /* Map popups and place suggestions (services/mapbox/googleMapsCompat.ts) */
+    .urb-popup .mapboxgl-popup-content {
+      border-radius: 16px;
+      padding: 0;
+      box-shadow: 0 12px 32px rgba(38, 30, 54, 0.18);
+      border: 1px solid #E6DFD3;
+    }
+    .urb-suggest {
+      display: none;
+      position: fixed;
+      z-index: 9500;
+      background: #FFFFFF;
+      border: 1px solid #E6DFD3;
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(38, 30, 54, 0.16);
+      overflow: hidden;
+    }
+    .urb-suggest-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      padding: 12px 16px;
+      border: 0;
+      border-bottom: 1px solid #F2EEE6;
+      background: transparent;
+      text-align: start;
+      cursor: pointer;
+    }
+    .urb-suggest-row:last-child { border-bottom: 0; }
+    .urb-suggest-row:active { background: #F4F0FA; }
+    .urb-suggest-row strong { font-size: 15px; font-weight: 500; color: #261E36; }
+    .urb-suggest-row small { font-size: 12px; color: #7D7466; }
+    .mapboxgl-ctrl-attrib { font-size: 10px; }
+
     body {
-      background-color: #f8fafc;
-      color: #0f172a;
+      background-color: #FAF8F4;
+      color: #261E36;
       -webkit-font-smoothing: antialiased;
       height: 100dvh;
       margin: 0;

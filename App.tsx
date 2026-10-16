@@ -120,8 +120,8 @@ import { extractStandardCity } from '~utils/geocoding';
 
 export const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" className={animated ? "climbing-path" : ""} />
-    <circle r="3" fill="#6366F1" className={animated ? "climbing-dot" : ""} />
+    <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={animated ? "climbing-path" : ""} />
+    <circle r="3" fill="currentColor" className={animated ? "climbing-dot" : ""} />
   </svg>
 );
 
@@ -378,7 +378,7 @@ const App: React.FC = () => {
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 5, // Smaller, cleaner dot
-            fillColor: "#4F46E5",
+            fillColor: "#4F2D96",
             fillOpacity: 1,
             strokeColor: '#FFFFFF',
             strokeWeight: 2,
@@ -400,7 +400,7 @@ const App: React.FC = () => {
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 6,
-            fillColor: "#0EA5E9", // Sky Blue for user
+            fillColor: "#E2602F", // Sky Blue for user
             fillOpacity: 1,
             strokeColor: '#FFFFFF',
             strokeWeight: 2,
@@ -416,7 +416,7 @@ const App: React.FC = () => {
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 12,
-            fillColor: "#0EA5E9",
+            fillColor: "#E2602F",
             fillOpacity: 0.2,
             strokeWeight: 0,
           },
@@ -711,11 +711,11 @@ const App: React.FC = () => {
         position: { lat: startPoi.lat, lng: startPoi.lng },
         map: googleMap.current,
         title: route.name,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#6366F1', fillOpacity: 0.9, strokeColor: '#ffffff', strokeWeight: 2 }
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#6A47AE', fillOpacity: 0.9, strokeColor: '#ffffff', strokeWeight: 2 }
       });
 
       const infoWindow = new google.maps.InfoWindow({
-        content: `<div dir="${isHe ? 'rtl' : 'ltr'}" style="padding: 12px; text-align: right; min-width: 180px;"><h4 style="margin: 0; font-size: 14px; font-weight: 500; color: #1e293b;">${route.name.replace(/\s*\(.*?\)\s*/g, '')}</h4><p style="margin: 4px 0 0; font-size: 11px; color: #64748b;">${route.city}</p><div style="margin-top: 8px; font-size: 10px; color: #6366F1; font-weight: 500;">${Math.round((route.dist || 0) / 1000)}km away</div><button id="load-route-${idx}" style="margin-top: 12px; background: #6366F1; color: white; border: none; padding: 10px 14px; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; width: 100%; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);">${isHe ? 'צפה במסלול' : 'View Tour'}</button></div>`
+        content: `<div dir="${isHe ? 'rtl' : 'ltr'}" style="padding: 12px; text-align: right; min-width: 180px;"><h4 style="margin: 0; font-size: 14px; font-weight: 500; color: #1e293b;">${route.name.replace(/\s*\(.*?\)\s*/g, '')}</h4><p style="margin: 4px 0 0; font-size: 11px; color: #64748b;">${route.city}</p><div style="margin-top: 8px; font-size: 10px; color: #6A47AE; font-weight: 500;">${Math.round((route.dist || 0) / 1000)}km away</div><button id="load-route-${idx}" style="margin-top: 12px; background: #6A47AE; color: white; border: none; padding: 10px 14px; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; width: 100%; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);">${isHe ? 'צפה במסלול' : 'View Tour'}</button></div>`
       });
 
       marker.addListener('click', () => {
@@ -794,10 +794,10 @@ const App: React.FC = () => {
       // The selection circle represents the search area. 
       // A 3km walk usually stays within a ~700m-1km radius of the center.
       selectionCircle.current = new google.maps.Circle({
-        strokeColor: "#6366F1",
+        strokeColor: "#6A47AE",
         strokeOpacity: 0.8,
         strokeWeight: 2,
-        fillColor: "#6366F1",
+        fillColor: "#6A47AE",
         fillOpacity: 0.15,
         map: googleMap.current,
         center: centerPosition,
@@ -1123,7 +1123,7 @@ const App: React.FC = () => {
       });
       directionsRenderer.current = new google.maps.DirectionsRenderer({
         map: googleMap.current, suppressMarkers: true, preserveViewport: true,
-        polylineOptions: { strokeColor: '#6366F1', strokeWeight: 5, strokeOpacity: 0.8 }
+        polylineOptions: { strokeColor: '#4F2D96', strokeWeight: 4, strokeOpacity: 0.95 }
       });
 
       if (searchInputRef.current) {
@@ -1180,6 +1180,12 @@ const App: React.FC = () => {
       });
     }
   }, []);
+
+  // Map labels and geocoding follow the UI language (read from <html lang> by the map layer).
+  useEffect(() => {
+    document.documentElement.lang = isHe ? 'he' : 'en';
+    googleMap.current?.setLanguage?.(isHe ? 'he' : 'en');
+  }, [isHe]);
 
   // Sync Map with Location State changes (e.g. from "Maximize" button or Search)
   useEffect(() => {
@@ -1288,7 +1294,7 @@ const App: React.FC = () => {
     }));
 
     try {
-      const data = await fetchExtendedPoiDetails(poi.name, routeCity, userPrefs, poi.lat, poi.lng);
+      const data = await fetchExtendedPoiDetails(poi.name, routeCity, userPrefs, poi.lat, poi.lng, isPremium, poi);
       if (data) {
         handlePoiDataLoaded(routeId, poi.id, data);
         // Save enriched POI to DB
@@ -1769,8 +1775,8 @@ const App: React.FC = () => {
       if (!p.lat || !p.lng) return;
       const marker = new google.maps.Marker({
         position: { lat: p.lat, lng: p.lng }, map: googleMap.current,
-        label: { text: (i + 1).toString(), color: 'white', fontSize: '10px' },
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 14, fillColor: '#6366F1', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
+        label: { text: (i + 1).toString(), color: 'white', fontSize: '12px' },
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 15, fillColor: '#4F2D96', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2.5 }
       });
       marker.addListener('click', () => setSelectedPoi(p));
       markers.current.push(marker);
@@ -1887,7 +1893,7 @@ const App: React.FC = () => {
 
   return (
     <div className="h-[100dvh] w-full flex flex-col relative bg-white overflow-hidden" dir={isHe ? 'rtl' : 'ltr'}>
-      <style>{`.liquid-indicator { transition: transform 0.4s cubic-bezier(0.68, -0.6, 0.32, 1.6); width: 33.33%; display: flex; justify-content: center; align-items: center; pointer-events: none; } .indicator-pill { width: 50%; height: 80%; background-color: #6366F1; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2); } .crosshair-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 9000; display: flex; flex-direction: column; align-items: center; transition: top 0.5s ease-in-out; } .crosshair-container.shifted { top: 65%; } .gen-tooltip { position: absolute; bottom: calc(100px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: #0F172A; color: white; padding: 12px 24px; border-radius: 8px; font-size: 11px; font-medium: 500; z-index: 5000; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; animation: in-out 0.3s ease-out; } @keyframes in-out { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } } .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom, 16px); min-height: calc(64px + env(safe-area-inset-bottom, 0px)); } .top-safe-area { padding-top: env(safe-area-inset-top, 24px); }`}</style>
+      <style>{`.liquid-indicator { transition: transform 0.4s cubic-bezier(0.68, -0.6, 0.32, 1.6); width: 33.33%; display: flex; justify-content: center; align-items: center; pointer-events: none; } .indicator-pill { width: 50%; height: 80%; background-color: #6A47AE; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2); } .crosshair-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 9000; display: flex; flex-direction: column; align-items: center; transition: top 0.5s ease-in-out; } .crosshair-container.shifted { top: 65%; } .gen-tooltip { position: absolute; bottom: calc(100px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: #261E36; color: white; padding: 12px 24px; border-radius: 8px; font-size: 11px; font-medium: 500; z-index: 5000; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; animation: in-out 0.3s ease-out; } @keyframes in-out { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } } .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom, 16px); min-height: calc(64px + env(safe-area-inset-bottom, 0px)); } .top-safe-area { padding-top: env(safe-area-inset-top, 24px); }`}</style>
 
 
 
@@ -1895,7 +1901,7 @@ const App: React.FC = () => {
         {showOnboarding && <UserGuide isHe={isHe} onClose={() => { setShowOnboarding(false); localStorage.setItem('urbanito_onboarding_v2', 'true'); }} />}
       </Suspense>
       {toast && <div className={`fixed top-[calc(env(safe-area-inset-top)+12px)] left-1/2 -translate-x-1/2 z-[10000] px-6 py-3 rounded-[12px] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}><CheckCircle size={18} /><span className="text-sm font-medium whitespace-nowrap">{toast.message}</span></div>}
-      {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
+      {showGeneratingTooltip && <div className="gen-tooltip"><RouteTravelIcon className="w-6 h-6 text-indigo-500" /><span className="font-normal">{isHe ? 'המסלול בבנייה...' : 'Preparing route...'}</span></div>}
       {isSearchingNearby && <div className="fixed inset-0 z-[8000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-[8px] shadow-2xl flex flex-col items-center gap-4"><Loader2 size={40} className="animate-spin text-indigo-500" /><p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">{isHe ? 'מחפש מסלולים בסביבה...' : 'Searching nearby...'}</p></div></div>}
 
       {/* Route Tabs - REMOVED per user request (replaced by header carousel) */}
@@ -1913,14 +1919,14 @@ const App: React.FC = () => {
                   <>
                     <div className={`crosshair-container ${streetConfirmData.type === 'area' ? 'shifted' : ''}`}>
                       <div className="animate-in zoom-in duration-300 flex flex-col items-center mb-2">
-                        {streetConfirmData.type === 'street' ? <MapPin size={28} className="text-[#6366F1] fill-indigo-100/50" strokeWidth={1.2} /> : <TargetIcon size={28} className="text-[#6366F1] animate-pulse" />}
+                        {streetConfirmData.type === 'street' ? <MapPin size={28} className="text-[#6A47AE] fill-indigo-100/50" strokeWidth={1.2} /> : <TargetIcon size={28} className="text-[#6A47AE] animate-pulse" />}
                       </div>
                       <div className="pointer-events-auto animate-in slide-in-from-top-4 duration-500">
                         <div className="w-[300px] bg-white rounded-[8px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100/50 overflow-hidden flex flex-col">
                           <div className="p-5 pb-2">
                             <div className="flex justify-between items-start mb-4">
                               <div className="text-right flex-1 min-w-0">
-                                <h4 className="text-[9px] font-medium text-[#6366F1] uppercase tracking-[0.2em] mb-1">
+                                <h4 className="text-[9px] font-medium text-[#6A47AE] uppercase tracking-[0.2em] mb-1">
                                   {streetConfirmData.type === 'street'
                                     ? (isHe ? 'מסלול רחוב - צור מסלול על רחוב ספיציפי' : 'Street Tour - Create a tour on a specific street')
                                     : (isHe ? 'מסלול איזורי (צור מסלול ברדיוס סביבך)' : 'Area Tour (Create a route in a radius around you)')}
@@ -1964,20 +1970,20 @@ const App: React.FC = () => {
                                 </div>
                                 {streetConfirmData.type === 'area' && (
                                   <p className="text-[10px] text-slate-400 mt-2 font-medium tracking-wide">
-                                    {isHe ? 'רדיוס סיור:' : 'Radius:'} <span className="text-[#6366F1] font-medium">{dynamicRadius}km</span>
+                                    {isHe ? 'רדיוס סיור:' : 'Radius:'} <span className="text-[#6A47AE] font-medium">{dynamicRadius}km</span>
                                   </p>
                                 )}
                               </div>
                               <button onClick={() => { setStreetConfirmData(null); if (selectionCircle.current) { selectionCircle.current.setMap(null); selectionCircle.current = null; } }} className="p-1.5 text-slate-300 hover:text-slate-600 transition-colors bg-slate-50 rounded-[8px]"><X size={16} /></button>
                             </div>
-                            <button onClick={() => setIsConfirmPrefsExpanded(true)} className="w-full flex items-center justify-between py-2 text-[10px] font-medium text-slate-400 border-t border-slate-50 mt-1 hover:text-[#6366F1] transition-colors">
+                            <button onClick={() => setIsConfirmPrefsExpanded(true)} className="w-full flex items-center justify-between py-2 text-[10px] font-medium text-slate-400 border-t border-slate-50 mt-1 hover:text-[#6A47AE] transition-colors">
                               <span className="flex items-center gap-2"><Settings2 size={14} /> {isHe ? 'העדפות מסלול' : 'Route Preferences'}</span>
                               <ChevronUp size={14} className="rotate-90" />
                             </button>
                           </div>
 
                           <div className="p-5 pt-3">
-                            <button onClick={handleActionCreateRoute} className="w-full py-4 bg-[#0F172A] text-white rounded-[8px] font-medium text-[11px] uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                            <button onClick={handleActionCreateRoute} className="w-full py-4 bg-indigo-700 text-white rounded-full font-bold text-[15px] shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-95 transition-all">
                               <RouteTravelIcon className="w-5 h-5" animated={false} />
                               {isHe ? 'בנה לי מסלול אישי' : 'Build My Tour'}
                             </button>
@@ -2005,7 +2011,7 @@ const App: React.FC = () => {
                         </div>
                         <div className="p-6 bg-white border-t border-slate-100 bottom-nav-safe">
                           <div className="max-w-md mx-auto">
-                            <button onClick={() => setIsConfirmPrefsExpanded(false)} className="w-full py-4 bg-[#0F172A] text-white rounded-[16px] font-bold text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                            <button onClick={() => setIsConfirmPrefsExpanded(false)} className="w-full py-4 bg-indigo-700 text-white rounded-full font-bold text-[15px] shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-95 transition-all">
                               {isHe ? 'שמור וסגור' : 'Save & Close'}
                             </button>
                           </div>
@@ -2061,7 +2067,7 @@ const App: React.FC = () => {
 
                 {!selectedPoi && (
                   <button onClick={() => handleLocateUser()} className={`absolute bottom-24 ${isHe ? 'left-6' : 'right-6'} z-[1000] w-12 h-12 bg-white rounded-[16px] shadow-2xl border border-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition-all`}>
-                    {isLocating ? <Loader2 size={20} className="animate-spin text-[#6366F1]" /> : <LocateFixed size={20} />}
+                    {isLocating ? <Loader2 size={20} className="animate-spin text-[#6A47AE]" /> : <LocateFixed size={20} />}
                   </button>
                 )}
               </>
@@ -2129,7 +2135,7 @@ const App: React.FC = () => {
 
                         <section>
                           <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                            <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
+                            <BookOpen size={12} className="text-[#6A47AE]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
                           </h3>
                           <div
                             ref={citiesScrollRef}
@@ -2669,7 +2675,7 @@ const App: React.FC = () => {
               >
                 <div className="relative z-10 transition-transform duration-300 group-active:scale-90">
                   {generatingRouteIds.size > 0 ? (
-                    <RouteTravelIcon className={`w-6 h-6 ${(activeTab === 'route' || activeTab === 'library') ? 'brightness-0 invert' : ''}`} animated={true} />
+                    <RouteTravelIcon className={`w-6 h-6 text-indigo-500 ${(activeTab === 'route' || activeTab === 'library') ? 'brightness-0 invert' : ''}`} animated={true} />
                   ) : (
                     <RouteIcon size={20} />
                   )}

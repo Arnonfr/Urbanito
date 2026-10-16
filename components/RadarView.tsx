@@ -43,7 +43,7 @@ export const RadarView: React.FC<Props> = ({ onClose, isHe }) => {
             {/* Background Grid Effect */}
             <div className="absolute inset-0 z-0 opacity-20 pointer-events-none"
                 style={{
-                    backgroundImage: 'radial-gradient(circle at center, #6366F1 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
+                    backgroundImage: 'radial-gradient(circle at center, #6A47AE 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
                     backgroundSize: '40px 40px, 80px 80px, 80px 80px'
                 }}
             />

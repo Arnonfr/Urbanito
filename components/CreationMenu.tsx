@@ -57,7 +57,7 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                     transition={{ delay: 0.15 }}
                     className="p-5 pb-2 flex items-center justify-between border-b border-white/20"
                 >
-                    <h3 className="text-sm font-bold text-slate-800">{isHe ? 'יצירת מסלול חדש' : 'Create New Route'}</h3>
+                    <h3 className="text-lg font-display text-indigo-900">{isHe ? 'יצירת מסלול חדש' : 'Create New Route'}</h3>
                     <button onClick={onClose} className="p-1 rounded-full hover:bg-black/5 transition-colors">
                         <X size={18} className="text-slate-500" />
                     </button>
@@ -67,7 +67,7 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                 {/* Options List */}
                 <div className="p-3 space-y-2">
                     <MenuItem
-                        icon={<Crosshair size={22} className="drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />}
+                        icon={<Crosshair size={22} />}
                         color="indigo"
                         title={isHe ? 'מסלול איזורי' : 'Area Tour'}
                         desc={isHe ? 'צור מסלול ברדיוס סביבך' : 'Create a route in a radius around you'}
@@ -76,7 +76,7 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                         isHe={isHe}
                     />
                     <MenuItem
-                        icon={<Signpost size={22} className="drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
+                        icon={<Signpost size={22} />}
                         color="emerald"
                         title={isHe ? 'מסלול רחוב' : 'Street Tour'}
                         desc={isHe ? 'צור מסלול על רחוב ספיציפי' : 'Create a tour on a specific street'}
@@ -85,7 +85,7 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
                         isHe={isHe}
                     />
                     <MenuItem
-                        icon={<Compass size={22} className="drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />}
+                        icon={<Compass size={22} />}
                         color="amber"
                         title={isHe ? 'מסלולים באזור' : 'Routes Nearby'}
                         desc={isHe ? 'מסלולים מוכנים באזור' : 'Ready trails in the area'}
@@ -104,9 +104,9 @@ export const CreationMenu: React.FC<Props> = ({ onOptionSelect, onClose, isHe })
 const MenuItem = ({ icon, color, title, desc, onClick, delay, isHe }: any) => {
     // Enhanced colors for glassmorphism context - Deeper and richer as requested
     const colors: Record<string, string> = {
-        indigo: 'bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white',
-        emerald: 'bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white',
-        amber: 'bg-amber-100 text-amber-700 group-hover:bg-amber-600 group-hover:text-white',
+        indigo: 'text-indigo-700 group-hover:bg-indigo-600 group-hover:border-indigo-600 group-hover:text-white',
+        emerald: 'text-emerald-700 group-hover:bg-emerald-600 group-hover:border-emerald-600 group-hover:text-white',
+        amber: 'text-signal-600 group-hover:bg-signal-500 group-hover:border-signal-500 group-hover:text-white',
     };
 
     return (
@@ -117,7 +117,7 @@ const MenuItem = ({ icon, color, title, desc, onClick, delay, isHe }: any) => {
             onClick={onClick}
             className={`group w-full flex items-center gap-4 p-3 rounded-xl hover:bg-white/60 transition-all text-left ${isHe ? 'flex-row-reverse text-right' : ''}`}
         >
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-300 backdrop-blur-sm ${colors[color]}`}>
+            <div className={`w-11 h-11 rounded-[12px] bg-white border border-slate-200 flex items-center justify-center shrink-0 transition-colors duration-300 ${colors[color]}`}>
                 {icon}
             </div>
             <div className="flex-1 min-w-0">

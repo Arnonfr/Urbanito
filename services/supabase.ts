@@ -156,7 +156,7 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
         lat: p.lat,
         lng: p.lng,
         order_index: idx,
-        travel_data: null, // Could be enhanced later
+        travel_data: p.travelFromPrevious || null,
         poi_data: {
           description: p.description,
           historicalContext: p.historicalContext,
@@ -164,7 +164,16 @@ export const saveRouteToSupabase = async (userId: string, route: Route, preferen
           architecturalAnalysis: p.architecturalAnalysis,
           narrative: p.narrative,
           imageUrl: p.imageUrl,
-          isPremiumContent: p.isPremiumContent
+          isPremiumContent: p.isPremiumContent,
+          summary: p.summary,
+          category: p.category,
+          sections: p.sections,
+          sources: p.sources,
+          externalUrl: p.externalUrl,
+          architecturalStyle: p.architecturalStyle,
+          // Open-data refs (Wikidata/Wikipedia) → free lazy hydration after reload
+          content: p.content,
+          isFullyLoaded: p.isFullyLoaded
         }
       }))
     });
@@ -253,7 +262,7 @@ export const getSavedRoutesFromSupabase = async (userId: string): Promise<any[]>
         .map((rp: any) => ({
           ...rp.pois,
           ...rp.pois.data,
-          isFullyLoaded: !!(rp.pois.data?.historicalAnalysis || rp.pois.data?.description)
+          isFullyLoaded: isPoiDataLoaded(rp.pois.data)
         }));
 
       return {
@@ -422,7 +431,7 @@ export const getRoutesByCityHub = async (cityName: string, cityEn?: string, lang
           .map((rp: any) => ({
             ...rp.pois,
             ...rp.pois.data,
-            isFullyLoaded: !!(rp.pois.data?.historicalAnalysis || rp.pois.data?.description)
+            isFullyLoaded: isPoiDataLoaded(rp.pois.data)
           }));
 
         return {
@@ -503,6 +512,11 @@ export const signOut = async () => {
 export const generateStableId = (name: string, lat: number, lng: number) => {
   return `poi-${normalize(name)}-${lat.toFixed(4)}-${lng.toFixed(4)}`;
 };
+
+/** Open-data intros are long but the full article still lazy-loads, so trust their flag. */
+const isPoiDataLoaded = (data: any) =>
+  data?.content?.source === 'open-data' ? !!data.isFullyLoaded : !!(data?.historicalAnalysis || data?.description);
+
 
 // CRITICAL FIX: Ensure enriched POI data is saved to the shared 'pois' table
 export const updateSharedPoiData = async (poi: POI) => {
@@ -672,7 +686,7 @@ export const getRouteById = async (id: string): Promise<Route | null> => {
       .map((rp: any) => ({
         ...rp.pois,
         ...rp.pois.data,
-        isFullyLoaded: !!(rp.pois.data?.historicalAnalysis || rp.pois.data?.description)
+        isFullyLoaded: isPoiDataLoaded(rp.pois.data)
       }));
 
     return {
