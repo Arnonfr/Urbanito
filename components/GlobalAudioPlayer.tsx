@@ -192,7 +192,7 @@ export const GlobalAudioPlayer: React.FC<Props> = ({ isHe, currentRoute, isVisib
                   }}
                   className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500 [&::-webkit-slider-thumb]:shadow-lg active:[&::-webkit-slider-thumb]:scale-125 transition-all outline-none"
                   style={{
-                    background: `linear-gradient(to right, #6366F1 0%, #6366F1 ${isSeeking ? seekValue : progress}%, #e2e8f0 ${isSeeking ? seekValue : progress}%, #e2e8f0 100%)`
+                    background: `linear-gradient(to right, #6A47AE 0%, #6A47AE ${isSeeking ? seekValue : progress}%, #e2e8f0 ${isSeeking ? seekValue : progress}%, #e2e8f0 100%)`
                   }}
                 />
                 <div className="flex justify-between text-[11px] text-slate-500 mt-2 font-medium tracking-wide" dir="ltr">

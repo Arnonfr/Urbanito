@@ -3,6 +3,7 @@ import { GoogleGenAI, Modality, Type, HarmCategory, HarmBlockThreshold } from "@
 // Fallback manual definition since SchemaType export is missing in this version
 const SchemaType = { OBJECT: "OBJECT", STRING: "STRING", ARRAY: "ARRAY" };
 import { UserPreferences, Route, POI } from "../types";
+import { buildOpenDataRoute, canUseOpenData, fetchOpenDataPoiDetails } from "./openDataRouteEngine";
 import {
   getCachedPoiDetails,
   cachePoiDetails,
@@ -184,7 +185,13 @@ async function aiCall(params: any, retries = 3): Promise<any> {
   }
 }
 
-export async function fetchExtendedPoiDetails(poiName: string, city: string, preferences: UserPreferences, lat?: number, lng?: number, isPremium: boolean = false) {
+/**
+ * Deep content for a stop. Cost order: Supabase cache → Wikipedia (free) → Gemini.
+ * Gemini runs only for premium depth, places without a usable article in the user's
+ * language, or legacy AI routes — and is grounded in the Wikipedia text when there is one.
+ * Pass allowAi=false for background prefetching so only free sources are used.
+ */
+export async function fetchExtendedPoiDetails(poiName: string, city: string, preferences: UserPreferences, lat?: number, lng?: number, isPremium: boolean = false, poi?: POI, allowAi: boolean = true) {
   try {
     const cached = await getCachedPoiDetails(poiName, city, lat, lng);
     // If cached and has some content, use it. Don't be too strict on length or premium to avoid loops.
@@ -198,6 +205,21 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
 
+    let grounding = '';
+    if (poi?.content?.source === 'open-data') {
+      const free = await fetchOpenDataPoiDetails(poi, isHe ? 'he' : 'en').catch(() => null);
+      const sameLanguage = free?.contentLang === (isHe ? 'he' : 'en');
+      if (free && sameLanguage && !isPremium) {
+        await cachePoiDetails(poiName, city, { ...free, lat, lng, imageUrl: poi.imageUrl });
+        updateSharedPoiData({ ...poi, ...free, name: poiName, lat: lat || 0, lng: lng || 0 });
+        return free;
+      }
+      if (free) grounding = [free.historicalAnalysis, ...free.sections.map(s => `${s.title}: ${s.content}`)].join('\n\n').slice(0, 6000);
+      if (!allowAi) return null; // other-language article: leave it for a grounded AI pass when the stop is opened
+    } else if (!allowAi) {
+      return null;
+    }
+
     const premiumInstructions = isPremium ? `
       PREMIUM DEPTH REQUIRED:
       - Include "insider" secrets and less-known historical facts.
@@ -206,9 +228,14 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
       - Use a more sophisticated, storyteller personality.
     ` : "";
 
+    const groundingBlock = grounding ? `
+      SOURCE MATERIAL (Wikipedia — base every fact on it, do not contradict it, translate as needed):
+      """${grounding}"""
+      ` : '';
+
     const response = await aiCall({
       contents: `Provide rich, engaging, and highly reliable historical context for "${poiName}" in ${city} (Location: ${lat}, ${lng}).
-      
+      ${groundingBlock}
       CRITICAL INSTRUCTIONS:
       1. LANGUAGE: ALL content MUST be in ${langName} only.
       2. DEPTH: Write 3-5 comprehensive, high-quality paragraphs.${premiumInstructions}
@@ -238,7 +265,7 @@ export async function fetchExtendedPoiDetails(poiName: string, city: string, pre
   } catch (e) { return null; }
 }
 
-export const generateWalkingRoute = async (city: string, location: any, preferences: UserPreferences, theme?: string, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
+const generateWalkingRouteAI = async (city: string, location: any, preferences: UserPreferences, theme?: string, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
   try {
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
@@ -373,7 +400,7 @@ CRITICAL SPEED INSTRUCTION: Do NOT generate long descriptions or history yet. Ke
   } catch (err) { throw err; }
 };
 
-export const generateStreetWalkRoute = async (streetName: string, location: any, preferences: UserPreferences, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
+const generateStreetWalkRouteAI = async (streetName: string, location: any, preferences: UserPreferences, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
   try {
     const isHe = preferences.language === 'he';
     const langName = isHe ? "Hebrew" : "English";
@@ -498,6 +525,39 @@ NOTE: Keep 'summary' to 1-2 sentences. We will generate deep content later.`,
       }))
     };
   } catch (err) { throw err; }
+};
+
+/**
+ * Route generation entry points. Open data first (no paid calls: Wikipedia + Wikidata,
+ * local ordering and distances); Gemini only when the request needs an LLM
+ * (free-text prompt, food/nightlife/shopping themes) or open data is too sparse / unreachable.
+ */
+const tryOpenData = async (label: string, build: () => Promise<Route | null>) => {
+  try {
+    const t0 = Date.now();
+    const route = await build();
+    if (route) console.log(`[routeEngine] ${label}: open-data route in ${Date.now() - t0}ms (0 AI calls)`);
+    return route;
+  } catch (e) {
+    console.warn(`[routeEngine] ${label}: open data failed, falling back to AI`, e);
+    return null;
+  }
+};
+
+export const generateWalkingRoute = async (city: string, location: any, preferences: UserPreferences, theme?: string, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
+  if (canUseOpenData(preferences) && location?.lat != null && location?.lng != null) {
+    const route = await tryOpenData(city, () => buildOpenDataRoute(city, location, preferences, { mode: 'area' }));
+    if (route) return { ...route, isPremiumRoute: isPremium, user_id: userId || undefined } as Route;
+  }
+  return generateWalkingRouteAI(city, location, preferences, theme, userId, isPremium);
+};
+
+export const generateStreetWalkRoute = async (streetName: string, location: any, preferences: UserPreferences, userId?: string | null, isPremium: boolean = false): Promise<Route | null> => {
+  if (canUseOpenData(preferences) && location?.lat != null && location?.lng != null) {
+    const route = await tryOpenData(streetName, () => buildOpenDataRoute(streetName, location, preferences, { mode: 'street', streetName }));
+    if (route) return { ...route, isPremiumRoute: isPremium, user_id: userId || undefined } as Route;
+  }
+  return generateStreetWalkRouteAI(streetName, location, preferences, userId, isPremium);
 };
 
 export const generateSpeech = async (text: string, language: string, isPremium: boolean = false, retries: number = 3): Promise<string> => {
@@ -736,8 +796,10 @@ export async function enrichRoute(route: Route, preferences: UserPreferences, is
 
   const missingHe = !names.he;
   const missingEn = !names.en;
+  // Open-data routes are built in the user's language; translating them would be a paid call for nothing.
+  const isOpenData = prefs.source === 'open-data' || route.pois.some(p => p.content?.source === 'open-data');
 
-  if (missingHe || missingEn) {
+  if ((missingHe || missingEn) && !isOpenData) {
     console.log(`[enrichRoute] Generating missing titles for: ${route.name} `);
     try {
       // Very simple prompt to get just the translations
@@ -778,8 +840,12 @@ export async function enrichRoute(route: Route, preferences: UserPreferences, is
       return poi;
     }
 
-    console.log(`[enrichRoute] Hydrating POI: ${poi.name} (Premium: ${isPremium})`);
-    const extendedDetails = await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng, isPremium);
+    // Open-data stops hydrate from Wikipedia only (free); AI depth waits until the stop is opened.
+    const isOpenDataPoi = poi.content?.source === 'open-data';
+    console.log(`[enrichRoute] Hydrating POI: ${poi.name} (Premium: ${isPremium}, open data: ${isOpenDataPoi})`);
+    const extendedDetails = isOpenDataPoi
+      ? await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng, false, poi, false)
+      : await fetchExtendedPoiDetails(poi.name, route.city, preferences, poi.lat, poi.lng, isPremium);
 
     if (extendedDetails) {
       return {

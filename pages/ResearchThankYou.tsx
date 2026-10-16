@@ -53,7 +53,7 @@ const ResearchThankYou: React.FC<Props> = ({ couponCode }) => {
                             <div
                                 className="w-3 h-3 rounded-full"
                                 style={{
-                                    backgroundColor: ['#6366F1', '#EC4899', '#F59E0B', '#10B981', '#3B82F6'][Math.floor(Math.random() * 5)]
+                                    backgroundColor: ['#6A47AE', '#EC4899', '#F59E0B', '#10B981', '#3B82F6'][Math.floor(Math.random() * 5)]
                                 }}
                             />
                         </div>

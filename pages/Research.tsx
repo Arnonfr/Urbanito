@@ -388,7 +388,7 @@ const Research: React.FC = () => {
             {/* Content */}
             <div className="flex-1 max-w-lg w-full mx-auto p-6 pb-32">
                 <div className="mb-8">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#6366F1] bg-indigo-50 px-2 py-1 rounded-md">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#6A47AE] bg-indigo-50 px-2 py-1 rounded-md">
                         {currentQ.category}
                     </span>
                     <h2 className="text-2xl font-bold text-slate-900 mt-3 leading-tight">
@@ -445,7 +445,7 @@ const Research: React.FC = () => {
                                     width: 32px;
                                     height: 32px;
                                     border-radius: 50%;
-                                    background: #6366F1;
+                                    background: #6A47AE;
                                     border: 4px solid white;
                                     cursor: pointer;
                                     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
@@ -459,7 +459,7 @@ const Research: React.FC = () => {
                                     width: 32px;
                                     height: 32px;
                                     border-radius: 50%;
-                                    background: #6366F1;
+                                    background: #6A47AE;
                                     border: 4px solid white;
                                     cursor: pointer;
                                     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
@@ -480,7 +480,7 @@ const Research: React.FC = () => {
                                         key={opt.id}
                                         onClick={() => handleOptionSelect(opt.id)}
                                         className={`group relative text-right p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 overflow-hidden ${isSelected
-                                            ? 'border-[#6366F1] bg-indigo-50/50 shadow-md ring-4 ring-indigo-50'
+                                            ? 'border-[#6A47AE] bg-indigo-50/50 shadow-md ring-4 ring-indigo-50'
                                             : 'border-white bg-white hover:border-slate-100 hover:shadow-sm'
                                             }`}
                                     >
@@ -497,7 +497,7 @@ const Research: React.FC = () => {
                                             {'description' in opt ? opt.description : ''}
                                         </div>
                                         {isSelected && (
-                                            <div className="absolute top-2 right-2 w-5 h-5 bg-[#6366F1] rounded-full flex items-center justify-center text-white shadow-sm scale-110 animate-in zoom-in duration-300">
+                                            <div className="absolute top-2 right-2 w-5 h-5 bg-[#6A47AE] rounded-full flex items-center justify-center text-white shadow-sm scale-110 animate-in zoom-in duration-300">
                                                 <Check size={12} strokeWidth={4} />
                                             </div>
                                         )}
@@ -519,7 +519,7 @@ const Research: React.FC = () => {
                                             key={opt.id}
                                             onClick={() => handleOptionSelect(opt.id)}
                                             className={`w-full text-right p-4 rounded-xl border-2 transition-all flex items-center gap-4 group ${isSelected
-                                                ? 'border-[#6366F1] bg-indigo-50 shadow-sm'
+                                                ? 'border-[#6A47AE] bg-indigo-50 shadow-sm'
                                                 : 'border-slate-100 bg-white hover:border-slate-200'
                                                 }`}
                                         >
@@ -533,7 +533,7 @@ const Research: React.FC = () => {
                                                 </span>
                                             </div>
                                             {isSelected && (
-                                                <div className="w-6 h-6 bg-[#6366F1] rounded-full flex items-center justify-center text-white">
+                                                <div className="w-6 h-6 bg-[#6A47AE] rounded-full flex items-center justify-center text-white">
                                                     <Check size={14} strokeWidth={3} />
                                                 </div>
                                             )}
@@ -555,7 +555,7 @@ const Research: React.FC = () => {
                                                     key={opt.id}
                                                     onClick={() => setAnswers({ ...answers, [followUpKey]: opt.id })}
                                                     className={`w-full text-right p-4 rounded-xl border-2 transition-all flex items-center gap-4 group ${isSelected
-                                                        ? 'border-[#6366F1] bg-indigo-50 shadow-sm'
+                                                        ? 'border-[#6A47AE] bg-indigo-50 shadow-sm'
                                                         : 'border-slate-100 bg-white hover:border-slate-200'
                                                         }`}
                                                 >
@@ -569,7 +569,7 @@ const Research: React.FC = () => {
                                                         </span>
                                                     </div>
                                                     {isSelected && (
-                                                        <div className="w-6 h-6 bg-[#6366F1] rounded-full flex items-center justify-center text-white">
+                                                        <div className="w-6 h-6 bg-[#6A47AE] rounded-full flex items-center justify-center text-white">
                                                             <Check size={14} strokeWidth={3} />
                                                         </div>
                                                     )}
@@ -591,7 +591,7 @@ const Research: React.FC = () => {
                                     key={opt.id}
                                     onClick={() => handleOptionSelect(opt.id)}
                                     className={`w-full text-right p-4 rounded-xl border-2 transition-all flex items-center gap-4 group ${isSelected
-                                        ? 'border-[#6366F1] bg-indigo-50 shadow-sm'
+                                        ? 'border-[#6A47AE] bg-indigo-50 shadow-sm'
                                         : 'border-slate-100 bg-white hover:border-slate-200'
                                         }`}
                                 >
@@ -605,7 +605,7 @@ const Research: React.FC = () => {
                                         </span>
                                     </div>
                                     {isSelected && (
-                                        <div className="w-6 h-6 bg-[#6366F1] rounded-full flex items-center justify-center text-white">
+                                        <div className="w-6 h-6 bg-[#6A47AE] rounded-full flex items-center justify-center text-white">
                                             <Check size={14} strokeWidth={3} />
                                         </div>
                                     )}
@@ -614,7 +614,7 @@ const Research: React.FC = () => {
                         })
                     ) : (
                         <textarea
-                            className="w-full h-40 p-4 rounded-xl border-2 border-slate-200 focus:border-[#6366F1] focus:ring-0 outline-none resize-none bg-white text-base"
+                            className="w-full h-40 p-4 rounded-xl border-2 border-slate-200 focus:border-[#6A47AE] focus:ring-0 outline-none resize-none bg-white text-base"
                             placeholder={currentQ.placeholder}
                             value={answers[currentQ.id] as string || ''}
                             onChange={(e) => setAnswers({ ...answers, [currentQ.id]: e.target.value })}

@@ -21,8 +21,8 @@ import { motion, useDragControls, PanInfo } from 'framer-motion';
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" className={animated ? "climbing-path" : ""} />
-    <circle r="3" fill="#6366F1" className={animated ? "climbing-dot" : ""} />
+    <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8" stroke="#6A47AE" strokeWidth="2" strokeLinecap="round" className={animated ? "climbing-path" : ""} />
+    <circle r="3" fill="#6A47AE" className={animated ? "climbing-dot" : ""} />
   </svg>
 );
 
@@ -348,7 +348,7 @@ export const RouteOverview: React.FC<Props> = ({
           className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-80' : 'h-72'} bg-slate-900 group touch-none`}
           onPointerDown={(e) => dragControls.start(e)}
         >
-          <GoogleImage query={`${route.city} ${route.name}`} className="w-full h-full opacity-70 object-cover" />
+          <GoogleImage query={`${route.city} ${route.name}`} existingUrl={route.pois?.find(p => p.imageUrl)?.imageUrl} className="w-full h-full opacity-70 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
           <div
@@ -446,7 +446,7 @@ export const RouteOverview: React.FC<Props> = ({
               {route.city}
             </div>
             {/* Main Title */}
-            <h2 className="text-3xl font-bold text-white leading-tight drop-shadow-2xl">
+            <h2 className="text-3xl font-display text-white leading-tight drop-shadow-2xl">
               {mainTitle}
             </h2>
             {/* Long descriptive subtitle */}
@@ -495,7 +495,7 @@ export const RouteOverview: React.FC<Props> = ({
           <div className={`space-y-4 transition-opacity duration-300 ${isRegenerating ? 'opacity-40' : 'opacity-100'}`}>
             <div className="flex items-center justify-between px-1">
               <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <ListTodo size={14} className="text-[#6366F1]" />
+                <ListTodo size={14} className="text-[#6A47AE]" />
                 {isHe ? "תחנות הסיור" : "Tour Stops"}
               </h3>
             </div>
@@ -560,6 +560,7 @@ export const RouteOverview: React.FC<Props> = ({
                     <div className="w-16 h-16 rounded-[14px] bg-slate-100 overflow-hidden shrink-0 border border-slate-50 shadow-sm relative transition-all group-hover:shadow-md">
                       <GoogleImage
                         query={`${poi.name} ${route.city}`}
+                        existingUrl={poi.imageUrl}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                       />
 

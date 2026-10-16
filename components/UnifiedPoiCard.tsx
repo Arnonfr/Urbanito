@@ -137,7 +137,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
           className={`w-full relative transition-all duration-500 ${isExpanded ? 'h-72' : 'h-48'} bg-slate-900 group touch-none`}
           onPointerDown={(e) => dragControls.start(e)}
         >
-          <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} className="w-full h-full opacity-70 object-cover" />
+          <GoogleImage query={poi.name} lat={poi.lat} lng={poi.lng} existingUrl={poi.imageUrl} className="w-full h-full opacity-70 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/20 to-transparent" />
 
           {/* Drag Handle Indicator */}
@@ -220,7 +220,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
           <section className="space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <h3 className="text-[11px] font-medium text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <ScrollText size={18} className="text-[#6366F1]" />
+                <ScrollText size={18} className="text-[#6A47AE]" />
                 {isHe ? "סיפור המקום המלא" : "The Full Story"}
               </h3>
             </div>
@@ -376,7 +376,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
         <button
           onClick={onPrev}
           disabled={currentIndex <= 0}
-          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+          className="h-14 bg-[#261E36] text-white disabled:opacity-20 rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
         >
           {isHe ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
           <span>{isHe ? "תחנה קודמת" : "Previous"}</span>
@@ -384,7 +384,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
         <button
           onClick={onNext}
           disabled={currentIndex >= totalCount - 1}
-          className="h-14 bg-[#0F172A] text-white disabled:opacity-20 rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
+          className="h-14 bg-[#261E36] text-white disabled:opacity-20 rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
         >
           <span>{isHe ? "תחנה הבאה" : "Next Station"}</span>
           {isHe ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
@@ -393,7 +393,7 @@ export const UnifiedPoiCard: React.FC<Props> = ({
 
       {isImageFullscreen && (
         <div className="fixed inset-0 z-[10000] bg-black flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setIsImageFullscreen(false)}>
-          <GoogleImage query={poi.name} className="max-w-full max-h-[85vh] object-contain rounded-[8px]" size="large" />
+          <GoogleImage query={poi.name} existingUrl={poi.imageUrl} className="max-w-full max-h-[85vh] object-contain rounded-[8px]" size="large" />
           <button className="absolute top-8 right-8 w-12 h-12 bg-white/10 text-white rounded-full flex items-center justify-center">
             <X size={24} />
           </button>

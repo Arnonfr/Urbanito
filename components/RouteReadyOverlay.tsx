@@ -43,7 +43,7 @@ export const RouteReadyOverlay: React.FC<Props> = ({ onClose, isHe }) => {
                             style={{
                                 left: `${Math.random() * 100}%`,
                                 top: `${Math.random() * 100}%`,
-                                backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'][Math.floor(Math.random() * 4)],
+                                backgroundColor: ['#6A47AE', '#10b981', '#f59e0b', '#ec4899'][Math.floor(Math.random() * 4)],
                                 animation: `ping ${1 + Math.random()}s infinite`
                             }}
                         />

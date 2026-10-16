@@ -5,8 +5,8 @@ import { GoogleAd } from './GoogleAd';
 // Copied from App.tsx to avoid circular dependency
 const RouteTravelIcon = ({ className = "", animated = true }: { className?: string, animated?: boolean }) => (
    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" className={animated ? "climbing-path" : ""} />
-      <circle r="3" fill="#6366F1" className={animated ? "climbing-dot" : ""} />
+      <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 11.3137 20 8" stroke="#6A47AE" strokeWidth="2" strokeLinecap="round" className={animated ? "climbing-path" : ""} />
+      <circle r="3" fill="#6A47AE" className={animated ? "climbing-dot" : ""} />
    </svg>
 );
 

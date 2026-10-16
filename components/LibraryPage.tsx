@@ -127,7 +127,7 @@ const LibraryPage: React.FC<LibraryPageProps> = ({
       {!viewingCity && (
         <div className="px-1">
           <div className="flex justify-between items-center mb-8 pt-4 mt-6 top-safe-area">
-            <h2 className="text-3xl font-medium tracking-tight">{isHe ? 'ספריה' : 'Library'}</h2>
+            <h2 className="text-[34px] font-display text-indigo-900 leading-none">{isHe ? 'ספריה' : 'Library'}</h2>
           </div>
 
           <div className="space-y-8">
@@ -146,7 +146,7 @@ const LibraryPage: React.FC<LibraryPageProps> = ({
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-2 px-2">
                 <button
                   onClick={() => setSelectedCategory(null)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1.5 ${!selectedCategory ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600'}`}
+                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium border-[1.5px] transition-all flex items-center gap-1.5 ${!selectedCategory ? 'bg-signal-500 border-signal-500 text-white' : 'bg-transparent border-indigo-600 text-indigo-700'}`}
                 >
                   <Globe size={12} /> {isHe ? 'הכל' : 'All'}
                 </button>
@@ -154,7 +154,7 @@ const LibraryPage: React.FC<LibraryPageProps> = ({
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
-                    className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all flex items-center gap-1.5 ${selectedCategory === cat.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600'}`}
+                    className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium border-[1.5px] transition-all flex items-center gap-1.5 ${selectedCategory === cat.id ? 'bg-signal-500 border-signal-500 text-white' : 'bg-transparent border-indigo-600 text-indigo-700'}`}
                   >
                     <span>{cat.icon}</span>
                     <span>{isHe ? cat.he : cat.en}</span>
@@ -186,7 +186,7 @@ const LibraryPage: React.FC<LibraryPageProps> = ({
             {/* Cities carousel */}
             <section>
               <h3 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                <BookOpen size={12} className="text-[#6366F1]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
+                <BookOpen size={12} className="text-[#6A47AE]" /> {isHe ? 'ערים פופולריות' : 'Popular Cities'}
               </h3>
               <div
                 ref={citiesScrollRef}

@@ -66,7 +66,7 @@ export const QuickRouteSetup: React.FC<Props> = ({ preferences, onUpdatePreferen
               value={preferences.customPrompt || ''}
               onChange={(e) => onUpdatePreferences({ ...preferences, customPrompt: e.target.value })}
               placeholder={t.customPlaceholder}
-              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-[12px] text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all shadow-sm group-hover:bg-white placeholder:text-slate-500"
+              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-[12px] text-xs font-medium text-slate-900 focus:ring-2 focus:ring-[#6A47AE] focus:border-transparent outline-none transition-all shadow-sm group-hover:bg-white placeholder:text-slate-500"
             />
             {preferences.customPrompt && (
               <button
@@ -99,7 +99,7 @@ export const QuickRouteSetup: React.FC<Props> = ({ preferences, onUpdatePreferen
             onClick={() => togglePreference('religiousFriendly')}
             className={`flex items-center gap-3 p-3 rounded-[12px] border transition-all col-span-2 ${!preferences.religiousFriendly ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
           >
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${!preferences.religiousFriendly ? 'bg-[#6366F1] text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}>
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${!preferences.religiousFriendly ? 'bg-[#6A47AE] text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}>
               {!preferences.religiousFriendly ? <Check size={12} strokeWidth={3} /> : <EyeOff size={12} />}
             </div>
             <span className="text-[12px] font-bold">{t.religious}</span>
