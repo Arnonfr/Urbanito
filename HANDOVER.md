@@ -1,5 +1,7 @@
 # Urbanito Project Handover
 
+> **עדכון 16.10.2026:** מצב עדכני, עלויות והוראות הפצה ל-Firebase של אפליקציית האנדרואיד הנייטיב — ראו [`HANDOFF_NEXT_AGENT.md`](HANDOFF_NEXT_AGENT.md). חלקים במסמך הזה (Google Maps, Supabase פעיל, native-android בפיתוח) כבר לא מעודכנים.
+
 ## 1. Project Overview
 **Urbanito** is an AI-powered urban exploration platform that generates personalized walking tours and audio guides for cities worldwide. It combines real-time route generation with premium AI text-to-speech to create immersive travel experiences.
 
